@@ -158,23 +158,29 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
         val courseMap = mutableMapOf<String, Course>()
         for (course in weekCourses) {
-            val key = "${course.weekDay}_${course.begin}"
-            courseMap[key] = course
+            for (section in course.begin..course.end) {
+                val key = "${course.weekDay}_$section"
+                courseMap[key] = course
+            }
         }
 
+        // 上午 1-4 节
         for (sectionNum in 1..4) {
             val row = createRow(sectionNum, courseMap)
             binding.gridContent.addView(row)
         }
 
+        // 午休分隔
         val breakRow = createBreakRow()
         binding.gridContent.addView(breakRow)
 
+        // 下午 6-9 节
         for (sectionNum in 6..9) {
             val row = createRow(sectionNum, courseMap)
             binding.gridContent.addView(row)
         }
 
+        // 晚上 10-12 节
         for (sectionNum in 10..12) {
             val row = createRow(sectionNum, courseMap)
             binding.gridContent.addView(row)
@@ -191,7 +197,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         }
 
         val label = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(56), dpToPx(32))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(32))
             gravity = Gravity.CENTER
             text = "午休"
             setTextColor(resources.getColor(R.color.claude_text_hint, null))
@@ -217,13 +223,13 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         val row = LinearLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(72)
+                dpToPx(64)
             )
             orientation = LinearLayout.HORIZONTAL
         }
 
         val sectionLabel = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(56), dpToPx(72))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(64))
             gravity = Gravity.CENTER
             text = "${sectionNum}"
             setTextColor(resources.getColor(R.color.claude_text_secondary, null))
@@ -237,7 +243,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             val course = courseMap[key]
 
             val cellContainer = FrameLayout(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, dpToPx(72), 1f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dpToPx(64), 1f).apply {
                     marginStart = dpToPx(1)
                 }
             }

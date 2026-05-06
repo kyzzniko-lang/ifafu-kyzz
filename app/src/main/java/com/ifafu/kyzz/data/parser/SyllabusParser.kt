@@ -86,21 +86,38 @@ class SyllabusParser @Inject constructor(
             course.account = account
             course.name = parts[0]
 
+            Log.d("SyllabusParser", "  Parts: $parts")
+            var addressFound = false
             for (part in parts) {
                 if (part.contains("周") && part.contains("节")) {
                     parseCourseTime(course, part)
                     continue
                 }
+                // 教室匹配：包含常见教室关键词，或者是纯数字（如201, 305）
                 if (part.contains("楼") || part.contains("室") || part.contains("场") ||
-                    part.contains("机房") || part.contains("实验") || part.contains("教学楼")) {
+                    part.contains("机房") || part.contains("实验") || part.contains("教学楼") ||
+                    part.matches(Regex("\\d{3,4}"))) {
                     course.address = part
+                    addressFound = true
+                    Log.d("SyllabusParser", "  Address found: $part")
                     continue
                 }
+                // 教师匹配：2-6个字，且不是时间/周/年相关的文字
                 if (course.teacher.isEmpty() && part.length in 2..6
-                    && !part.contains("周") && !part.contains("节") && !part.contains("年")) {
+                    && !part.contains("周") && !part.contains("节") && !part.contains("年")
+                    && !part.matches(Regex("\\d+"))) {
                     course.teacher = part
                 }
             }
+            // 如果没有找到教室，尝试从parts中找最后一个可能是教室的部分
+            if (!addressFound && parts.size >= 3) {
+                val lastPart = parts.last()
+                if (lastPart.length in 2..10 && !lastPart.contains("周") && !lastPart.contains("节")) {
+                    course.address = lastPart
+                    Log.d("SyllabusParser", "  Address from last part: $lastPart")
+                }
+            }
+            Log.d("SyllabusParser", "  Course: ${course.name}, address=${course.address}, teacher=${course.teacher}")
 
             if (course.name.isNotEmpty() && course.weekDay > 0) {
                 if (syllabus.campus == 0 && course.address.contains("旗教")) {

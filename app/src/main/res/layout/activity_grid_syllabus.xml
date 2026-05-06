@@ -67,36 +67,29 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <HorizontalScrollView
-            android:id="@+id/horizontalScrollView"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:scrollbars="none">
+            android:orientation="vertical">
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="match_parent"
-                android:orientation="vertical">
+            <include layout="@layout/grid_syllabus_header" />
 
-                <include layout="@layout/grid_syllabus_header" />
+            <ScrollView
+                android:id="@+id/scrollView"
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:scrollbars="none">
 
-                <ScrollView
-                    android:id="@+id/scrollView"
+                <LinearLayout
+                    android:id="@+id/gridContent"
                     android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:scrollbars="none">
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
 
-                    <LinearLayout
-                        android:id="@+id/gridContent"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical" />
+            </ScrollView>
 
-                </ScrollView>
-
-            </LinearLayout>
-
-        </HorizontalScrollView>
+        </LinearLayout>
 
         <LinearLayout
             android:id="@+id/loadingLayout"
