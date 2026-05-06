@@ -53,4 +53,8 @@ class UserRepository @Inject constructor(
     var host: String
         get() = prefs.getString("host", "http://jwgl.fafu.edu.cn") ?: "http://jwgl.fafu.edu.cn"
         set(value) = prefs.edit().putString("host", value).apply()
+
+    var termFirstDay: String
+        get() = prefs.getString("termFirstDay", "") ?: ""
+        set(value) = prefs.edit().putString("termFirstDay", value).apply()
 }

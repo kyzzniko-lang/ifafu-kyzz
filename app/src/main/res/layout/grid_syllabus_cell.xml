@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/courseCell"
     android:layout_width="match_parent"
-    android:layout_height="64dp"
+    android:layout_height="80dp"
     android:background="@color/claude_bg_elevated"
     android:gravity="center"
     android:orientation="vertical"
@@ -11,21 +11,24 @@
     <TextView
         android:id="@+id/tvCourseName"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:ellipsize="end"
         android:fontFamily="@font/claude_serif"
         android:gravity="center"
-        android:maxLines="2"
+        android:maxLines="5"
         android:textColor="@color/white"
-        android:textSize="11sp" />
+        android:textSize="10sp" />
 
     <TextView
         android:id="@+id/tvCourseLocation"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
+        android:layout_height="0dp"
+        android:layout_weight="1"
         android:ellipsize="end"
+        android:fontFamily="@font/claude_serif"
         android:gravity="center"
-        android:maxLines="1"
+        android:maxLines="2"
         android:textColor="@color/white"
         android:textSize="9sp" />
 

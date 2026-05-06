@@ -71,53 +71,62 @@ class SyllabusParser @Inject constructor(
 
     private fun parseCourseFromCell(cell: Element, account: String, syllabus: Syllabus, courses: MutableList<Course>) {
         val html = cell.html()
+        Log.d("SyllabusParser", "  Cell HTML: ${html.take(500)}")
+
         val blocks = html.split(Regex("<br\\s*/?>\\s*<br\\s*/?>"))
             .map { it.trim() }
             .filter { it.isNotEmpty() && it != "&nbsp;" }
 
+        Log.d("SyllabusParser", "  Cell blocks: ${blocks.size}")
+
         for (block in blocks) {
-            val parts = block.split("<br>")
+            val parts = block.split(Regex("<br\\s*/?>"))
                 .map { it.replace(Regex("<[^>]+>"), "").trim() }
                 .filter { it.isNotEmpty() && it != "&nbsp;" }
 
             if (parts.size < 2) continue
 
+            Log.d("SyllabusParser", "  Parts (${parts.size}): $parts")
+
             val course = Course()
             course.account = account
             course.name = parts[0]
 
-            Log.d("SyllabusParser", "  Parts: $parts")
-            var addressFound = false
-            for (part in parts) {
-                if (part.contains("周") && part.contains("节")) {
-                    parseCourseTime(course, part)
-                    continue
-                }
-                // 教室匹配：包含常见教室关键词，或者是纯数字（如201, 305）
-                if (part.contains("楼") || part.contains("室") || part.contains("场") ||
-                    part.contains("机房") || part.contains("实验") || part.contains("教学楼") ||
-                    part.matches(Regex("\\d{3,4}"))) {
-                    course.address = part
-                    addressFound = true
-                    Log.d("SyllabusParser", "  Address found: $part")
-                    continue
-                }
-                // 教师匹配：2-6个字，且不是时间/周/年相关的文字
-                if (course.teacher.isEmpty() && part.length in 2..6
-                    && !part.contains("周") && !part.contains("节") && !part.contains("年")
-                    && !part.matches(Regex("\\d+"))) {
-                    course.teacher = part
+            // 找到时间字符串的索引（包含"周"和"节"）
+            var timeIndex = -1
+            for (i in parts.indices) {
+                if (parts[i].contains("周") && parts[i].contains("节")) {
+                    timeIndex = i
+                    parseCourseTime(course, parts[i])
+                    break
                 }
             }
-            // 如果没有找到教室，尝试从parts中找最后一个可能是教室的部分
-            if (!addressFound && parts.size >= 3) {
-                val lastPart = parts.last()
-                if (lastPart.length in 2..10 && !lastPart.contains("周") && !lastPart.contains("节")) {
-                    course.address = lastPart
-                    Log.d("SyllabusParser", "  Address from last part: $lastPart")
+
+            if (timeIndex < 0) {
+                Log.w("SyllabusParser", "  No time string found in parts: $parts")
+                continue
+            }
+
+            val afterTimeParts = parts.filterIndexed { i, _ -> i > timeIndex }
+            val beforeTimeParts = parts.filterIndexed { i, _ -> i in 1 until timeIndex }
+
+            when {
+                afterTimeParts.size >= 2 -> {
+                    course.teacher = afterTimeParts[0]
+                    course.address = afterTimeParts[1]
+                }
+                afterTimeParts.size == 1 -> {
+                    course.address = afterTimeParts[0]
+                    if (beforeTimeParts.isNotEmpty()) {
+                        course.teacher = beforeTimeParts[0]
+                    }
+                }
+                afterTimeParts.isEmpty() && beforeTimeParts.isNotEmpty() -> {
+                    course.teacher = beforeTimeParts[0]
                 }
             }
-            Log.d("SyllabusParser", "  Course: ${course.name}, address=${course.address}, teacher=${course.teacher}")
+
+            Log.d("SyllabusParser", "  Course: ${course.name}, weekDay=${course.weekDay}, begin=${course.begin}, end=${course.end}, teacher=${course.teacher}, address=${course.address}")
 
             if (course.name.isNotEmpty() && course.weekDay > 0) {
                 if (syllabus.campus == 0 && course.address.contains("旗教")) {
@@ -156,7 +165,7 @@ class SyllabusParser @Inject constructor(
             "一" to 1, "二" to 2, "三" to 3, "四" to 4,
             "五" to 5, "六" to 6, "日" to 7
         )
-        val pattern = Regex("周(.)(第?)(\\d+)([,，-](\\d+))?节\\{第(\\d+)-(\\d+)周(\\|(.)周)?\\}")
+        val pattern = Regex("周(.)(第?)(\\d+)([,，\\-](\\d+))?节\\{第(\\d+)-(\\d+)周(\\|(.)周)?\\}")
         val match = pattern.find(timeString)
         if (match == null) {
             Log.d("SyllabusParser", "    -> parseCourseTime NO MATCH for: $timeString")

@@ -15,7 +15,9 @@ import com.ifafu.kyzz.data.model.Course
 import com.ifafu.kyzz.databinding.ActivityGridSyllabusBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import dagger.hilt.android.AndroidEntryPoint
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Locale
 
 @AndroidEntryPoint
 class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
@@ -75,7 +77,9 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             }
         }
 
-        viewModel.loadSyllabus()
+        ensureTermFirstDay {
+            viewModel.loadSyllabus()
+        }
     }
 
     private fun calculateWeekRange() {
@@ -97,36 +101,47 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     private fun calculateCurrentWeek(): Int {
         val prefs = getSharedPreferences("ifafu_user", MODE_PRIVATE)
         val firstDay = prefs.getString("termFirstDay", "") ?: ""
+        android.util.Log.d("GridSyllabus", "termFirstDay from prefs: '$firstDay'")
 
         if (firstDay.isNotEmpty()) {
             try {
-                val parts = firstDay.split("-")
-                if (parts.size == 3) {
-                    val year = parts[0].toInt()
-                    val month = parts[1].toInt() - 1
-                    val day = parts[2].toInt()
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val termStart = Calendar.getInstance()
+                termStart.time = sdf.parse(firstDay) ?: run {
+                    android.util.Log.e("GridSyllabus", "Failed to parse termFirstDay: $firstDay")
+                    return estimateWeekByMonth()
+                }
+                termStart.set(Calendar.HOUR_OF_DAY, 0)
+                termStart.set(Calendar.MINUTE, 0)
+                termStart.set(Calendar.SECOND, 0)
+                termStart.set(Calendar.MILLISECOND, 0)
 
-                    val termStart = Calendar.getInstance()
-                    termStart.set(year, month, day, 0, 0, 0)
-                    termStart.set(Calendar.MILLISECOND, 0)
+                val today = Calendar.getInstance()
+                today.set(Calendar.HOUR_OF_DAY, 0)
+                today.set(Calendar.MINUTE, 0)
+                today.set(Calendar.SECOND, 0)
+                today.set(Calendar.MILLISECOND, 0)
 
-                    val today = Calendar.getInstance()
-                    today.set(Calendar.HOUR_OF_DAY, 0)
-                    today.set(Calendar.MINUTE, 0)
-                    today.set(Calendar.SECOND, 0)
-                    today.set(Calendar.MILLISECOND, 0)
-
-                    val diffMillis = today.timeInMillis - termStart.timeInMillis
-                    if (diffMillis >= 0) {
-                        val diffDays = (diffMillis / (24 * 60 * 60 * 1000)).toInt()
-                        val week = (diffDays / 7) + minWeek
-                        return week.coerceIn(minWeek, maxWeek)
-                    }
+                val diffMillis = today.timeInMillis - termStart.timeInMillis
+                if (diffMillis >= 0) {
+                    val diffDays = (diffMillis / (24 * 60 * 60 * 1000)).toInt()
+                    val week = (diffDays / 7) + 1
+                    android.util.Log.d("GridSyllabus", "Calculated week: $week (diffDays=$diffDays, termStart=$firstDay)")
+                    return week.coerceIn(minWeek, maxWeek)
+                } else {
+                    android.util.Log.w("GridSyllabus", "Term start is in the future: $firstDay")
                 }
             } catch (e: Exception) {
+                android.util.Log.e("GridSyllabus", "Error calculating week", e)
             }
         }
 
+        val estimated = estimateWeekByMonth()
+        android.util.Log.d("GridSyllabus", "Using estimated week: $estimated (no termFirstDay)")
+        return estimated
+    }
+
+    private fun estimateWeekByMonth(): Int {
         val calendar = Calendar.getInstance()
         val month = calendar.get(Calendar.MONTH)
         val weekOfYear = calendar.get(Calendar.WEEK_OF_YEAR)
@@ -223,13 +238,13 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         val row = LinearLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(64)
+                dpToPx(80)
             )
             orientation = LinearLayout.HORIZONTAL
         }
 
         val sectionLabel = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(64))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(80))
             gravity = Gravity.CENTER
             text = "${sectionNum}"
             setTextColor(resources.getColor(R.color.claude_text_secondary, null))
@@ -243,12 +258,12 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             val course = courseMap[key]
 
             val cellContainer = FrameLayout(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, dpToPx(64), 1f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dpToPx(80), 1f).apply {
                     marginStart = dpToPx(1)
                 }
             }
 
-            if (course != null) {
+            if (course != null && sectionNum == course.begin) {
                 val colorIndex = (course.name.hashCode() and 0x7FFFFFFF) % courseColors.size
                 val color = Color.parseColor(courseColors[colorIndex])
 
@@ -262,10 +277,23 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 val tvLocation = cellView.findViewById<TextView>(R.id.tvCourseLocation)
 
                 tvName.text = course.name
+                tvName.visibility = View.VISIBLE
                 tvLocation.text = if (course.address.isNotEmpty()) "@${course.address}" else ""
+                tvLocation.visibility = View.VISIBLE
                 cellView.setBackgroundColor(color)
 
                 cellContainer.addView(cellView)
+            } else if (course != null) {
+                val colorIndex = (course.name.hashCode() and 0x7FFFFFFF) % courseColors.size
+                val color = Color.parseColor(courseColors[colorIndex])
+                val continuationView = View(this).apply {
+                    layoutParams = FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.MATCH_PARENT
+                    )
+                    setBackgroundColor(color)
+                }
+                cellContainer.addView(continuationView)
             } else {
                 val emptyView = View(this).apply {
                     layoutParams = FrameLayout.LayoutParams(
@@ -301,5 +329,51 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
     private fun dpToPx(dp: Int): Int {
         return (dp * resources.displayMetrics.density).toInt()
+    }
+
+    private fun isValidDateFormat(date: String): Boolean {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            sdf.isLenient = false
+            sdf.parse(date)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    private fun ensureTermFirstDay(onReady: () -> Unit) {
+        val prefs = getSharedPreferences("ifafu_user", MODE_PRIVATE)
+        val existing = prefs.getString("termFirstDay", "") ?: ""
+        android.util.Log.d("GridSyllabus", "ensureTermFirstDay: existing='$existing'")
+
+        if (existing.isNotEmpty() && isValidDateFormat(existing)) {
+            onReady()
+            return
+        }
+
+        setDefaultTermFirstDay(prefs)
+        onReady()
+    }
+
+    private fun setDefaultTermFirstDay(prefs: android.content.SharedPreferences) {
+        val calendar = Calendar.getInstance()
+        val month = calendar.get(Calendar.MONTH)
+        val year = calendar.get(Calendar.YEAR)
+
+        val termStart = if (month in 1..6) {
+            Calendar.getInstance().apply {
+                set(year, Calendar.MARCH, 2, 0, 0, 0)
+            }
+        } else {
+            Calendar.getInstance().apply {
+                set(year, Calendar.SEPTEMBER, 1, 0, 0, 0)
+            }
+        }
+
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val defaultDate = sdf.format(termStart.time)
+        android.util.Log.d("GridSyllabus", "setDefaultTermFirstDay: $defaultDate")
+        prefs.edit().putString("termFirstDay", defaultDate).apply()
     }
 }
