@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="claude_terracotta">#D4724A</color>
+    <color name="claude_terracotta_dark">#B85A38</color>
+    <color name="claude_terracotta_light">#E8926A</color>
+    <color name="claude_terracotta_50">#FDF5F0</color>
+    <color name="claude_terracotta_100">#F9E8DF</color>
+    <color name="claude_terracotta_200">#F0CEBC</color>
+    <color name="claude_terracotta_300">#E4AD8E</color>
+    <color name="claude_terracotta_400">#D98B65</color>
+    <color name="claude_terracotta_500">#D4724A</color>
+    <color name="claude_terracotta_600">#C05E38</color>
+    <color name="claude_terracotta_700">#A44D2C</color>
+    <color name="claude_terracotta_800">#8A3F25</color>
+    <color name="claude_terracotta_900">#6E321E</color>
+
+    <color name="claude_bg">#FAF9F7</color>
+    <color name="claude_bg_elevated">#FFFFFF</color>
+    <color name="claude_bg_subtle">#F3F1ED</color>
+    <color name="claude_bg_hover">#EDEAE5</color>
+
+    <color name="claude_text_primary">#1A1715</color>
+    <color name="claude_text_secondary">#6B6560</color>
+    <color name="claude_text_tertiary">#9C958E</color>
+    <color name="claude_text_inverse">#FFFFFF</color>
+    <color name="claude_text_hint">#BDB6AE</color>
+
+    <color name="claude_border">#E8E5E0</color>
+    <color name="claude_border_light">#F0EDE8</color>
+    <color name="claude_divider">#EDEAE5</color>
+
+    <color name="claude_shadow">#1A000000</color>
+    <color name="claude_overlay">#33000000</color>
+
+    <color name="claude_success">#2D7A4F</color>
+    <color name="claude_error">#C53030</color>
+    <color name="claude_warning">#B7791F</color>
+
+    <color name="white">#FFFFFF</color>
+    <color name="black">#000000</color>
+    <color name="transparent">#00000000</color>
+</resources>
