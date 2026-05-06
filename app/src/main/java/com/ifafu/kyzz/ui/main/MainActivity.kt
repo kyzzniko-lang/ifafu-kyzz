@@ -8,15 +8,15 @@ import androidx.appcompat.app.AlertDialog
 import androidx.lifecycle.observe
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.databinding.ActivityMainBinding
-import com.ifafu.kyzz.ui.about.AboutActivity
 import com.ifafu.kyzz.ui.base.BaseActivity
-import com.ifafu.kyzz.ui.comment.CommentTeacherActivity
 import com.ifafu.kyzz.ui.elective.ElectiveCourseActivity
 import com.ifafu.kyzz.ui.exam.ExamActivity
 import com.ifafu.kyzz.ui.login.LoginActivity
 import com.ifafu.kyzz.ui.score.ScoreActivity
 import com.ifafu.kyzz.ui.syllabus.GridSyllabusActivity
 import com.ifafu.kyzz.ui.syllabus.SyllabusActivity
+import com.ifafu.kyzz.ui.toolbox.KyzzToolboxActivity
+import com.ifafu.kyzz.ui.toolbox.ToolboxActivity
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -57,14 +57,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
         binding.cardElective.setOnClickListener {
             startActivity(Intent(this, ElectiveCourseActivity::class.java))
         }
-        binding.cardComment.setOnClickListener {
-            startActivity(Intent(this, CommentTeacherActivity::class.java))
+        binding.cardToolbox.setOnClickListener {
+            startActivity(Intent(this, ToolboxActivity::class.java))
         }
-        binding.cardElectiveScore.setOnClickListener {
-            startActivity(Intent(this, ScoreActivity::class.java))
-        }
-        binding.cardAbout.setOnClickListener {
-            startActivity(Intent(this, AboutActivity::class.java))
+        binding.cardKyzzToolbox.setOnClickListener {
+            startActivity(Intent(this, KyzzToolboxActivity::class.java))
         }
         binding.cardLogout.setOnClickListener { showLogoutConfirm() }
     }

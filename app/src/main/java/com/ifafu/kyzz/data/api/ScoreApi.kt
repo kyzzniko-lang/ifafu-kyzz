@@ -14,8 +14,8 @@ class ScoreApi @Inject constructor(
     private val scoreParser: ScoreParser
 ) {
 
-    suspend fun getScoreTable(host: String, token: String, number: String, name: String): ScoreTable? {
-        val accessUrl = "${host}/(${token})/xskscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
+    suspend fun getAllScores(host: String, token: String, number: String, name: String): List<Score>? {
+        val accessUrl = "${host}/(${token})/xscjcx_dq_fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
         val doc = htmlClient.get(accessUrl)
         val html = doc.html()
 
@@ -23,29 +23,24 @@ class ScoreApi @Inject constructor(
             return null
         }
 
-        if (html.contains("教学质量评价")) {
+        if (html.contains("alert") && html.contains("教学质量评价")) {
             return null
         }
 
-        return scoreParser.parseScoreTable(doc)
-    }
-
-    suspend fun updateScoreTable(
-        host: String, token: String, number: String, name: String,
-        year: String, term: String
-    ): List<Score> {
-        val accessUrl = "${host}/(${token})/xskscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
+        val initialScores = scoreParser.parseScores(doc)
 
         val formBody = htmlClient.buildViewStateFormBody()
             .add("__EVENTTARGET", "")
             .add("__EVENTARGUMENT", "")
-            .add("ddlxn", year)
-            .add("ddlxq", term)
+            .add("ddlxn", "全部")
+            .add("ddlxq", "全部")
             .add("btnCx", "查  询")
             .build()
 
-        val html = htmlClient.postString(accessUrl, formBody)
-        return scoreParser.parseScores(html)
+        val resultHtml = htmlClient.postString(accessUrl, formBody)
+        val allScores = scoreParser.parseScores(resultHtml)
+
+        return if (allScores.isNotEmpty()) allScores else initialScores
     }
 
     suspend fun getElectiveTargetScore(host: String, token: String, number: String, name: String): Map<String, Float> {

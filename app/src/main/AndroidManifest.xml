@@ -34,6 +34,13 @@
         <activity android:name=".ui.comment.CommentTeacherActivity" />
         <activity android:name=".ui.about.AboutActivity" />
         <activity android:name=".ui.web.WebActivity" />
+        <activity android:name=".ui.toolbox.ToolboxActivity" />
+        <activity android:name=".ui.toolbox.KyzzToolboxActivity" />
+        <activity android:name=".ui.studentinfo.StudentInfoActivity" />
+        <activity android:name=".ui.toolbox.PasswordModifyActivity" />
+        <activity android:name=".ui.toolbox.TrainingPlanActivity" />
+        <activity android:name=".ui.toolbox.GradeExamActivity" />
+        <activity android:name=".ui.toolbox.OnlineRegistrationActivity" />
 
         <receiver
             android:name=".widget.iFAFUWidget"

@@ -11,5 +11,8 @@ data class Course(
     var end: Int = 0,
     var weekBegin: Int = 0,
     var weekEnd: Int = 0,
-    var oddOrTwice: Int = 0
+    var oddOrTwice: Int = 0,
+    var examDate: String = "",
+    var examTime: String = "",
+    var examAddress: String = ""
 )

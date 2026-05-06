@@ -417,10 +417,10 @@
                 android:layout_marginBottom="16dp"
                 android:layout_marginTop="16dp"
                 style="@style/ClaudeOverline"
-                android:text="工具" />
+                android:text="工具箱" />
 
             <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardComment"
+                android:id="@+id/cardToolbox"
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -445,7 +445,7 @@
                         android:layout_width="20dp"
                         android:layout_height="20dp"
                         android:layout_marginStart="-30dp"
-                        android:src="@android:drawable/ic_menu_edit"
+                        android:src="@android:drawable/ic_menu_preferences"
                         app:tint="@color/claude_terracotta" />
 
                     <LinearLayout
@@ -459,7 +459,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:fontFamily="@font/claude_serif"
-                            android:text="@string/nav_comment"
+                            android:text="工具箱"
                             android:textColor="@color/claude_text_primary"
                             android:textSize="16sp" />
 
@@ -468,7 +468,7 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             style="@style/ClaudeCaption"
-                            android:text="快速完成教师评价" />
+                            android:text="教评、选修学分、个人信息等" />
 
                     </LinearLayout>
 
@@ -484,7 +484,7 @@
             </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardElectiveScore"
+                android:id="@+id/cardKyzzToolbox"
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -509,7 +509,7 @@
                         android:layout_width="20dp"
                         android:layout_height="20dp"
                         android:layout_marginStart="-30dp"
-                        android:src="@android:drawable/ic_menu_info_details"
+                        android:src="@android:drawable/ic_menu_manage"
                         app:tint="@color/claude_terracotta" />
 
                     <LinearLayout
@@ -523,7 +523,7 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:fontFamily="@font/claude_serif"
-                            android:text="@string/nav_elective_score"
+                            android:text="KYZZ工具箱"
                             android:textColor="@color/claude_text_primary"
                             android:textSize="16sp" />
 
@@ -532,59 +532,9 @@
                             android:layout_height="wrap_content"
                             android:layout_marginTop="2dp"
                             style="@style/ClaudeCaption"
-                            android:text="查看选修学分完成情况" />
+                            android:text="帮抢选修课、体育课等" />
 
                     </LinearLayout>
-
-                    <ImageView
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
-                        android:alpha="0.3"
-                        android:src="@android:drawable/ic_media_play"
-                        app:tint="@color/claude_text_tertiary" />
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardAbout"
-                style="@style/ClaudeCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="?attr/selectableItemBackground">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="20dp">
-
-                    <View
-                        android:layout_width="40dp"
-                        android:layout_height="40dp"
-                        android:background="@drawable/bg_icon_circle" />
-
-                    <ImageView
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:layout_marginStart="-30dp"
-                        android:src="@android:drawable/ic_menu_help"
-                        app:tint="@color/claude_terracotta" />
-
-                    <TextView
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="20dp"
-                        android:layout_weight="1"
-                        android:fontFamily="@font/claude_serif"
-                        android:text="@string/nav_about"
-                        android:textColor="@color/claude_text_primary"
-                        android:textSize="16sp" />
 
                     <ImageView
                         android:layout_width="16dp"

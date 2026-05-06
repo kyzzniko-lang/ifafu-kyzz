@@ -1,8 +1,12 @@
 package com.ifafu.kyzz.data.parser
 
 import android.util.Log
+import com.ifafu.kyzz.data.model.AdjustCourse
 import com.ifafu.kyzz.data.model.Course
+import com.ifafu.kyzz.data.model.InternshipCourse
+import com.ifafu.kyzz.data.model.PracticeCourse
 import com.ifafu.kyzz.data.model.Syllabus
+import com.ifafu.kyzz.data.model.UnscheduledCourse
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import javax.inject.Inject
@@ -29,6 +33,10 @@ class SyllabusParser @Inject constructor(
         }
 
         syllabus.courses = parseCourses(doc, account, syllabus)
+        syllabus.adjustCourses = parseAdjustCourses(doc)
+        syllabus.practiceCourses = parsePracticeCourses(doc)
+        syllabus.internshipCourses = parseInternshipCourses(doc)
+        syllabus.unscheduledCourses = parseUnscheduledCourses(doc)
         return syllabus
     }
 
@@ -44,13 +52,31 @@ class SyllabusParser @Inject constructor(
             Log.d("SyllabusParser", "Table id: ${table.id()}, tagName: ${table.tagName()}")
             val rows = table.select("tr")
             Log.d("SyllabusParser", "Rows found: ${rows.size}")
+
+            var currentSection = 0
+
             for (row in rows) {
-                val cells = row.select("td[align=Center], td[align=center]")
-                Log.d("SyllabusParser", "  Cells with align=Center: ${cells.size}")
-                for (cell in cells) {
-                    val cellHtml = cell.html()
-                    Log.d("SyllabusParser", "  Cell HTML: ${cellHtml.take(200)}")
-                    parseCourseFromCell(cell, account, syllabus, courses)
+                for (td in row.select("td")) {
+                    val m = Regex("第(\\d+)节").find(td.text())
+                    if (m != null) {
+                        currentSection = m.groupValues[1].toIntOrNull() ?: currentSection
+                    }
+                }
+
+                val dataCells = row.select("td[align=Center], td[align=center]")
+                if (dataCells.isEmpty()) continue
+
+                val courseCells = dataCells.filter { cell ->
+                    val text = cell.text().trim()
+                    !Regex("第\\d+节").containsMatchIn(text) &&
+                        !Regex("^(上午|下午|晚上|早晨)").containsMatchIn(text)
+                }
+
+                for ((colOffset, cell) in courseCells.withIndex()) {
+                    val weekDay = colOffset + 1
+                    if (weekDay > 7) break
+                    Log.d("SyllabusParser", "  Cell colOffset=$colOffset -> weekDay=$weekDay, section=$currentSection")
+                    parseCourseFromCell(cell, account, syllabus, courses, weekDay, currentSection)
                 }
             }
         }
@@ -69,7 +95,7 @@ class SyllabusParser @Inject constructor(
         return courses
     }
 
-    private fun parseCourseFromCell(cell: Element, account: String, syllabus: Syllabus, courses: MutableList<Course>) {
+    private fun parseCourseFromCell(cell: Element, account: String, syllabus: Syllabus, courses: MutableList<Course>, cellWeekDay: Int, cellSection: Int) {
         val html = cell.html()
         Log.d("SyllabusParser", "  Cell HTML: ${html.take(500)}")
 
@@ -92,17 +118,47 @@ class SyllabusParser @Inject constructor(
             course.account = account
             course.name = parts[0]
 
-            // 找到时间字符串的索引（包含"周"和"节"）
             var timeIndex = -1
             for (i in parts.indices) {
                 if (parts[i].contains("周") && parts[i].contains("节")) {
-                    timeIndex = i
-                    parseCourseTime(course, parts[i])
-                    break
+                    val parsed = parseCourseTime(course, parts[i])
+                    if (parsed) {
+                        timeIndex = i
+                        break
+                    }
                 }
             }
 
             if (timeIndex < 0) {
+                val weekOnlyParsed = parseWeekOnly(course, parts)
+                if (weekOnlyParsed) {
+                    course.weekDay = cellWeekDay
+                    if (course.begin == 0) course.begin = cellSection
+                    if (course.end == 0) course.end = cellSection
+
+                    val sectionsPerWeek = Regex("(\\d+)节/周").find(course.timeString)?.groupValues?.get(1)?.toIntOrNull()
+                    if (sectionsPerWeek != null && sectionsPerWeek > 1) {
+                        course.end = course.begin + sectionsPerWeek - 1
+                    }
+
+                    val remainingParts = parts.filterIndexed { i, part ->
+                        i > 0 && !part.contains(Regex("^\\{第"))
+                    }
+                    if (remainingParts.size >= 2) {
+                        course.teacher = remainingParts[0]
+                        course.address = remainingParts[1]
+                    } else if (remainingParts.size == 1) {
+                        course.teacher = remainingParts[0]
+                    }
+
+                    Log.d("SyllabusParser", "  Course (pos fallback): ${course.name}, weekDay=${course.weekDay}, begin=${course.begin}, end=${course.end}")
+
+                    if (course.name.isNotEmpty() && course.weekDay > 0) {
+                        courses.add(course)
+                    }
+                    continue
+                }
+
                 Log.w("SyllabusParser", "  No time string found in parts: $parts")
                 continue
             }
@@ -126,6 +182,20 @@ class SyllabusParser @Inject constructor(
                 }
             }
 
+            val examRegex = Regex("(\\d{4})年(\\d{2})月(\\d{2})日\\((.*?)\\)")
+            for (part in parts) {
+                val examMatch = examRegex.find(part)
+                if (examMatch != null) {
+                    course.examDate = "${examMatch.groupValues[1]}-${examMatch.groupValues[2]}-${examMatch.groupValues[3]}"
+                    course.examTime = examMatch.groupValues[4]
+                    val examAddrIndex = parts.indexOf(part) + 1
+                    if (examAddrIndex < parts.size) {
+                        course.examAddress = parts[examAddrIndex]
+                    }
+                    break
+                }
+            }
+
             Log.d("SyllabusParser", "  Course: ${course.name}, weekDay=${course.weekDay}, begin=${course.begin}, end=${course.end}, teacher=${course.teacher}, address=${course.address}")
 
             if (course.name.isNotEmpty() && course.weekDay > 0) {
@@ -135,6 +205,20 @@ class SyllabusParser @Inject constructor(
                 courses.add(course)
             }
         }
+    }
+
+    private fun parseWeekOnly(course: Course, parts: List<String>): Boolean {
+        for (part in parts) {
+            val pattern = Regex("\\{第(\\d+)-(\\d+)周(\\|(\\d+)节/周)?\\}")
+            val match = pattern.find(part)
+            if (match != null) {
+                course.timeString = part
+                course.weekBegin = match.groupValues[1].toIntOrNull() ?: 1
+                course.weekEnd = match.groupValues[2].toIntOrNull() ?: 1
+                return true
+            }
+        }
+        return false
     }
 
     private fun parseCoursesFromRegex(html: String, account: String, syllabus: Syllabus, courses: MutableList<Course>) {
@@ -160,7 +244,7 @@ class SyllabusParser @Inject constructor(
         }
     }
 
-    private fun parseCourseTime(course: Course, timeString: String) {
+    private fun parseCourseTime(course: Course, timeString: String): Boolean {
         val weekMap = mapOf(
             "一" to 1, "二" to 2, "三" to 3, "四" to 4,
             "五" to 5, "六" to 6, "日" to 7
@@ -169,7 +253,7 @@ class SyllabusParser @Inject constructor(
         val match = pattern.find(timeString)
         if (match == null) {
             Log.d("SyllabusParser", "    -> parseCourseTime NO MATCH for: $timeString")
-            return
+            return false
         }
         Log.d("SyllabusParser", "    -> parseCourseTime MATCH: groups=${match.groupValues}")
         course.timeString = timeString
@@ -187,5 +271,138 @@ class SyllabusParser @Inject constructor(
                 else -> 0
             }
         }
+        return true
+    }
+
+    private fun parseAdjustCourses(doc: Document): List<AdjustCourse> {
+        val result = mutableListOf<AdjustCourse>()
+        val html = doc.html()
+
+        val sectionStart = html.indexOf("调、停（补）课信息")
+        if (sectionStart < 0) return result
+
+        val tables = doc.select("table")
+        for (table in tables) {
+            val tableHtml = table.html()
+            if (!tableHtml.contains("原上课时间地点教师") && !tableHtml.contains("现上课时间地点教师")) continue
+
+            val rows = table.select("tr")
+            for (i in 1 until rows.size) {
+                val tds = rows[i].select("td")
+                if (tds.size >= 5) {
+                    result.add(AdjustCourse(
+                        id = tds[0].text().trim(),
+                        name = tds[1].text().trim(),
+                        original = tds[2].text().trim(),
+                        adjusted = tds[3].text().trim(),
+                        applyTime = tds[4].text().trim()
+                    ))
+                }
+            }
+            break
+        }
+        return result
+    }
+
+    private fun parsePracticeCourses(doc: Document): List<PracticeCourse> {
+        val result = mutableListOf<PracticeCourse>()
+        val html = doc.html()
+
+        val sectionStart = html.indexOf("实践课(或无上课时间)信息")
+        if (sectionStart < 0) return result
+
+        val tables = doc.select("table")
+        for (table in tables) {
+            val tableHtml = table.html()
+            if (!tableHtml.contains("课程名称") || !tableHtml.contains("起止周")) continue
+            if (tableHtml.contains("原上课时间地点教师")) continue
+
+            val rows = table.select("tr")
+            for (i in 1 until rows.size) {
+                val tds = rows[i].select("td")
+                if (tds.size >= 4) {
+                    result.add(PracticeCourse(
+                        name = tds[0].text().trim(),
+                        teacher = tds[1].text().trim(),
+                        credit = tds[2].text().trim(),
+                        weeks = tds.getOrNull(3)?.text()?.trim() ?: "",
+                        time = tds.getOrNull(4)?.text()?.trim() ?: "",
+                        location = tds.getOrNull(5)?.text()?.trim() ?: ""
+                    ))
+                }
+            }
+            break
+        }
+        return result
+    }
+
+    private fun parseInternshipCourses(doc: Document): List<InternshipCourse> {
+        val result = mutableListOf<InternshipCourse>()
+        val html = doc.html()
+
+        val sectionStart = html.indexOf("实习课信息")
+        if (sectionStart < 0) return result
+
+        val tables = doc.select("table")
+        var found = false
+        for (table in tables) {
+            val tableHtml = table.html()
+            if (!tableHtml.contains("实习时间") && !tableHtml.contains("模块代号")) continue
+            if (tableHtml.contains("原上课时间地点教师") || tableHtml.contains("起止周")) continue
+
+            val rows = table.select("tr")
+            for (i in 1 until rows.size) {
+                val tds = rows[i].select("td")
+                if (tds.size >= 3) {
+                    result.add(InternshipCourse(
+                        year = tds.getOrNull(0)?.text()?.trim() ?: "",
+                        term = tds.getOrNull(1)?.text()?.trim() ?: "",
+                        name = tds.getOrNull(2)?.text()?.trim() ?: "",
+                        time = tds.getOrNull(3)?.text()?.trim() ?: "",
+                        moduleCode = tds.getOrNull(4)?.text()?.trim() ?: "",
+                        prerequisite = tds.getOrNull(5)?.text()?.trim() ?: "",
+                        internshipId = tds.getOrNull(6)?.text()?.trim() ?: ""
+                    ))
+                }
+            }
+            found = true
+            break
+        }
+        return result
+    }
+
+    private fun parseUnscheduledCourses(doc: Document): List<UnscheduledCourse> {
+        val result = mutableListOf<UnscheduledCourse>()
+        val html = doc.html()
+
+        val sectionStart = html.indexOf("未安排上课时间的课程")
+        if (sectionStart < 0) return result
+
+        val sectionHtml = html.substring(sectionStart)
+        val tables = doc.select("table")
+
+        val unscheduledTable = tables.lastOrNull { table ->
+            val t = table.text()
+            t.contains("学年") && t.contains("学期") && t.contains("学分") &&
+                !table.html().contains("原上课时间地点教师") &&
+                !table.html().contains("起止周") &&
+                !table.html().contains("实习时间") &&
+                !table.html().contains("模块代号")
+        } ?: return result
+
+        val rows = unscheduledTable.select("tr")
+        for (i in 1 until rows.size) {
+            val tds = rows[i].select("td")
+            if (tds.size >= 5) {
+                result.add(UnscheduledCourse(
+                    year = tds[0].text().trim(),
+                    term = tds[1].text().trim(),
+                    name = tds[2].text().trim(),
+                    teacher = tds[3].text().trim(),
+                    credit = tds[4].text().trim()
+                ))
+            }
+        }
+        return result
     }
 }

@@ -3,7 +3,7 @@ package com.ifafu.kyzz.ui.syllabus
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ifafu.kyzz.data.api.SyllabusApi
-import com.ifafu.kyzz.data.model.Course
+import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Syllabus
 import com.ifafu.kyzz.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -15,7 +15,8 @@ import javax.inject.Inject
 @HiltViewModel
 class SyllabusViewModel @Inject constructor(
     private val syllabusApi: SyllabusApi,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val cacheManager: CacheManager
 ) : ViewModel() {
 
     private val _state = MutableLiveData<SyllabusState>()
@@ -27,12 +28,22 @@ class SyllabusViewModel @Inject constructor(
 
     private var currentSyllabus: Syllabus? = null
 
-    fun loadSyllabus() {
+    fun loadSyllabus(forceRefresh: Boolean = false) {
         val user = userRepository.getUser()
         if (!user.isLogin) {
             _state.value = SyllabusState.Error("未登录")
             return
         }
+
+        if (!forceRefresh) {
+            val cached = cacheManager.loadSyllabus(user.account)
+            if (cached != null && cached.courses.isNotEmpty()) {
+                currentSyllabus = cached
+                _state.value = SyllabusState.Success(cached)
+                return
+            }
+        }
+
         viewModelScope.launch {
             _state.value = SyllabusState.Loading
             try {
@@ -41,6 +52,7 @@ class SyllabusViewModel @Inject constructor(
                 )
                 if (syllabus != null) {
                     currentSyllabus = syllabus
+                    cacheManager.saveSyllabus(user.account, syllabus)
                     _state.value = SyllabusState.Success(syllabus)
                 } else {
                     _state.value = SyllabusState.Error("获取课表失败")

@@ -15,13 +15,16 @@ class ScoreParser @Inject constructor(
         val scoreTable = ScoreTable()
         val html = doc.html()
 
-        val yearOptions = htmlParser.parseSearchOptions(doc, "学年：", "学期：")
+        val yearLabel = if (html.contains("学年：")) "学年：" else "学年:"
+        val termLabel = if (html.contains("学期：")) "学期：" else "学期:"
+
+        val yearOptions = htmlParser.parseSearchOptions(doc, yearLabel, termLabel)
         scoreTable.searchYearOptions = yearOptions.options.toMutableList()
         scoreTable.defaultSelectedYear = yearOptions.selectedIndex
 
-        val termStart = html.indexOf("学期：")
+        val termStart = html.indexOf(termLabel)
         if (termStart >= 0) {
-            val termOptions = htmlParser.parseSearchOptions(doc, "学期：", "footbox")
+            val termOptions = htmlParser.parseSearchOptions(doc, termLabel, "footbox")
             scoreTable.searchTermOptions = termOptions.options.toMutableList()
             scoreTable.defaultSelectedTerm = termOptions.selectedIndex
         }

@@ -1,24 +1,30 @@
 package com.ifafu.kyzz.ui.score
 
 import android.os.Bundle
+import android.view.Gravity
 import android.view.View
+import android.widget.AdapterView
+import android.widget.ArrayAdapter
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.viewModels
-import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.lifecycle.observe
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Score
-import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.databinding.ActivityScoreBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
-import android.widget.FrameLayout
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
 
     private val viewModel: ScoreViewModel by viewModels()
+    private var selectedYear: String? = null
+    private var selectedTerm: String? = null
+    private var spinnerReady = false
 
     override fun createBinding(): ActivityScoreBinding = ActivityScoreBinding.inflate(layoutInflater)
 
@@ -28,20 +34,58 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = getString(R.string.score_title)
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
-        binding.swipeRefresh.setOnRefreshListener { viewModel.loadScores() }
-        binding.btnRetry.setOnClickListener { viewModel.loadScores() }
+        binding.swipeRefresh.setOnRefreshListener { viewModel.loadScores(forceRefresh = true) }
+        binding.btnRetry.setOnClickListener { viewModel.loadScores(forceRefresh = true) }
+
+        setupTermButtons()
 
         viewModel.state.observe(this) { state ->
             binding.swipeRefresh.isRefreshing = false
             when (state) {
                 is ScoreViewModel.ScoreState.Idle -> {}
                 is ScoreViewModel.ScoreState.Loading -> showLoading()
-                is ScoreViewModel.ScoreState.Success -> showScores(state.scoreTable.scores)
+                is ScoreViewModel.ScoreState.Success -> {
+                    if (!spinnerReady) {
+                        setupYearSpinner()
+                        spinnerReady = true
+                    }
+                    showScores(state.scores)
+                }
                 is ScoreViewModel.ScoreState.Error -> showError(state.message)
             }
         }
 
         viewModel.loadScores()
+    }
+
+    private fun setupYearSpinner() {
+        val years = viewModel.getAvailableYears()
+        val options = mutableListOf("全部")
+        options.addAll(years)
+
+        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options)
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        binding.spinnerYear.adapter = adapter
+        binding.spinnerYear.setSelection(0)
+
+        binding.spinnerYear.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                selectedYear = if (position == 0) null else options[position]
+                viewModel.filter(selectedYear, selectedTerm)
+            }
+            override fun onNothingSelected(parent: AdapterView<*>?) {}
+        }
+    }
+
+    private fun setupTermButtons() {
+        binding.btnTerm1.setOnClickListener {
+            selectedTerm = "1"
+            viewModel.filter(selectedYear, selectedTerm)
+        }
+        binding.btnTerm2.setOnClickListener {
+            selectedTerm = "2"
+            viewModel.filter(selectedYear, selectedTerm)
+        }
     }
 
     private fun showLoading() {
@@ -102,7 +146,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
                     LinearLayout.LayoutParams.MATCH_PARENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
-                gravity = android.view.Gravity.CENTER_VERTICAL
+                gravity = Gravity.CENTER_VERTICAL
             }
 
             val name = TextView(this@ScoreActivity).apply {
@@ -124,8 +168,14 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
             topRow.addView(scoreValue)
             holder.content.addView(topRow)
 
+            val infoParts = mutableListOf<String>()
+            infoParts.add("${score.year} 第${score.term}学期")
+            infoParts.add(score.courseType)
+            infoParts.add("学分: ${score.studyScore}")
+            if (score.makeupScore > 0) infoParts.add("补考: ${score.makeupScore}")
+
             val info = TextView(this@ScoreActivity).apply {
-                text = "${score.year} ${score.term}  |  ${score.courseType}  |  学分: ${score.studyScore}"
+                text = infoParts.joinToString(" | ")
                 setTextAppearance(R.style.ClaudeCaption)
                 typeface = resources.getFont(R.font.claude_serif)
             }
@@ -135,7 +185,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         override fun getItemCount() = scores.size
 
         inner class ViewHolder(
-            itemView: android.view.View,
+            itemView: View,
             val content: LinearLayout
         ) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView)
     }

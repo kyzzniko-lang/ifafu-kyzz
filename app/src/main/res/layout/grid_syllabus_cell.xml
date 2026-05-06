@@ -2,11 +2,14 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/courseCell"
     android:layout_width="match_parent"
-    android:layout_height="80dp"
+    android:layout_height="match_parent"
     android:background="@color/claude_bg_elevated"
     android:gravity="center"
     android:orientation="vertical"
-    android:padding="2dp">
+    android:paddingTop="4dp"
+    android:paddingBottom="4dp"
+    android:paddingStart="2dp"
+    android:paddingEnd="2dp">
 
     <TextView
         android:id="@+id/tvCourseName"
@@ -16,20 +19,29 @@
         android:ellipsize="end"
         android:fontFamily="@font/claude_serif"
         android:gravity="center"
-        android:maxLines="5"
+        android:maxLines="2"
         android:textColor="@color/white"
-        android:textSize="10sp" />
+        android:textSize="9sp"
+        android:textStyle="bold" />
+
+    <View
+        android:id="@+id/divider"
+        android:layout_width="16dp"
+        android:layout_height="0.5dp"
+        android:layout_gravity="center_horizontal"
+        android:background="#55FFFFFF" />
 
     <TextView
-        android:id="@+id/tvCourseLocation"
+        android:id="@+id/tvCourseInfo"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:ellipsize="end"
         android:fontFamily="@font/claude_serif"
         android:gravity="center"
-        android:maxLines="2"
-        android:textColor="@color/white"
-        android:textSize="9sp" />
+        android:lineSpacingMultiplier="0.9"
+        android:maxLines="3"
+        android:textColor="#CCFFFFFF"
+        android:textSize="7sp" />
 
 </LinearLayout>

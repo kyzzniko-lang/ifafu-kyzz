@@ -4,12 +4,15 @@ import android.graphics.Color
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
+import android.view.Menu
+import android.view.MenuItem
 import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.viewModels
 import androidx.lifecycle.observe
+import com.google.android.material.button.MaterialButton
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Course
 import com.ifafu.kyzz.databinding.ActivityGridSyllabusBinding
@@ -42,6 +45,16 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
         binding.toolbar.title = getString(R.string.grid_syllabus_title)
         binding.toolbar.setNavigationOnClickListener { finish() }
+        binding.toolbar.inflateMenu(R.menu.menu_grid_syllabus)
+        binding.toolbar.setOnMenuItemClickListener { item ->
+            when (item.itemId) {
+                R.id.action_refresh -> {
+                    viewModel.loadSyllabus(forceRefresh = true)
+                    true
+                }
+                else -> false
+            }
+        }
 
         binding.btnPrevWeek.setOnClickListener {
             if (currentWeek > 1) {
@@ -206,24 +219,24 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         val row = LinearLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(32)
+                dpToPx(28)
             )
             orientation = LinearLayout.HORIZONTAL
         }
 
         val label = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(32))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28))
             gravity = Gravity.CENTER
             text = "午休"
             setTextColor(resources.getColor(R.color.claude_text_hint, null))
-            textSize = 11f
+            textSize = 10f
             setBackgroundColor(resources.getColor(R.color.claude_bg_subtle, null))
         }
         row.addView(label)
 
         for (day in 1..7) {
             val cell = View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, dpToPx(32), 1f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dpToPx(28), 1f).apply {
                     marginStart = dpToPx(1)
                 }
                 setBackgroundColor(resources.getColor(R.color.claude_bg_subtle, null))
@@ -235,20 +248,21 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     }
 
     private fun createRow(sectionNum: Int, courseMap: Map<String, Course>): LinearLayout {
+        val rowHeight = 60
         val row = LinearLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(80)
+                dpToPx(rowHeight)
             )
             orientation = LinearLayout.HORIZONTAL
         }
 
         val sectionLabel = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(36), dpToPx(80))
+            layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(rowHeight))
             gravity = Gravity.CENTER
             text = "${sectionNum}"
             setTextColor(resources.getColor(R.color.claude_text_secondary, null))
-            textSize = 12f
+            textSize = 11f
             setBackgroundColor(resources.getColor(R.color.claude_bg_subtle, null))
         }
         row.addView(sectionLabel)
@@ -258,7 +272,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             val course = courseMap[key]
 
             val cellContainer = FrameLayout(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, dpToPx(80), 1f).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowHeight), 1f).apply {
                     marginStart = dpToPx(1)
                 }
             }
@@ -274,12 +288,17 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 )
 
                 val tvName = cellView.findViewById<TextView>(R.id.tvCourseName)
-                val tvLocation = cellView.findViewById<TextView>(R.id.tvCourseLocation)
+                val tvInfo = cellView.findViewById<TextView>(R.id.tvCourseInfo)
 
                 tvName.text = course.name
                 tvName.visibility = View.VISIBLE
-                tvLocation.text = if (course.address.isNotEmpty()) "@${course.address}" else ""
-                tvLocation.visibility = View.VISIBLE
+
+                val infoParts = mutableListOf<String>()
+                if (course.teacher.isNotEmpty()) infoParts.add(course.teacher)
+                if (course.address.isNotEmpty()) infoParts.add(course.address)
+                tvInfo.text = infoParts.joinToString("\n")
+                tvInfo.visibility = View.VISIBLE
+
                 cellView.setBackgroundColor(color)
 
                 cellContainer.addView(cellView)

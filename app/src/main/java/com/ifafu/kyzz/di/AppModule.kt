@@ -15,6 +15,7 @@ import java.io.FileWriter
 import java.net.CookieManager
 import java.net.CookiePolicy
 import java.net.HttpCookie
+import java.net.URI
 import java.text.SimpleDateFormat
 import java.util.*
 import java.util.concurrent.TimeUnit
@@ -26,8 +27,13 @@ object AppModule {
 
     @Provides
     @Singleton
+    fun provideCookieJar(): JavaNetCookieJar = JavaNetCookieJar.getInstance()
+
+    @Provides
+    @Singleton
     fun provideOkHttpClient(
-        @ApplicationContext context: Context
+        @ApplicationContext context: Context,
+        cookieJar: JavaNetCookieJar
     ): OkHttpClient {
         val logFile = File(
             context.getExternalFilesDir(null),
@@ -35,7 +41,7 @@ object AppModule {
         )
         logFile.writeText("=== iFAFU HTTP Capture Log ===\nStarted: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n\n")
 
-        val cookieJar = JavaNetCookieJar()
+        val cookieJar1 = cookieJar
         val loggingInterceptor = Interceptor { chain ->
             val request = chain.request()
             val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
@@ -83,7 +89,7 @@ object AppModule {
         }
 
         return OkHttpClient.Builder()
-            .cookieJar(cookieJar)
+            .cookieJar(cookieJar1)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
@@ -96,6 +102,24 @@ object AppModule {
 
 class JavaNetCookieJar : CookieJar {
     private val store = CookieManager(null, CookiePolicy.ACCEPT_ALL)
+
+    companion object {
+        @Volatile
+        private var instance: JavaNetCookieJar? = null
+
+        fun getInstance(): JavaNetCookieJar {
+            return instance ?: synchronized(this) {
+                instance ?: JavaNetCookieJar().also { instance = it }
+            }
+        }
+    }
+
+    fun getCookieStore() = store.cookieStore
+
+    fun getCookieString(url: String): String {
+        val uri = URI(url)
+        return store.cookieStore.get(uri).joinToString("; ") { "${it.name}=${it.value}" }
+    }
 
     override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
         val uri = url.toUri()

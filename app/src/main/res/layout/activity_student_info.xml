@@ -16,70 +16,27 @@
         app:navigationIcon="?attr/homeAsUpIndicator"
         app:navigationIconTint="@color/claude_text_primary"
         app:titleTextAppearance="@style/ClaudeTitle"
-        app:titleTextColor="@color/claude_text_primary" />
-
-    <LinearLayout
-        android:id="@+id/termSelector"
-        android:layout_width="match_parent"
-        android:layout_height="48dp"
-        android:background="@color/claude_bg_elevated"
-        android:gravity="center_vertical"
-        android:orientation="horizontal"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp">
-
-        <androidx.appcompat.widget.AppCompatSpinner
-            android:id="@+id/spinnerYear"
-            android:layout_width="wrap_content"
-            android:layout_height="36dp"
-            android:backgroundTint="@color/claude_terracotta" />
-
-        <com.google.android.material.button.MaterialButtonToggleGroup
-            android:id="@+id/toggleTerm"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
-            app:singleSelection="true">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnTerm1"
-                style="@style/ClaudeButton.Outlined"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:minWidth="72dp"
-                android:text="第一学期"
-                android:textSize="12sp" />
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnTerm2"
-                style="@style/ClaudeButton.Outlined"
-                android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:minWidth="72dp"
-                android:text="第二学期"
-                android:textSize="12sp" />
-
-        </com.google.android.material.button.MaterialButtonToggleGroup>
-
-    </LinearLayout>
+        app:titleTextColor="@color/claude_text_primary"
+        app:title="个人信息" />
 
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
-            android:id="@+id/swipeRefresh"
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/scrollContent"
             android:layout_width="match_parent"
-            android:layout_height="match_parent">
+            android:layout_height="match_parent"
+            android:visibility="gone">
 
-            <androidx.recyclerview.widget.RecyclerView
-                android:id="@+id/recyclerView"
+            <LinearLayout
+                android:id="@+id/contentLayout"
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:clipToPadding="false"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
                 android:padding="20dp" />
 
-        </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+        </androidx.core.widget.NestedScrollView>
 
         <LinearLayout
             android:id="@+id/loadingLayout"
@@ -87,7 +44,7 @@
             android:layout_height="match_parent"
             android:gravity="center"
             android:orientation="vertical"
-            android:visibility="gone">
+            android:visibility="visible">
 
             <ProgressBar
                 android:layout_width="36dp"

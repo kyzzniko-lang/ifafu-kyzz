@@ -28,7 +28,7 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = getString(R.string.exam_title)
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
-        binding.swipeRefresh.setOnRefreshListener { viewModel.loadExams() }
+        binding.swipeRefresh.setOnRefreshListener { viewModel.loadExams(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadExams() }
 
         viewModel.state.observe(this) { state ->

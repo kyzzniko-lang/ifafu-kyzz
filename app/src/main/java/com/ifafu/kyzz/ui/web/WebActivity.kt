@@ -1,13 +1,14 @@
 package com.ifafu.kyzz.ui.web
 
 import android.os.Bundle
+import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import com.ifafu.kyzz.databinding.ActivityWebBinding
+import com.ifafu.kyzz.di.JavaNetCookieJar
 import com.ifafu.kyzz.ui.base.BaseActivity
-import dagger.hilt.android.AndroidEntryPoint
+import java.net.URI
 
-@AndroidEntryPoint
 class WebActivity : BaseActivity<ActivityWebBinding>() {
 
     override fun createBinding(): ActivityWebBinding = ActivityWebBinding.inflate(layoutInflater)
@@ -21,9 +22,54 @@ class WebActivity : BaseActivity<ActivityWebBinding>() {
         binding.toolbar.title = title
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.webView.settings.javaScriptEnabled = true
-        binding.webView.webViewClient = WebViewClient()
+        binding.webView.settings.domStorageEnabled = true
+        binding.webView.webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val redirectUrl = request?.url?.toString() ?: ""
+                if (redirectUrl.contains("default.aspx") || redirectUrl.contains("default2.aspx")) {
+                    view?.stopLoading()
+                    android.widget.Toast.makeText(this@WebActivity, "会话已过期，请重新登录", android.widget.Toast.LENGTH_SHORT).show()
+                    return true
+                }
+                return false
+            }
+        }
+
         if (url.isNotEmpty()) {
-            binding.webView.loadUrl(url)
+            syncCookies(url)
+            val referer = extractMainUrl(url)
+            val headers = mapOf("Referer" to referer)
+            binding.webView.loadUrl(url, headers)
+        }
+    }
+
+    private fun extractMainUrl(url: String): String {
+        val uri = URI(url)
+        val tokenMatch = Regex("\\((.+?)\\)/").find(url)
+        val token = tokenMatch?.groupValues?.get(1) ?: ""
+        return "${uri.scheme}://${uri.host}/(${token})/xs_main.aspx?xh="
+    }
+
+    private fun syncCookies(url: String) {
+        val webCookieManager = android.webkit.CookieManager.getInstance()
+        webCookieManager.setAcceptCookie(true)
+        webCookieManager.setAcceptThirdPartyCookies(binding.webView, true)
+
+        val host = try { URI(url).host ?: "" } catch (_: Exception) { "" }
+        if (host.isEmpty()) return
+
+        val cookieStore = JavaNetCookieJar.getInstance().getCookieStore()
+        val httpUri = URI("http://$host")
+        val httpsUri = URI("https://$host")
+
+        val cookies = mutableListOf<java.net.HttpCookie>()
+        cookies.addAll(cookieStore.get(httpUri))
+        cookies.addAll(cookieStore.get(httpsUri))
+
+        val cookieString = cookies.joinToString("; ") { "${it.name}=${it.value}" }
+        if (cookieString.isNotEmpty()) {
+            webCookieManager.setCookie(url, cookieString)
+            webCookieManager.setCookie("http://$host", cookieString)
         }
     }
 
