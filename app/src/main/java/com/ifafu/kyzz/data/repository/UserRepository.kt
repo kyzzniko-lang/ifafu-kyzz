@@ -2,6 +2,10 @@ package com.ifafu.kyzz.data.repository
 
 import android.content.Context
 import android.content.SharedPreferences
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.ifafu.kyzz.data.model.User
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -15,6 +19,21 @@ class UserRepository @Inject constructor(
     private val prefs: SharedPreferences =
         context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
 
+    private val masterKey = MasterKey.Builder(context)
+        .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+        .build()
+
+    private val securePrefs: SharedPreferences =
+        EncryptedSharedPreferences.create(
+            context,
+            "ifafu_secure",
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+
+    private val gson = Gson()
+
     fun saveUser(user: User) {
         prefs.edit().apply {
             putString("account", user.account)
@@ -26,6 +45,7 @@ class UserRepository @Inject constructor(
             putBoolean("isLogin", user.isLogin)
             commit()
         }
+        saveAccountProfile(user.account)
     }
 
     fun getUser(): User {
@@ -41,10 +61,11 @@ class UserRepository @Inject constructor(
     }
 
     fun savePassword(password: String) {
-        prefs.edit().putString("password", password).apply()
+        securePrefs.edit().putString("password", password).apply()
+        saveAccountProfile(prefs.getString("account", "") ?: "")
     }
 
-    fun getPassword(): String = prefs.getString("password", "") ?: ""
+    fun getPassword(): String = securePrefs.getString("password", "") ?: ""
 
     fun clearUser() {
         prefs.edit().clear().apply()
@@ -57,4 +78,48 @@ class UserRepository @Inject constructor(
     var termFirstDay: String
         get() = prefs.getString("termFirstDay", "") ?: ""
         set(value) = prefs.edit().putString("termFirstDay", value).apply()
+
+    var termFirstDayManual: Boolean
+        get() = prefs.getBoolean("termFirstDayManual", false)
+        set(value) = prefs.edit().putBoolean("termFirstDayManual", value).apply()
+
+    data class AccountProfile(val account: String, val name: String, val password: String)
+
+    private fun saveAccountProfile(account: String) {
+        if (account.isEmpty()) return
+        val name = prefs.getString("name", "") ?: ""
+        val password = securePrefs.getString("password", "") ?: ""
+        val profiles = getAccountProfiles().toMutableList()
+        val existing = profiles.indexOfFirst { it.account == account }
+        val profile = AccountProfile(account, name, password)
+        if (existing >= 0) profiles[existing] = profile else profiles.add(profile)
+        securePrefs.edit().putString("saved_accounts", gson.toJson(profiles)).apply()
+    }
+
+    fun getAccountProfiles(): List<AccountProfile> {
+        val json = securePrefs.getString("saved_accounts", null) ?: return emptyList()
+        return try {
+            val type = object : TypeToken<List<AccountProfile>>() {}.type
+            gson.fromJson(json, type) ?: emptyList()
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun switchAccount(profile: AccountProfile) {
+        prefs.edit().apply {
+            putString("account", profile.account)
+            putString("name", profile.name)
+            putBoolean("isLogin", false)
+            apply()
+        }
+        securePrefs.edit().apply {
+            putString("password", profile.password)
+            apply()
+        }
+    }
+
+    fun removeAccount(account: String) {
+        val profiles = getAccountProfiles().toMutableList()
+        profiles.removeAll { it.account == account }
+        securePrefs.edit().putString("saved_accounts", gson.toJson(profiles)).apply()
+    }
 }

@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/claude_serif"
+        android:text="设置昵称"
+        android:textAppearance="@style/ClaudeTitle"
+        android:textColor="@color/claude_text_primary" />
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:fontFamily="@font/claude_serif"
+        android:text="其他同学只会看到你的昵称，不会显示真实信息"
+        android:textAppearance="@style/ClaudeCaption"
+        android:textColor="@color/claude_text_secondary" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        style="@style/ClaudeInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:hint="输入昵称"
+        app:counterEnabled="true"
+        app:counterMaxLength="12">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etNickname"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/claude_serif"
+            android:inputType="text"
+            android:maxLength="12"
+            android:padding="16dp"
+            android:textSize="15sp" />
+
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="end"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnCancel"
+            style="@style/ClaudeButton.Text"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:text="取消" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnConfirm"
+            style="@style/ClaudeButton"
+            android:layout_width="wrap_content"
+            android:layout_height="44dp"
+            android:layout_marginStart="8dp"
+            android:text="确定" />
+
+    </LinearLayout>
+
+</LinearLayout>

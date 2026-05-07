@@ -1,0 +1,101 @@
+package com.ifafu.kyzz.ui.score
+
+import android.content.Context
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Path
+import android.util.AttributeSet
+import android.view.View
+import com.ifafu.kyzz.R
+
+class GpaTrendView @JvmOverloads constructor(
+    context: Context, attrs: AttributeSet? = null
+) : View(context, attrs) {
+
+    data class Point(val label: String, val value: Float)
+
+    private var points: List<Point> = emptyList()
+
+    private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFD4724A.toInt()
+        strokeWidth = 4f
+        style = Paint.Style.STROKE
+    }
+
+    private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFD4724A.toInt()
+        style = Paint.Style.FILL
+    }
+
+    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFF666666.toInt()
+        textSize = 32f
+        textAlign = Paint.Align.CENTER
+    }
+
+    private val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0xFFD4724A.toInt()
+        textSize = 36f
+        textAlign = Paint.Align.CENTER
+        isFakeBoldText = true
+    }
+
+    private val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = 0x1A000000
+        strokeWidth = 1f
+        style = Paint.Style.STROKE
+    }
+
+    fun setData(data: List<Point>) {
+        points = data
+        invalidate()
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val w = MeasureSpec.getSize(widthMeasureSpec)
+        val h = (150 * resources.displayMetrics.density).toInt()
+        setMeasuredDimension(w, h)
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        if (points.size < 2) {
+            textPaint.textSize = 36f
+            canvas.drawText("至少需要两个学期的数据", width / 2f, height / 2f, textPaint)
+            return
+        }
+
+        val padLeft = 60f
+        val padRight = 40f
+        val padTop = 50f
+        val padBottom = 70f
+        val chartW = width - padLeft - padRight
+        val chartH = height - padTop - padBottom
+
+        val minVal = (points.minOf { it.value } - 0.2f).coerceAtLeast(0f)
+        val maxVal = (points.maxOf { it.value } + 0.2f).coerceAtMost(4.5f)
+        val range = (maxVal - minVal).coerceAtLeast(0.01f)
+
+        for (i in 0..4) {
+            val y = padTop + chartH * (1 - i / 4f)
+            canvas.drawLine(padLeft, y, width - padRight, y, gridPaint)
+        }
+
+        val path = Path()
+        val stepX = chartW / (points.size - 1)
+
+        for ((i, pt) in points.withIndex()) {
+            val x = padLeft + i * stepX
+            val y = padTop + chartH * (1 - (pt.value - minVal) / range)
+
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+
+            canvas.drawCircle(x, y, 8f, dotPaint)
+            canvas.drawText(pt.label, x, height - 10f, textPaint)
+            canvas.drawText(String.format("%.2f", pt.value), x, y - 20f, valuePaint)
+        }
+
+        canvas.drawPath(path, linePaint)
+    }
+}

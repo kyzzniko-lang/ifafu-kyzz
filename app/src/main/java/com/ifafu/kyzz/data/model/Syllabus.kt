@@ -6,6 +6,7 @@ data class Syllabus(
     var selectedYearOption: Int = 0,
     var selectedTermOption: Int = 0,
     var campus: Int = 0,
+    var currentWeek: Int = 0,
     var courses: List<Course> = emptyList(),
     var adjustCourses: List<AdjustCourse> = emptyList(),
     var practiceCourses: List<PracticeCourse> = emptyList(),

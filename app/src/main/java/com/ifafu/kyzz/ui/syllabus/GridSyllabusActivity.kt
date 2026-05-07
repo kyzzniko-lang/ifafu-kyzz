@@ -10,6 +10,7 @@ import android.view.View
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.lifecycle.observe
 import com.google.android.material.button.MaterialButton
@@ -27,9 +28,11 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
     private val viewModel: SyllabusViewModel by viewModels()
     private var currentWeek = 1
+    private var realCurrentWeek = 0
     private var maxWeek = 24
     private var minWeek = 1
     private var allCourses: List<Course> = emptyList()
+    private var termStartDate: Calendar? = null
 
     private val courseColors = listOf(
         "#D4724A", "#2D7A4F", "#B7791F", "#C53030", "#4A6FA5",
@@ -42,7 +45,6 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding.toolbar.title = getString(R.string.grid_syllabus_title)
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.inflateMenu(R.menu.menu_grid_syllabus)
@@ -50,6 +52,14 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             when (item.itemId) {
                 R.id.action_refresh -> {
                     viewModel.loadSyllabus(forceRefresh = true)
+                    true
+                }
+                R.id.action_export -> {
+                    exportToCalendar()
+                    true
+                }
+                R.id.action_share -> {
+                    shareSchedule()
                     true
                 }
                 else -> false
@@ -60,6 +70,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             if (currentWeek > 1) {
                 currentWeek--
                 updateWeekDisplay()
+                updateDateRow()
                 displayCoursesForWeek()
             }
         }
@@ -68,6 +79,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             if (currentWeek < maxWeek) {
                 currentWeek++
                 updateWeekDisplay()
+                updateDateRow()
                 displayCoursesForWeek()
             }
         }
@@ -83,7 +95,9 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                     allCourses = state.syllabus.courses
                     calculateWeekRange()
                     currentWeek = calculateCurrentWeek()
+                    realCurrentWeek = currentWeek
                     updateWeekDisplay()
+                    updateDateRow()
                     displayCoursesForWeek()
                 }
                 is SyllabusViewModel.SyllabusState.Error -> showError(state.message)
@@ -129,6 +143,8 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 termStart.set(Calendar.SECOND, 0)
                 termStart.set(Calendar.MILLISECOND, 0)
 
+                termStartDate = termStart.clone() as Calendar
+
                 val today = Calendar.getInstance()
                 today.set(Calendar.HOUR_OF_DAY, 0)
                 today.set(Calendar.MINUTE, 0)
@@ -169,9 +185,53 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     }
 
     private fun updateWeekDisplay() {
-        binding.tvWeekTitle.text = "第${currentWeek}周"
+        val title = if (currentWeek == realCurrentWeek && realCurrentWeek > 0) {
+            "第${currentWeek}周(本周)"
+        } else {
+            "第${currentWeek}周"
+        }
+        binding.tvWeekTitle.text = title
         binding.btnPrevWeek.alpha = if (currentWeek <= 1) 0.3f else 1.0f
         binding.btnNextWeek.alpha = if (currentWeek >= maxWeek) 0.3f else 1.0f
+    }
+
+    private fun updateDateRow() {
+        val start = termStartDate ?: return
+
+        val monday = start.clone() as Calendar
+        monday.add(Calendar.DAY_OF_YEAR, (currentWeek - 1) * 7)
+
+        val today = Calendar.getInstance()
+        today.set(Calendar.HOUR_OF_DAY, 0)
+        today.set(Calendar.MINUTE, 0)
+        today.set(Calendar.SECOND, 0)
+        today.set(Calendar.MILLISECOND, 0)
+
+        val dateViews = listOf(
+            binding.tvDateMon,
+            binding.tvDateTue,
+            binding.tvDateWed,
+            binding.tvDateThu,
+            binding.tvDateFri,
+            binding.tvDateSat,
+            binding.tvDateSun
+        )
+
+        for (i in 0 until 7) {
+            val day = monday.clone() as Calendar
+            day.add(Calendar.DAY_OF_YEAR, i)
+            val isToday = day.timeInMillis == today.timeInMillis
+            dateViews[i].text = "${day.get(Calendar.MONTH) + 1}/${day.get(Calendar.DAY_OF_MONTH)}"
+            if (isToday) {
+                dateViews[i].setTextColor(Color.WHITE)
+                dateViews[i].setTypeface(null, android.graphics.Typeface.BOLD)
+                dateViews[i].setBackgroundResource(R.drawable.bg_today_highlight)
+            } else {
+                dateViews[i].setTextColor(resources.getColor(R.color.claude_text_hint, null))
+                dateViews[i].setTypeface(null, android.graphics.Typeface.NORMAL)
+                dateViews[i].setBackgroundResource(0)
+            }
+        }
     }
 
     private fun displayCoursesForWeek() {
@@ -192,8 +252,8 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             }
         }
 
-        // 上午 1-4 节
-        for (sectionNum in 1..4) {
+        // 上午 1-5 节
+        for (sectionNum in 1..5) {
             val row = createRow(sectionNum, courseMap)
             binding.gridContent.addView(row)
         }
@@ -300,6 +360,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 tvInfo.visibility = View.VISIBLE
 
                 cellView.setBackgroundColor(color)
+                cellView.setOnClickListener { showCourseDetail(course) }
 
                 cellContainer.addView(cellView)
             } else if (course != null) {
@@ -312,6 +373,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                     )
                     setBackgroundColor(color)
                 }
+                continuationView.setOnClickListener { showCourseDetail(course) }
                 cellContainer.addView(continuationView)
             } else {
                 val emptyView = View(this).apply {
@@ -328,6 +390,132 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         }
 
         return row
+    }
+
+    private fun showCourseDetail(course: Course) {
+        val view = layoutInflater.inflate(R.layout.dialog_course_detail, null)
+
+        view.findViewById<TextView>(R.id.tvCourseName).text = course.name
+        view.findViewById<TextView>(R.id.tvTeacher).text = course.teacher.ifEmpty { "-" }
+        view.findViewById<TextView>(R.id.tvAddress).text = course.address.ifEmpty { "-" }
+
+        val weekDays = arrayOf("", "周一", "周二", "周三", "周四", "周五", "周六", "周日")
+        val dayText = if (course.weekDay in 1..7) weekDays[course.weekDay] else ""
+        val oddText = when (course.oddOrTwice) {
+            1 -> " 单周"
+            2 -> " 双周"
+            else -> ""
+        }
+        view.findViewById<TextView>(R.id.tvTime).text =
+            "第${course.weekBegin}-${course.weekEnd}周 $dayText 第${course.begin}-${course.end}节$oddText"
+
+        val examSection = view.findViewById<android.view.ViewGroup>(R.id.examSection)
+        if (course.examDate.isNotEmpty()) {
+            examSection.visibility = View.VISIBLE
+            view.findViewById<TextView>(R.id.tvExamDate).text = course.examDate
+            view.findViewById<TextView>(R.id.tvExamTime).text = course.examTime.ifEmpty { "-" }
+            view.findViewById<TextView>(R.id.tvExamAddress).text = course.examAddress.ifEmpty { "-" }
+        }
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setView(view)
+            .setPositiveButton("确定", null)
+            .show()
+    }
+
+    private fun exportToCalendar() {
+        val start = termStartDate ?: run {
+            Toast.makeText(this, "请先设置学期首日", Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (allCourses.isEmpty()) {
+            Toast.makeText(this, "暂无课程数据", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val sb = StringBuilder()
+        sb.appendLine("BEGIN:VCALENDAR")
+        sb.appendLine("VERSION:2.0")
+        sb.appendLine("PRODID:-//iFAFU//KYZZ//CN")
+
+        val timeMap = mapOf(
+            1 to Pair("0800", "0845"), 2 to Pair("0855", "0940"), 3 to Pair("1010", "1055"),
+            4 to Pair("1105", "1150"), 5 to Pair("1200", "1245"), 6 to Pair("1400", "1445"), 7 to Pair("1455", "1540"),
+            8 to Pair("1600", "1645"), 9 to Pair("1655", "1740"),
+            10 to Pair("1900", "1945"), 11 to Pair("1955", "2040"), 12 to Pair("2050", "2135")
+        )
+
+        val weekDays = arrayOf("", "MO", "TU", "WE", "TH", "FR", "SA", "SU")
+
+        for (course in allCourses.distinctBy { "${it.name}_${it.weekDay}_${it.begin}" }) {
+            val dayOffset = course.weekDay - 1
+            val eventCal = start.clone() as java.util.Calendar
+            eventCal.add(java.util.Calendar.DAY_OF_YEAR, (course.weekBegin - 1) * 7 + dayOffset)
+
+            val times = timeMap[course.begin] ?: timeMap[1]!!
+            val endTime = timeMap[course.end.coerceAtMost(12)]?.second ?: times.second
+
+            val dateStr = java.text.SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
+            val byDay = weekDays.getOrElse(course.weekDay) { "MO" }
+            val totalWeeks = course.weekEnd - course.weekBegin + 1
+            val rrule = when (course.oddOrTwice) {
+                1 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=${(totalWeeks + 1) / 2};BYDAY=$byDay"
+                2 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=${totalWeeks / 2};BYDAY=$byDay"
+                else -> "FREQ=WEEKLY;COUNT=$totalWeeks;BYDAY=$byDay"
+            }
+
+            sb.appendLine("BEGIN:VEVENT")
+            sb.appendLine("DTSTART:${dateStr}T${times.first}00")
+            sb.appendLine("DTEND:${dateStr}T${endTime}00")
+            sb.appendLine("RRULE:$rrule")
+            sb.appendLine("SUMMARY:${course.name}")
+            sb.appendLine("LOCATION:${course.address}")
+            sb.appendLine("DESCRIPTION:${course.teacher}")
+            sb.appendLine("END:VEVENT")
+        }
+
+        sb.appendLine("END:VCALENDAR")
+
+        try {
+            val file = java.io.File(cacheDir, "schedule.ics")
+            file.writeText(sb.toString())
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "text/calendar"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(android.content.Intent.createChooser(intent, "导出课表到日历"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun shareSchedule() {
+        val bitmap = captureView(binding.scrollView)
+        if (bitmap == null) { Toast.makeText(this, "截图失败", Toast.LENGTH_SHORT).show(); return }
+        try {
+            val file = java.io.File(cacheDir, "schedule_share.png")
+            java.io.FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
+            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                type = "image/png"
+                putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            startActivity(android.content.Intent.createChooser(intent, "分享课表"))
+        } catch (e: Exception) {
+            Toast.makeText(this, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun captureView(view: View): android.graphics.Bitmap? {
+        return try {
+            val bitmap = android.graphics.Bitmap.createBitmap(view.width, view.height, android.graphics.Bitmap.Config.ARGB_8888)
+            val canvas = android.graphics.Canvas(bitmap)
+            view.draw(canvas)
+            bitmap
+        } catch (_: Exception) { null }
     }
 
     private fun showLoading() {

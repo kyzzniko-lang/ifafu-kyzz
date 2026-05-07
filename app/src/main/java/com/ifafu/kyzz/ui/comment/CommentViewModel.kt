@@ -1,9 +1,9 @@
 package com.ifafu.kyzz.ui.comment
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ifafu.kyzz.data.api.CommentTeacherApi
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
@@ -14,7 +14,7 @@ import javax.inject.Inject
 class CommentViewModel @Inject constructor(
     private val commentTeacherApi: CommentTeacherApi,
     private val userRepository: UserRepository
-) : ViewModel() {
+) : ReloginViewModel() {
 
     private val _state = MutableLiveData<CommentState>()
     val state: LiveData<CommentState> = _state
@@ -31,17 +31,14 @@ class CommentViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _state.value = CommentState.Loading
-            try {
-                val response = commentTeacherApi.commentAllTeachers(
-                    userRepository.host, user.token, user.account, user.name
-                )
-                if (response.success) {
-                    _state.value = CommentState.Success(response.message)
-                } else {
-                    _state.value = CommentState.Error(response.message)
-                }
-            } catch (e: Exception) {
-                _state.value = CommentState.Error(e.message ?: "评教失败")
+            val freshUser = userRepository.getUser()
+            val response = commentTeacherApi.commentAllTeachers(
+                userRepository.host, freshUser.token, freshUser.account, freshUser.name
+            )
+            if (response.success) {
+                _state.value = CommentState.Success(response.message)
+            } else {
+                _state.value = CommentState.Error(response.message)
             }
         }
     }

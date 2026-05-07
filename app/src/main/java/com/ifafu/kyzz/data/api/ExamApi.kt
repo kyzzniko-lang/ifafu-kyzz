@@ -1,8 +1,10 @@
 package com.ifafu.kyzz.data.api
 
+import android.util.Log
 import com.ifafu.kyzz.data.model.ExamTable
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.ExamParser
+import com.ifafu.kyzz.data.repository.UserRepository
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -10,18 +12,44 @@ import javax.inject.Singleton
 @Singleton
 class ExamApi @Inject constructor(
     private val htmlClient: HtmlClient,
-    private val examParser: ExamParser
+    private val examParser: ExamParser,
+    private val userApi: UserApi,
+    private val reloginHelper: ReloginHelper,
+    private val userRepository: UserRepository
 ) {
 
+    companion object {
+        private const val TAG = "ExamApi"
+    }
+
     suspend fun getExamTable(host: String, token: String, number: String, name: String): ExamTable? {
-        val accessUrl = "${host}/(${token})/xskscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
-        val doc = htmlClient.get(accessUrl)
-        val html = doc.html()
+        return try {
+            val accessUrl = "${host}/(${token})/xskscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
+            val doc = htmlClient.get(accessUrl)
+            val html = doc.html()
 
-        if (html.contains("账号或密码") || html.contains("请登录") || html.contains("default.aspx") || html.contains("default2.aspx")) {
-            return null
+            if (userApi.isSessionExpired(html)) {
+                Log.d(TAG, "Session expired, attempting relogin...")
+                val response = reloginHelper.relogin()
+                if (!response.success) {
+                    Log.w(TAG, "Relogin failed: ${response.message}")
+                    return null
+                }
+                val user = userRepository.getUser()
+                val retryUrl = "${host}/(${user.token})/xskscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121604"
+                val retryDoc = htmlClient.get(retryUrl)
+                val retryHtml = retryDoc.html()
+                if (userApi.isSessionExpired(retryHtml)) {
+                    Log.w(TAG, "Session still expired after relogin")
+                    return null
+                }
+                return examParser.parseExamTable(retryDoc)
+            }
+
+            examParser.parseExamTable(doc)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch exam table", e)
+            null
         }
-
-        return examParser.parseExamTable(doc)
     }
 }

@@ -44,10 +44,14 @@ class WebActivity : BaseActivity<ActivityWebBinding>() {
     }
 
     private fun extractMainUrl(url: String): String {
-        val uri = URI(url)
-        val tokenMatch = Regex("\\((.+?)\\)/").find(url)
-        val token = tokenMatch?.groupValues?.get(1) ?: ""
-        return "${uri.scheme}://${uri.host}/(${token})/xs_main.aspx?xh="
+        return try {
+            val uri = URI(url)
+            val tokenMatch = Regex("\\((.+?)\\)/").find(url)
+            val token = tokenMatch?.groupValues?.get(1) ?: ""
+            "${uri.scheme}://${uri.host}/(${token})/xs_main.aspx?xh="
+        } catch (e: Exception) {
+            ""
+        }
     }
 
     private fun syncCookies(url: String) {
@@ -58,7 +62,7 @@ class WebActivity : BaseActivity<ActivityWebBinding>() {
         val host = try { URI(url).host ?: "" } catch (_: Exception) { "" }
         if (host.isEmpty()) return
 
-        val cookieStore = JavaNetCookieJar.getInstance().getCookieStore()
+        val cookieStore = JavaNetCookieJar.getInstance(this).getCookieStore()
         val httpUri = URI("http://$host")
         val httpsUri = URI("https://$host")
 
@@ -74,6 +78,11 @@ class WebActivity : BaseActivity<ActivityWebBinding>() {
     }
 
     override fun onDestroy() {
+        binding.webView.stopLoading()
+        binding.webView.removeJavascriptInterface("android")
+        binding.webView.loadDataWithBaseURL(null, "", "text/html", "utf-8", null)
+        binding.webView.clearHistory()
+        (binding.webView.parent as? android.view.ViewGroup)?.removeView(binding.webView)
         binding.webView.destroy()
         super.onDestroy()
     }

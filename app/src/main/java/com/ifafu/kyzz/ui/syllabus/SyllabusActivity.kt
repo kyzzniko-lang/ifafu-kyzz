@@ -27,7 +27,6 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = getString(R.string.syllabus_title)
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)

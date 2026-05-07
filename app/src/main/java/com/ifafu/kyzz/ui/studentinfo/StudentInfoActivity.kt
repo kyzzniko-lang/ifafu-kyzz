@@ -23,9 +23,8 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding.toolbar.setNavigationOnClickListener { finish() }
-        binding.btnRetry.setOnClickListener { viewModel.loadStudentInfo() }
+        binding.btnRetry.setOnClickListener { viewModel.loadStudentInfo(forceRefresh = true) }
 
         viewModel.state.observe(this) { state ->
             when (state) {

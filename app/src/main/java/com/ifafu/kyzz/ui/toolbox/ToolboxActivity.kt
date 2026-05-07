@@ -1,5 +1,6 @@
 package com.ifafu.kyzz.ui.toolbox
 
+import android.app.DatePickerDialog
 import android.content.Intent
 import android.os.Bundle
 import android.view.Gravity
@@ -8,6 +9,8 @@ import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
+import android.widget.Toast
+import androidx.activity.viewModels
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
@@ -15,12 +18,18 @@ import com.ifafu.kyzz.databinding.ActivityToolboxBinding
 import com.ifafu.kyzz.ui.about.AboutActivity
 import com.ifafu.kyzz.ui.base.BaseActivity
 import com.ifafu.kyzz.ui.comment.CommentTeacherActivity
+import com.ifafu.kyzz.ui.comment.DiscussionActivity
 import com.ifafu.kyzz.ui.score.ElectiveScoreActivity
 import com.ifafu.kyzz.ui.studentinfo.StudentInfoActivity
 import dagger.hilt.android.AndroidEntryPoint
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 
 @AndroidEntryPoint
 class ToolboxActivity : BaseActivity<ActivityToolboxBinding>() {
+
+    private val viewModel: ToolboxViewModel by viewModels()
 
     override fun createBinding(): ActivityToolboxBinding = ActivityToolboxBinding.inflate(layoutInflater)
 
@@ -30,6 +39,7 @@ class ToolboxActivity : BaseActivity<ActivityToolboxBinding>() {
         binding.toolbar.setNavigationOnClickListener { finish() }
 
         val items = listOf(
+            ToolboxItem("校园讨论", "匿名讨论，畅所欲言", "", "") { startActivity(Intent(this, DiscussionActivity::class.java)) },
             ToolboxItem("教师评价", "快速完成教师评价", "xsjxpj.aspx", "N121401") { startActivity(Intent(this, CommentTeacherActivity::class.java)) },
             ToolboxItem("选修学分查询", "查看选修学分完成情况", "", "") { startActivity(Intent(this, ElectiveScoreActivity::class.java)) },
             ToolboxItem("培养计划", "查看个人培养方案", "pyjh.aspx", "N121607") { startActivity(Intent(this, TrainingPlanActivity::class.java)) },
@@ -37,6 +47,9 @@ class ToolboxActivity : BaseActivity<ActivityToolboxBinding>() {
             ToolboxItem("密码修改", "修改教务系统密码", "mmxg.aspx", "N121502") { startActivity(Intent(this, PasswordModifyActivity::class.java)) },
             ToolboxItem("等级考试查询", "查询等级考试成绩", "xsdjkscx.aspx", "N121606") { startActivity(Intent(this, GradeExamActivity::class.java)) },
             ToolboxItem("网上报名", "查看报名项目", "bmxmb2.aspx", "N121303") { startActivity(Intent(this, OnlineRegistrationActivity::class.java)) },
+            ToolboxItem("设置学期首日", "手动设置开学第一周的日期", "", "") { showTermFirstDayPicker() },
+            ToolboxItem("切换账号", "管理多个教务账号", "", "") { showAccountSwitcher() },
+            ToolboxItem("深色模式", "切换深色/浅色主题", "", "") { toggleDarkMode() },
             ToolboxItem("关于", "关于 iFAFU", "", "") { startActivity(Intent(this, AboutActivity::class.java)) }
         )
 
@@ -132,5 +145,71 @@ class ToolboxActivity : BaseActivity<ActivityToolboxBinding>() {
             val title: TextView,
             val subtitle: TextView
         ) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView)
+    }
+
+    private fun showTermFirstDayPicker() {
+        val cal = Calendar.getInstance()
+        val existing = viewModel.termFirstDay
+        if (existing.isNotEmpty()) {
+            try {
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                sdf.parse(existing)?.let { cal.time = it }
+            } catch (_: Exception) {}
+        }
+
+        DatePickerDialog(
+            this,
+            { _, year, month, dayOfMonth ->
+                val selected = Calendar.getInstance().apply {
+                    set(year, month, dayOfMonth, 0, 0, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                viewModel.saveTermFirstDay(sdf.format(selected.time))
+                Toast.makeText(this, "学期首日已设置为 $year-${month + 1}-$dayOfMonth", Toast.LENGTH_SHORT).show()
+            },
+            cal.get(Calendar.YEAR),
+            cal.get(Calendar.MONTH),
+            cal.get(Calendar.DAY_OF_MONTH)
+        ).show()
+    }
+
+    private fun showAccountSwitcher() {
+        val profiles = viewModel.getAccountProfiles()
+        val currentAccount = viewModel.getCurrentAccount()
+        val items = profiles.map { p ->
+            val tag = if (p.account == currentAccount) " (当前)" else ""
+            "${p.name}${tag}\n${p.account}"
+        }.toMutableList()
+        items.add("+ 添加新账号")
+
+        androidx.appcompat.app.AlertDialog.Builder(this)
+            .setTitle("切换账号")
+            .setItems(items.toTypedArray()) { _, which ->
+                if (which < profiles.size) {
+                    val profile = profiles[which]
+                    if (profile.account != currentAccount) {
+                        viewModel.switchAccount(profile)
+                        Toast.makeText(this, "已切换到 ${profile.name}", Toast.LENGTH_SHORT).show()
+                        startActivity(Intent(this, com.ifafu.kyzz.ui.login.LoginActivity::class.java))
+                        finish()
+                    }
+                } else {
+                    startActivity(Intent(this, com.ifafu.kyzz.ui.login.LoginActivity::class.java))
+                }
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    private fun toggleDarkMode() {
+        val currentMode = androidx.appcompat.app.AppCompatDelegate.getDefaultNightMode()
+        val newMode = if (currentMode == androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES) {
+            androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_NO
+        } else {
+            androidx.appcompat.app.AppCompatDelegate.MODE_NIGHT_YES
+        }
+        getSharedPreferences("ifafu_user", MODE_PRIVATE).edit().putInt("dark_mode", newMode).apply()
+        androidx.appcompat.app.AppCompatDelegate.setDefaultNightMode(newMode)
     }
 }

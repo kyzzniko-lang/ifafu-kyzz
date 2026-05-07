@@ -25,7 +25,8 @@ class ElectiveParser @Inject constructor(
         val pattern = Regex(
             "name=\"(.*?)\".*?window\\.open\\('(.*?)'\\)\">(.*?)" +
             "</a></td><td>(.*?)<.*?window\\.open\\('(.*?)'\\)\">(.*?)</a></td><td( title=\"(.*?)\")?.*?<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)" +
-            "</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>"
+            "</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>",
+            RegexOption.DOT_MATCHES_ALL
         )
 
         pattern.findAll(courseListContent).forEach { match ->

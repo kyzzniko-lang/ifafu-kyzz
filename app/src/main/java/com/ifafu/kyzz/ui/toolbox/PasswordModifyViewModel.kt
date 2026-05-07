@@ -35,6 +35,8 @@ class PasswordModifyViewModel @Inject constructor(
 
                 val pageUrl = "${host}/(${token})/mmxg.aspx?xh=${account}&gnmkdm=N121502"
 
+                htmlClient.getString(pageUrl)
+
                 val formBody = htmlClient.buildViewStateFormBody()
                     .add("TextBox2", newPwd)
                     .add("TextBox3", confirmPwd)
@@ -47,7 +49,7 @@ class PasswordModifyViewModel @Inject constructor(
 
                 val alert = htmlClient.checkAlert(html)
                 if (alert != null) {
-                    _state.value = State.Error(alert.message ?: "操作失败")
+                    _state.value = State.Error(alert.message)
                 } else {
                     _state.value = State.Success
                 }

@@ -24,7 +24,6 @@ class ElectiveCourseActivity : BaseActivity<ActivityElectiveCourseBinding>() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = getString(R.string.elective_title)
         binding.btnRetry.setOnClickListener { viewModel.loadCourses() }

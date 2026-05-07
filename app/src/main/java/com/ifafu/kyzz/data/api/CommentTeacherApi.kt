@@ -2,6 +2,7 @@ package com.ifafu.kyzz.data.api
 
 import com.ifafu.kyzz.data.model.Response
 import com.ifafu.kyzz.data.network.HtmlClient
+import com.ifafu.kyzz.data.repository.UserRepository
 import kotlinx.coroutines.delay
 import java.net.URLEncoder
 import java.util.Random
@@ -10,17 +11,39 @@ import javax.inject.Singleton
 
 @Singleton
 class CommentTeacherApi @Inject constructor(
-    private val htmlClient: HtmlClient
+    private val htmlClient: HtmlClient,
+    private val userApi: UserApi,
+    private val reloginHelper: ReloginHelper,
+    private val userRepository: UserRepository
 ) {
 
     suspend fun commentAllTeachers(host: String, token: String, number: String, name: String): Response {
         val accessUrl = "${host}/(${token})/xsjxpj2fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121400"
 
-        val html = htmlClient.getString(accessUrl)
+        var html = htmlClient.getString(accessUrl)
         if (html.isBlank()) return Response(false, -1, "网络异常")
+
+        if (userApi.isSessionExpired(html)) {
+            val reloginResp = reloginHelper.relogin()
+            if (!reloginResp.success) return Response(false, -1, reloginResp.message)
+            val user = userRepository.getUser()
+            val newToken = user.token
+            val retryUrl = "${host}/(${newToken})/xsjxpj2fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121400"
+            html = htmlClient.getString(retryUrl)
+            if (html.isBlank() || userApi.isSessionExpired(html)) {
+                return Response(false, -1, "会话已过期，请重新登录")
+            }
+            return commentAllTeachersInternal(host, newToken, user.account, user.name, html)
+        }
 
         val alert = htmlClient.checkAlert(html)
         if (alert != null) return Response(false, -2, alert.message)
+
+        return commentAllTeachersInternal(host, token, number, name, html)
+    }
+
+    private suspend fun commentAllTeachersInternal(host: String, token: String, number: String, name: String, html: String): Response {
+        val accessUrl = "${host}/(${token})/xsjxpj2fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121400"
 
         val patternList = Regex("open\\('(.*?)',")
         patternList.findAll(html).forEach { match ->

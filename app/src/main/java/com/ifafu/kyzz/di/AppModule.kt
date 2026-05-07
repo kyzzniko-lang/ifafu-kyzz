@@ -1,7 +1,9 @@
 package com.ifafu.kyzz.di
 
 import android.content.Context
+import android.content.SharedPreferences
 import android.os.Environment
+import com.ifafu.kyzz.data.util.ZFVerify
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -10,6 +12,7 @@ import dagger.hilt.components.SingletonComponent
 import okhttp3.CookieJar
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import org.json.JSONArray
 import java.io.File
 import java.io.FileWriter
 import java.net.CookieManager
@@ -27,7 +30,12 @@ object AppModule {
 
     @Provides
     @Singleton
-    fun provideCookieJar(): JavaNetCookieJar = JavaNetCookieJar.getInstance()
+    fun provideCookieJar(@ApplicationContext context: Context): JavaNetCookieJar =
+        JavaNetCookieJar.getInstance(context)
+
+    @Provides
+    @Singleton
+    fun provideZFVerify(@ApplicationContext context: Context): ZFVerify = ZFVerify(context)
 
     @Provides
     @Singleton
@@ -35,10 +43,8 @@ object AppModule {
         @ApplicationContext context: Context,
         cookieJar: JavaNetCookieJar
     ): OkHttpClient {
-        val logFile = File(
-            context.getExternalFilesDir(null),
-            "http_capture_log.txt"
-        )
+        val externalDir = context.getExternalFilesDir(null) ?: context.filesDir
+        val logFile = File(externalDir, "http_capture_log.txt")
         logFile.writeText("=== iFAFU HTTP Capture Log ===\nStarted: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n\n")
 
         val cookieJar1 = cookieJar
@@ -100,19 +106,74 @@ object AppModule {
     }
 }
 
-class JavaNetCookieJar : CookieJar {
+class JavaNetCookieJar private constructor(context: Context) : CookieJar {
     private val store = CookieManager(null, CookiePolicy.ACCEPT_ALL)
+    private val prefs: SharedPreferences =
+        context.getSharedPreferences("ifafu_cookies", Context.MODE_PRIVATE)
 
     companion object {
+        private const val KEY_COOKIES = "cookies_json"
+
         @Volatile
         private var instance: JavaNetCookieJar? = null
 
-        fun getInstance(): JavaNetCookieJar {
+        fun getInstance(context: Context): JavaNetCookieJar {
             return instance ?: synchronized(this) {
-                instance ?: JavaNetCookieJar().also { instance = it }
+                instance ?: JavaNetCookieJar(context).also { instance = it }
             }
         }
     }
+
+    init {
+        loadPersistedCookies()
+    }
+
+    private fun loadPersistedCookies() {
+        val json = prefs.getString(KEY_COOKIES, null) ?: return
+        try {
+            val arr = JSONArray(json)
+            val now = System.currentTimeMillis()
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val uri = URI(obj.getString("uri"))
+                val cookie = HttpCookie(obj.getString("name"), obj.getString("value"))
+                cookie.domain = obj.optString("domain", "")
+                cookie.path = obj.optString("path", "/")
+                val expiresAt = obj.optLong("expiresAt", 0)
+                if (expiresAt > 0 && expiresAt < now) continue
+                if (expiresAt > 0) {
+                    cookie.maxAge = (expiresAt - now) / 1000
+                } else {
+                    cookie.maxAge = Long.MAX_VALUE
+                }
+                store.cookieStore.add(uri, cookie)
+            }
+        } catch (_: Exception) {}
+    }
+
+    private fun persistCookies() {
+        try {
+            val arr = JSONArray()
+            val now = System.currentTimeMillis()
+            for ((uri, cookies) in savedCookies) {
+                for (cookie in cookies) {
+                    val expiresAt = cookie.second
+                    if (expiresAt in 1..<now) continue
+                    val obj = org.json.JSONObject()
+                    obj.put("uri", uri)
+                    obj.put("name", cookie.first.name)
+                    obj.put("value", cookie.first.value)
+                    obj.put("domain", cookie.first.domain)
+                    obj.put("path", cookie.first.path)
+                    obj.put("expiresAt", expiresAt)
+                    arr.put(obj)
+                }
+            }
+            prefs.edit().putString(KEY_COOKIES, arr.toString()).apply()
+        } catch (_: Exception) {}
+    }
+
+    private val savedCookies = mutableMapOf<String, MutableList<Pair<HttpCookie, Long>>>()
 
     fun getCookieStore() = store.cookieStore
 
@@ -123,16 +184,19 @@ class JavaNetCookieJar : CookieJar {
 
     override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
         val uri = url.toUri()
-        cookies.forEach { cookie ->
+        val uriStr = uri.toString()
+        val cookieList = savedCookies.getOrPut(uriStr) { mutableListOf() }
+        for (cookie in cookies) {
             val httpCookie = HttpCookie(cookie.name, cookie.value)
             httpCookie.domain = cookie.domain
             httpCookie.path = cookie.path
             httpCookie.secure = cookie.secure
-            if (cookie.expiresAt != Long.MAX_VALUE) {
-                httpCookie.maxAge = (cookie.expiresAt - System.currentTimeMillis()) / 1000
-            }
+            val expiresAt = if (cookie.expiresAt != Long.MAX_VALUE) cookie.expiresAt else 0L
             store.cookieStore.add(uri, httpCookie)
+            cookieList.removeAll { it.first.name == cookie.name }
+            cookieList.add(httpCookie to expiresAt)
         }
+        persistCookies()
     }
 
     override fun loadForRequest(url: okhttp3.HttpUrl): List<okhttp3.Cookie> {

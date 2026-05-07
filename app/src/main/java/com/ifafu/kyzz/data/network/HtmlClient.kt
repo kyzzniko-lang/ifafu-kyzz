@@ -2,6 +2,8 @@ package com.ifafu.kyzz.data.network
 
 import com.ifafu.kyzz.data.model.Response
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
@@ -15,47 +17,72 @@ import javax.inject.Singleton
 class HtmlClient @Inject constructor(
     private val client: OkHttpClient
 ) {
-    var viewState: String = ""
+    @Volatile var viewState: String = ""
         private set
-    var viewStateGenerator: String = ""
+    @Volatile var viewStateGenerator: String = ""
         private set
-    var lastUrl: String = ""
+    @Volatile var lastUrl: String = ""
         private set
 
-    private var referer: String = ""
+    @Volatile private var referer: String = ""
+
+    private val mutex = Mutex()
+
+    data class GetResult(val doc: Document, val viewState: String, val viewStateGenerator: String, val url: String)
 
     suspend fun get(url: String): Document = withContext(Dispatchers.IO) {
-        val request = buildRequest(url).get().build()
-        execute(request)
+        mutex.withLock {
+            val request = buildRequest(url).get().build()
+            execute(request)
+        }
+    }
+
+    suspend fun getWithState(url: String): GetResult = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val request = buildRequest(url).get().build()
+            val doc = execute(request)
+            GetResult(doc, viewState, viewStateGenerator, lastUrl)
+        }
     }
 
     suspend fun getString(url: String): String = withContext(Dispatchers.IO) {
-        val request = buildRequest(url).get().build()
-        val response = client.newCall(request).execute()
-        val bytes = response.body?.bytes() ?: ByteArray(0)
-        lastUrl = response.request.url.toString()
-        referer = lastUrl
-        String(bytes, charset("GBK"))
+        mutex.withLock {
+            val request = buildRequest(url).get().build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                lastUrl = response.request.url.toString()
+                referer = lastUrl
+                String(bytes, charset("GBK"))
+            }
+        }
     }
 
     suspend fun getBytes(url: String): ByteArray = withContext(Dispatchers.IO) {
-        val request = buildRequest(url).get().build()
-        val response = client.newCall(request).execute()
-        response.body?.bytes() ?: ByteArray(0)
+        mutex.withLock {
+            val request = buildRequest(url).get().build()
+            client.newCall(request).execute().use { response ->
+                response.body?.bytes() ?: ByteArray(0)
+            }
+        }
     }
 
     suspend fun post(url: String, formBody: FormBody): Document = withContext(Dispatchers.IO) {
-        val request = buildRequest(url).post(formBody).build()
-        execute(request)
+        mutex.withLock {
+            val request = buildRequest(url).post(formBody).build()
+            execute(request)
+        }
     }
 
     suspend fun postString(url: String, formBody: FormBody): String = withContext(Dispatchers.IO) {
-        val request = buildRequest(url).post(formBody).build()
-        val response = client.newCall(request).execute()
-        val bytes = response.body?.bytes() ?: ByteArray(0)
-        lastUrl = response.request.url.toString()
-        referer = lastUrl
-        String(bytes, charset("GBK"))
+        mutex.withLock {
+            val request = buildRequest(url).post(formBody).build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                lastUrl = response.request.url.toString()
+                referer = lastUrl
+                String(bytes, charset("GBK"))
+            }
+        }
     }
 
     private fun buildRequest(url: String): Request.Builder {
@@ -67,13 +94,14 @@ class HtmlClient @Inject constructor(
     }
 
     private fun execute(request: Request): Document {
-        val response = client.newCall(request).execute()
-        val bytes = response.body?.bytes() ?: ByteArray(0)
-        val html = String(bytes, charset("GBK"))
-        lastUrl = response.request.url.toString()
-        referer = lastUrl
-        extractViewState(html)
-        return Jsoup.parse(html)
+        client.newCall(request).execute().use { response ->
+            val bytes = response.body?.bytes() ?: ByteArray(0)
+            val html = String(bytes, charset("GBK"))
+            lastUrl = response.request.url.toString()
+            referer = lastUrl
+            extractViewState(html)
+            return Jsoup.parse(html)
+        }
     }
 
     fun extractViewState(html: String) {
@@ -115,14 +143,17 @@ class HtmlClient @Inject constructor(
     data class PostResult(val html: String, val url: String)
 
     suspend fun postWithFollow(url: String, formBody: FormBody): PostResult = withContext(Dispatchers.IO) {
-        val request = buildRequest(url).post(formBody).build()
-        val response = client.newCall(request).execute()
-        val bytes = response.body?.bytes() ?: ByteArray(0)
-        val html = String(bytes, charset("GBK"))
-        val finalUrl = response.request.url.toString()
-        lastUrl = finalUrl
-        referer = finalUrl
-        extractViewState(html)
-        PostResult(html, finalUrl)
+        mutex.withLock {
+            val request = buildRequest(url).post(formBody).build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                val html = String(bytes, charset("GBK"))
+                val finalUrl = response.request.url.toString()
+                lastUrl = finalUrl
+                referer = finalUrl
+                extractViewState(html)
+                PostResult(html, finalUrl)
+            }
+        }
     }
 }

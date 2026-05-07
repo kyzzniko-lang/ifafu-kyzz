@@ -1,33 +1,47 @@
 package com.ifafu.kyzz.data.api
 
 import android.graphics.BitmapFactory
+import android.util.Log
 import com.ifafu.kyzz.data.model.Response
 import com.ifafu.kyzz.data.model.User
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.util.ZFVerify
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class UserApi @Inject constructor(
     private val htmlClient: HtmlClient,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val zfVerify: ZFVerify
 ) {
+    companion object {
+        private const val TAG = "UserApi"
+    }
 
-    private var sessionToken: String = ""
-    private var loginUrl: String = ""
+    @Volatile private var sessionToken: String = ""
+    @Volatile private var loginUrl: String = ""
 
     suspend fun prepareLogin(host: String): android.graphics.Bitmap? {
-        htmlClient.get(host)
-        loginUrl = htmlClient.lastUrl
+        return try {
+            sessionToken = ""
+            loginUrl = ""
 
-        val tokenMatch = Regex("\\((.*?)\\)/").find(loginUrl)
-        if (tokenMatch == null) return null
-        sessionToken = tokenMatch.groupValues[1]
+            htmlClient.get(host)
+            loginUrl = htmlClient.lastUrl
 
-        val captchaUrl = "${host}/(${sessionToken})/CheckCode.aspx"
-        val bytes = htmlClient.getBytes(captchaUrl)
-        return if (bytes.isNotEmpty()) BitmapFactory.decodeByteArray(bytes, 0, bytes.size) else null
+            val tokenMatch = Regex("\\((.*?)\\)/").find(loginUrl)
+            if (tokenMatch == null) return null
+            sessionToken = tokenMatch.groupValues[1]
+
+            val captchaUrl = "${host}/(${sessionToken})/CheckCode.aspx"
+            val bytes = htmlClient.getBytes(captchaUrl)
+            if (bytes.isNotEmpty()) BitmapFactory.decodeByteArray(bytes, 0, bytes.size) else null
+        } catch (e: Exception) {
+            Log.e(TAG, "prepareLogin failed", e)
+            null
+        }
     }
 
     suspend fun login(account: String, password: String, captcha: String, user: User): Response {
@@ -43,7 +57,7 @@ class UserApi @Inject constructor(
             "txtUserName" to account,
             "TextBox2" to password,
             "txtSecretCode" to captcha,
-            "RadioButtonList1" to "\u5B66\u751F",
+            "RadioButtonList1" to "学生",
             "Button1" to "",
             "lbLanguage" to "",
             "hidPdrs" to "",
@@ -107,5 +121,57 @@ class UserApi @Inject constructor(
             return Response(false, 0, alert.message)
         }
         return Response(true, 0, "修改成功")
+    }
+
+    suspend fun relogin(): Response {
+        val user = userRepository.getUser()
+        val password = userRepository.getPassword()
+        if (user.account.isBlank() || password.isBlank()) {
+            Log.w(TAG, "Relogin failed: account or password is blank")
+            return Response(false, -1, "未保存登录信息")
+        }
+
+        if (!zfVerify.initialized) {
+            Log.w(TAG, "Relogin failed: ZFVerify not initialized")
+            return Response(false, -1, "验证码识别模块未初始化")
+        }
+
+        val maxRetry = 5
+        for (i in 1..maxRetry) {
+            try {
+                Log.d(TAG, "Relogin attempt $i/$maxRetry")
+                val captchaBitmap = prepareLogin(userRepository.host)
+                if (captchaBitmap == null) {
+                    Log.w(TAG, "Relogin attempt $i: prepareLogin returned null")
+                    continue
+                }
+
+                val captcha = zfVerify.recognize(captchaBitmap)
+                Log.d(TAG, "Relogin attempt $i: captcha recognized as '$captcha'")
+                val freshUser = User(account = user.account, name = user.name)
+                val response = login(user.account, password, captcha, freshUser)
+
+                if (response.success) {
+                    freshUser.institute = user.institute
+                    freshUser.clas = user.clas
+                    freshUser.enrollment = user.enrollment
+                    userRepository.saveUser(freshUser)
+                    userRepository.savePassword(password)
+                    Log.d(TAG, "Relogin succeeded on attempt $i")
+                    return response
+                } else {
+                    Log.w(TAG, "Relogin attempt $i: login failed - ${response.message}")
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "Relogin attempt $i: exception", e)
+            }
+        }
+
+        Log.e(TAG, "Relogin failed after $maxRetry attempts")
+        return Response(false, -1, "自动重新登录失败")
+    }
+
+    fun isSessionExpired(html: String): Boolean {
+        return html.contains("账号或密码") || html.contains("请登录") || html.contains("default.aspx") || html.contains("default2.aspx")
     }
 }

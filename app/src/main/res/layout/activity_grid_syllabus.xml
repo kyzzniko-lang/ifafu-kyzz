@@ -167,6 +167,93 @@
 
             </LinearLayout>
 
+            <LinearLayout
+                android:id="@+id/dateRow"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:background="@color/claude_bg_elevated"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="28dp"
+                    android:layout_height="24dp"
+                    android:background="@color/claude_bg_subtle"
+                    android:gravity="center"
+                    android:text=""
+                    android:textSize="9sp" />
+
+                <TextView
+                    android:id="@+id/tvDateMon"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text=""
+                    android:textColor="@color/claude_text_hint"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvDateTue"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text=""
+                    android:textColor="@color/claude_text_hint"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvDateWed"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text=""
+                    android:textColor="@color/claude_text_hint"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvDateThu"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text=""
+                    android:textColor="@color/claude_text_hint"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvDateFri"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text=""
+                    android:textColor="@color/claude_text_hint"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvDateSat"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text=""
+                    android:textColor="@color/claude_text_hint"
+                    android:textSize="10sp" />
+
+                <TextView
+                    android:id="@+id/tvDateSun"
+                    android:layout_width="0dp"
+                    android:layout_height="24dp"
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:text=""
+                    android:textColor="@color/claude_text_hint"
+                    android:textSize="10sp" />
+
+            </LinearLayout>
+
             <ScrollView
                 android:id="@+id/scrollView"
                 android:layout_width="match_parent"

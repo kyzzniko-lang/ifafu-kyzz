@@ -54,7 +54,7 @@ class ScoreParser @Inject constructor(
                         studyScore = cells[6].text().toFloatOrNull() ?: 0f,
                         score = cells[7].text().toFloatOrNull() ?: 0f,
                         makeupScore = htmlParser.cleanNbspFloat(cells[8].text()),
-                        isRestudy = cells[9].text() != "是",
+                        isRestudy = cells[9].text() == "是",
                         institute = htmlParser.cleanNbsp(cells[10].text()),
                         scorePoint = htmlParser.cleanNbspFloat(cells[11].text()),
                         comment = htmlParser.cleanNbsp(cells[12].text()),
@@ -100,7 +100,7 @@ class ScoreParser @Inject constructor(
                 studyScore = match.groupValues[7].toFloatOrNull() ?: 0f,
                 score = match.groupValues[8].toFloatOrNull() ?: 0f,
                 makeupScore = htmlParser.cleanNbspFloat(match.groupValues[9]),
-                isRestudy = match.groupValues[10] != "&nbsp;",
+                isRestudy = match.groupValues[10] == "是",
                 institute = match.groupValues[11],
                 scorePoint = htmlParser.cleanNbspFloat(match.groupValues[12]),
                 comment = htmlParser.cleanNbsp(match.groupValues[13]),
@@ -111,8 +111,30 @@ class ScoreParser @Inject constructor(
 
     fun parseElectiveTargetScore(doc: Document): Map<String, Float> {
         val result = mutableMapOf<String, Float>()
+        val html = doc.html()
+        val tableStart = html.indexOf("选修课").let { idx ->
+            if (idx >= 0) idx else html.indexOf("学分要求")
+        }
+        if (tableStart < 0) {
+            val tables = doc.select("table")
+            for (table in tables) {
+                val tHtml = table.html()
+                if (tHtml.contains("学分") && tHtml.length < 2000) {
+                    val pattern = Regex("<td>(.*?)</td><td>(.*?)</td>")
+                    pattern.findAll(tHtml).forEach { match ->
+                        val key = match.groupValues[1]
+                        val value = match.groupValues[2]
+                        result[key] = if (value == "&nbsp;") 0f else value.toFloatOrNull() ?: 0f
+                    }
+                    if (result.isNotEmpty()) return result
+                }
+            }
+            return result
+        }
+        val tableEnd = html.indexOf("</table>", tableStart).let { if (it < 0) html.length else it + 8 }
+        val tableContent = html.substring(tableStart, tableEnd)
         val pattern = Regex("<td>(.*?)</td><td>(.*?)</td>")
-        pattern.findAll(doc.html()).forEach { match ->
+        pattern.findAll(tableContent).forEach { match ->
             val key = match.groupValues[1]
             val value = match.groupValues[2]
             result[key] = if (value == "&nbsp;") 0f else value.toFloatOrNull() ?: 0f

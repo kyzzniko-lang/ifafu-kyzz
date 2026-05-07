@@ -4,6 +4,8 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <application
         android:name=".MainApplication"
@@ -32,6 +34,7 @@
         <activity android:name=".ui.exam.ExamActivity" />
         <activity android:name=".ui.elective.ElectiveCourseActivity" />
         <activity android:name=".ui.comment.CommentTeacherActivity" />
+        <activity android:name=".ui.comment.DiscussionActivity" />
         <activity android:name=".ui.about.AboutActivity" />
         <activity android:name=".ui.web.WebActivity" />
         <activity android:name=".ui.toolbox.ToolboxActivity" />
@@ -52,6 +55,24 @@
                 android:name="android.appwidget.provider"
                 android:resource="@xml/ifafu_widget_info" />
         </receiver>
+
+        <receiver
+            android:name=".service.CourseReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".service.ScoreCheckReceiver"
+            android:exported="false" />
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
 
         <service
             android:name=".service.ElectiveCourseService"

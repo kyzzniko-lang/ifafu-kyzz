@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.iFAFUKYZZ" parent="Theme.Material3.Light.NoActionBar">
+    <style name="Theme.iFAFUKYZZ" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/claude_terracotta</item>
         <item name="colorPrimaryVariant">@color/claude_terracotta_dark</item>
         <item name="colorOnPrimary">@color/white</item>

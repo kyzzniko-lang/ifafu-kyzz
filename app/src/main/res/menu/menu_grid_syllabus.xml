@@ -9,4 +9,16 @@
         app:showAsAction="always"
         app:iconTint="@color/claude_terracotta" />
 
+    <item
+        android:id="@+id/action_export"
+        android:icon="@android:drawable/ic_menu_save"
+        android:title="导出日历"
+        app:showAsAction="never" />
+
+    <item
+        android:id="@+id/action_share"
+        android:icon="@android:drawable/ic_menu_share"
+        android:title="分享课表"
+        app:showAsAction="never" />
+
 </menu>

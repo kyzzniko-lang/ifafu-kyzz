@@ -1,9 +1,10 @@
 package com.ifafu.kyzz.data.api
 
+import android.util.Log
 import com.ifafu.kyzz.data.model.Score
-import com.ifafu.kyzz.data.model.ScoreTable
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.ScoreParser
+import com.ifafu.kyzz.data.repository.UserRepository
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -11,17 +12,46 @@ import javax.inject.Singleton
 @Singleton
 class ScoreApi @Inject constructor(
     private val htmlClient: HtmlClient,
-    private val scoreParser: ScoreParser
+    private val scoreParser: ScoreParser,
+    private val userApi: UserApi,
+    private val reloginHelper: ReloginHelper,
+    private val userRepository: UserRepository
 ) {
 
+    companion object {
+        private const val TAG = "ScoreApi"
+    }
+
     suspend fun getAllScores(host: String, token: String, number: String, name: String): List<Score>? {
-        val accessUrl = "${host}/(${token})/xscjcx_dq_fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
+        return try {
+            val accessUrl = "${host}/(${token})/xscjcx_dq_fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
+            val doc = htmlClient.get(accessUrl)
+            val html = doc.html()
+
+            if (userApi.isSessionExpired(html)) {
+                Log.d(TAG, "Session expired, attempting relogin...")
+                val response = reloginHelper.relogin()
+                if (!response.success) {
+                    Log.w(TAG, "Relogin failed: ${response.message}")
+                    return null
+                }
+                val user = userRepository.getUser()
+                val retryUrl = "${host}/(${user.token})/xscjcx_dq_fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121605"
+                return fetchAllScores(retryUrl, user.account, user.name)
+            }
+
+            fetchAllScores(accessUrl, number, name)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch scores", e)
+            null
+        }
+    }
+
+    private suspend fun fetchAllScores(accessUrl: String, number: String, name: String): List<Score>? {
         val doc = htmlClient.get(accessUrl)
         val html = doc.html()
 
-        if (html.contains("账号或密码") || html.contains("请登录") || html.contains("default.aspx") || html.contains("default2.aspx")) {
-            return null
-        }
+        if (userApi.isSessionExpired(html)) return null
 
         if (html.contains("alert") && html.contains("教学质量评价")) {
             return null
@@ -44,8 +74,25 @@ class ScoreApi @Inject constructor(
     }
 
     suspend fun getElectiveTargetScore(host: String, token: String, number: String, name: String): Map<String, Float> {
-        val accessUrl = "${host}/(${token})/pyjh.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121607"
-        val doc = htmlClient.get(accessUrl)
-        return scoreParser.parseElectiveTargetScore(doc)
+        return try {
+            val accessUrl = "${host}/(${token})/pyjh.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121607"
+            var doc = htmlClient.get(accessUrl)
+            var html = doc.html()
+
+            if (userApi.isSessionExpired(html)) {
+                val response = reloginHelper.relogin()
+                if (!response.success) return emptyMap()
+                val user = userRepository.getUser()
+                val retryUrl = "${host}/(${user.token})/pyjh.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121607"
+                doc = htmlClient.get(retryUrl)
+                val retryHtml = doc.html()
+                if (userApi.isSessionExpired(retryHtml)) return emptyMap()
+            }
+
+            scoreParser.parseElectiveTargetScore(doc)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to fetch elective target score", e)
+            emptyMap()
+        }
     }
 }

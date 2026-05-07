@@ -32,12 +32,48 @@ class SyllabusParser @Inject constructor(
             syllabus.selectedTermOption = termOptions.selectedIndex
         }
 
+        syllabus.currentWeek = parseCurrentWeek(html)
+
         syllabus.courses = parseCourses(doc, account, syllabus)
         syllabus.adjustCourses = parseAdjustCourses(doc)
         syllabus.practiceCourses = parsePracticeCourses(doc)
         syllabus.internshipCourses = parseInternshipCourses(doc)
         syllabus.unscheduledCourses = parseUnscheduledCourses(doc)
+
+        for (course in syllabus.courses) {
+            course.teacher = cleanDuplicateName(course.teacher)
+        }
+
         return syllabus
+    }
+
+    private fun cleanDuplicateName(name: String): String {
+        val trimmed = name.trim()
+        val match = Regex("^(.+?)[(（]\\1[)）]$").find(trimmed)
+        return match?.groupValues?.get(1) ?: trimmed
+    }
+
+    private fun parseCurrentWeek(html: String): Int {
+        val patterns = listOf(
+            Regex("第(\\d+)教学周"),
+            Regex("当前.*?第(\\d+)周"),
+            Regex("现在.*?第(\\d+)周"),
+            Regex("本周.*?第(\\d+)周"),
+            Regex(">第(\\d+)周<"),
+            Regex("dsyl\">第(\\d+)周")
+        )
+        for (pattern in patterns) {
+            val match = pattern.find(html)
+            if (match != null) {
+                val week = match.groupValues[1].toIntOrNull()
+                if (week != null && week in 1..30) {
+                    Log.d("SyllabusParser", "Parsed currentWeek=$week")
+                    return week
+                }
+            }
+        }
+        Log.d("SyllabusParser", "Could not parse currentWeek from HTML")
+        return 0
     }
 
     private fun parseCourses(doc: Document, account: String, syllabus: Syllabus): List<Course> {

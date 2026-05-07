@@ -1,11 +1,11 @@
 package com.ifafu.kyzz.ui.score
 
-import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ifafu.kyzz.data.api.ScoreApi
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Score
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
@@ -17,7 +17,7 @@ class ScoreViewModel @Inject constructor(
     private val scoreApi: ScoreApi,
     private val userRepository: UserRepository,
     private val cacheManager: CacheManager
-) : ViewModel() {
+) : ReloginViewModel() {
 
     private val _state = MutableLiveData<ScoreState>()
     val state: LiveData<ScoreState> = _state
@@ -38,7 +38,11 @@ class ScoreViewModel @Inject constructor(
             return
         }
 
-        if (!forceRefresh && allScores.isEmpty()) {
+        if (!forceRefresh) {
+            if (allScores.isNotEmpty()) {
+                _state.value = ScoreState.Success(filterScores())
+                return
+            }
             val cached = cacheManager.loadScores(user.account)
             if (cached != null && cached.isNotEmpty()) {
                 allScores = cached
@@ -50,18 +54,19 @@ class ScoreViewModel @Inject constructor(
         viewModelScope.launch {
             _state.value = ScoreState.Loading
             try {
+                val freshUser = userRepository.getUser()
                 val scores = scoreApi.getAllScores(
-                    userRepository.host, user.token, user.account, user.name
+                    userRepository.host, freshUser.token, freshUser.account, freshUser.name
                 )
                 if (scores != null) {
                     allScores = scores
-                    cacheManager.saveScores(user.account, scores)
+                    cacheManager.saveScores(freshUser.account, scores)
                     _state.value = ScoreState.Success(filterScores())
                 } else {
-                    _state.value = ScoreState.Error("请先完成教学质量评价")
+                    _state.value = ScoreState.Error("获取成绩失败，请检查网络后重试")
                 }
             } catch (e: Exception) {
-                _state.value = ScoreState.Error(e.message ?: "加载失败")
+                _state.value = ScoreState.Error("网络异常，请稍后重试")
             }
         }
     }

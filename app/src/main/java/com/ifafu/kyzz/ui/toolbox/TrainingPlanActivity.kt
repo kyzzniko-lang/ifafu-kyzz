@@ -25,9 +25,8 @@ class TrainingPlanActivity : BaseActivity<ActivityTrainingPlanBinding>() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding.toolbar.setNavigationOnClickListener { finish() }
-        binding.btnRetry.setOnClickListener { viewModel.load() }
+        binding.btnRetry.setOnClickListener { viewModel.load(forceRefresh = true) }
 
         viewModel.state.observe(this) { state ->
             when (state) {

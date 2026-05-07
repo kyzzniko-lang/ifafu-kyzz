@@ -18,7 +18,6 @@ class CommentTeacherActivity : BaseActivity<ActivityCommentTeacherBinding>() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = getString(R.string.comment_title)
         binding.btnStart.setOnClickListener { viewModel.startComment() }

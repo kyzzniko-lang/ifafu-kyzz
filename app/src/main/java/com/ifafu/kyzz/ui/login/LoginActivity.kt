@@ -1,5 +1,6 @@
 package com.ifafu.kyzz.ui.login
 
+import android.content.Intent
 import android.os.Bundle
 import android.view.View
 import androidx.activity.viewModels
@@ -7,6 +8,7 @@ import androidx.lifecycle.observe
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.databinding.ActivityLoginBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
+import com.ifafu.kyzz.ui.main.MainActivity
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -19,21 +21,10 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        binding.ivCaptcha.setOnClickListener {
-            viewModel.loadCaptcha()
-        }
-
         binding.btnLogin.setOnClickListener {
             val account = binding.etAccount.text.toString().trim()
             val password = binding.etPassword.text.toString().trim()
-            val captcha = binding.etCaptcha.text.toString().trim()
-            viewModel.login(account, password, captcha)
-        }
-
-        viewModel.captchaBitmap.observe(this) { bitmap ->
-            if (bitmap != null) {
-                binding.ivCaptcha.setImageBitmap(bitmap)
-            }
+            viewModel.login(account, password)
         }
 
         viewModel.loginState.observe(this) { state ->
@@ -47,20 +38,19 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
                     binding.tvError.visibility = View.GONE
                 }
                 is LoginViewModel.LoginState.CaptchaLoaded -> {
-                    binding.etCaptcha.text?.clear()
                     binding.tvError.visibility = View.GONE
                 }
                 is LoginViewModel.LoginState.Success -> {
                     showLoading(false)
+                    val intent = Intent(this, MainActivity::class.java)
+                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    startActivity(intent)
                     finish()
                 }
                 is LoginViewModel.LoginState.Error -> {
                     showLoading(false)
                     binding.tvError.text = state.message
                     binding.tvError.visibility = View.VISIBLE
-                    if (state.needCaptchaRefresh) {
-                        binding.etCaptcha.text?.clear()
-                    }
                 }
             }
         }
