@@ -33,6 +33,9 @@ class MainViewModel @Inject constructor(
     private val _nextExam = MutableLiveData<ExamCountdown?>()
     val nextExam: LiveData<ExamCountdown?> = _nextExam
 
+    private val _currentWeek = MutableLiveData<Int>()
+    val currentWeek: LiveData<Int> = _currentWeek
+
     init {
         _user.value = userRepository.getUser()
         fetchTermFirstDay()
@@ -42,8 +45,22 @@ class MainViewModel @Inject constructor(
 
     fun refreshUser() {
         _user.value = userRepository.getUser()
+        _currentWeek.value = calculateCurrentWeek()
         loadTodayCourses()
         loadNextExam()
+    }
+
+    private fun calculateCurrentWeek(): Int {
+        val firstDay = userRepository.termFirstDay
+        if (firstDay.isEmpty()) return 0
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val parsed = sdf.parse(firstDay) ?: return 0
+            val termStart = Calendar.getInstance().apply { time = parsed }
+            val today = Calendar.getInstance()
+            val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
+            (diffDays / 7) + 1
+        } catch (_: Exception) { 0 }
     }
 
     fun logout() {
@@ -95,6 +112,7 @@ class MainViewModel @Inject constructor(
             val today = Calendar.getInstance()
             val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
             val currentWeek = (diffDays / 7) + 1
+            _currentWeek.postValue(currentWeek)
             val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
             val todayDay = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
 
@@ -194,9 +212,57 @@ class MainViewModel @Inject constructor(
     )
 
     private fun fetchTermFirstDay() {
+        if (userRepository.termFirstDayManual) return
+        fetchTermFirstDayFromGitHub()
+    }
+
+    private fun fetchTermFirstDayFromGitHub() {
+        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                val client = okhttp3.OkHttpClient.Builder()
+                    .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                    .build()
+                val request = okhttp3.Request.Builder()
+                    .url("https://api.github.com/repos/kyzzniko-lang/ifafu-kyzz/issues/2")
+                    .header("Accept", "application/vnd.github.v3+json")
+                    .build()
+                val response = client.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    fallbackTermFirstDay()
+                    return@launch
+                }
+                val body = response.body?.string() ?: run {
+                    fallbackTermFirstDay()
+                    return@launch
+                }
+                val json = com.google.gson.JsonParser.parseString(body).asJsonObject
+                val issueBody = json.get("body")?.asString ?: ""
+                val regex = Regex("""term_first_day:\s*(\d{4}-\d{2}-\d{2})""")
+                val match = regex.find(issueBody)
+                if (match != null) {
+                    val dateStr = match.groupValues[1]
+                    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                    val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateStr)
+                    if (parsed != null) {
+                        userRepository.termFirstDay = sdf.format(parsed)
+                        _currentWeek.postValue(calculateCurrentWeek())
+                        android.util.Log.i("MainViewModel", "Term first day synced from GitHub: $dateStr")
+                        return@launch
+                    }
+                }
+                fallbackTermFirstDay()
+            } catch (_: Exception) {
+                fallbackTermFirstDay()
+            }
+        }
+    }
+
+    private fun fallbackTermFirstDay() {
         val existing = userRepository.termFirstDay
-        if (existing.isNotEmpty() && isValidDateFormat(existing)) return
-        setDefaultTermFirstDay()
+        if (existing.isEmpty() || !isValidDateFormat(existing)) {
+            setDefaultTermFirstDay()
+        }
     }
 
     private fun isValidDateFormat(date: String): Boolean {

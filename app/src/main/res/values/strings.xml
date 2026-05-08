@@ -8,6 +8,17 @@
 
     <string name="main_subtitle">福建农林大学教务助手</string>
     <string name="main_welcome">你好, %s</string>
+    <string name="greeting_morning">早上好, %s</string>
+    <string name="greeting_afternoon">下午好, %s</string>
+    <string name="greeting_evening">晚上好, %s</string>
+    <string name="date_format">%d月%d日 %s</string>
+    <string name="chip_week">第%d周</string>
+    <string name="chip_courses_today">今天%d节课</string>
+    <string name="chip_no_courses_today">今天没有课</string>
+    <string name="chip_exam_days">距考试%d天</string>
+    <string name="chip_no_exam">暂无考试</string>
+    <string name="empty_courses_title">今天没有课</string>
+    <string name="empty_courses_subtitle">好好休息吧，不要亏待了自己哦</string>
 
     <string name="nav_syllabus">课表查询</string>
     <string name="nav_grid_syllabus">二维课表</string>

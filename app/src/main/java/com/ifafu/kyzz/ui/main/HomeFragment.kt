@@ -6,6 +6,7 @@ import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AnimationUtils
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
@@ -19,6 +20,7 @@ import com.ifafu.kyzz.ui.login.LoginActivity
 import com.ifafu.kyzz.ui.syllabus.GridSyllabusActivity
 import com.ifafu.kyzz.ui.toolbox.KyzzToolboxActivity
 import dagger.hilt.android.AndroidEntryPoint
+import java.util.Calendar
 
 @AndroidEntryPoint
 class HomeFragment : Fragment() {
@@ -59,15 +61,57 @@ class HomeFragment : Fragment() {
     private fun observeUser() {
         viewModel.user.observe(viewLifecycleOwner) { user ->
             if (user.isLogin) {
-                binding.tvWelcome.text = getString(R.string.main_welcome, user.name)
+                val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+                val greeting = when {
+                    hour < 12 -> getString(R.string.greeting_morning, user.name)
+                    hour < 18 -> getString(R.string.greeting_afternoon, user.name)
+                    else -> getString(R.string.greeting_evening, user.name)
+                }
+                binding.tvWelcome.text = greeting
+            }
+            setDateInfo()
+        }
+        viewModel.currentWeek.observe(viewLifecycleOwner) { week ->
+            if (week > 0) {
+                binding.chipWeek.text = getString(R.string.chip_week, week)
+                binding.chipWeek.visibility = View.VISIBLE
+            } else {
+                binding.chipWeek.visibility = View.GONE
             }
         }
         viewModel.todayCourses.observe(viewLifecycleOwner) { courses ->
             showTodayCourses(courses)
+            binding.chipCoursesCount.text = if (courses.isNotEmpty()) {
+                getString(R.string.chip_courses_today, courses.size)
+            } else {
+                getString(R.string.chip_no_courses_today)
+            }
         }
         viewModel.nextExam.observe(viewLifecycleOwner) { countdown ->
             showExamCountdown(countdown)
+            binding.chipExamCountdown.text = if (countdown != null && countdown.daysLeft >= 0) {
+                getString(R.string.chip_exam_days, countdown.daysLeft)
+            } else {
+                getString(R.string.chip_no_exam)
+            }
         }
+    }
+
+    private fun setDateInfo() {
+        val cal = Calendar.getInstance()
+        val month = cal.get(Calendar.MONTH) + 1
+        val day = cal.get(Calendar.DAY_OF_MONTH)
+        val dayOfWeek = when (cal.get(Calendar.DAY_OF_WEEK)) {
+            Calendar.MONDAY -> getString(R.string.monday)
+            Calendar.TUESDAY -> getString(R.string.tuesday)
+            Calendar.WEDNESDAY -> getString(R.string.wednesday)
+            Calendar.THURSDAY -> getString(R.string.thursday)
+            Calendar.FRIDAY -> getString(R.string.friday)
+            Calendar.SATURDAY -> getString(R.string.saturday)
+            Calendar.SUNDAY -> getString(R.string.sunday)
+            else -> ""
+        }
+        binding.tvDateInfo.text = getString(R.string.date_format, month, day, dayOfWeek)
     }
 
     private fun showExamCountdown(countdown: MainViewModel.ExamCountdown?) {
@@ -76,6 +120,10 @@ class HomeFragment : Fragment() {
             return
         }
         binding.cardExamCountdown.visibility = View.VISIBLE
+        binding.cardExamCountdown.alpha = 1f
+        binding.cardExamCountdown.startAnimation(
+            AnimationUtils.loadAnimation(requireContext(), R.anim.slide_up_fade_in)
+        )
         val container = binding.examCountdownContainer
         container.removeAllViews()
 
@@ -121,11 +169,21 @@ class HomeFragment : Fragment() {
         if (courses.isEmpty()) {
             binding.cardTodayCourses.visibility = View.GONE
             binding.tvTodaySection.visibility = View.GONE
-            binding.tvTodaySummary.text = "今天没有课程"
+            binding.emptyCoursesState.visibility = View.VISIBLE
+            binding.emptyCoursesState.alpha = 1f
+            binding.emptyCoursesState.startAnimation(
+                AnimationUtils.loadAnimation(requireContext(), R.anim.slide_up_fade_in)
+            )
+            binding.tvTodaySummary.text = getString(R.string.chip_no_courses_today)
             return
         }
+        binding.emptyCoursesState.visibility = View.GONE
         binding.tvTodaySection.visibility = View.VISIBLE
         binding.cardTodayCourses.visibility = View.VISIBLE
+        binding.cardTodayCourses.alpha = 1f
+        binding.cardTodayCourses.startAnimation(
+            AnimationUtils.loadAnimation(requireContext(), R.anim.slide_up_fade_in)
+        )
         binding.tvTodaySummary.text = "今天有 ${courses.size} 节课"
 
         val container = binding.todayCoursesContainer

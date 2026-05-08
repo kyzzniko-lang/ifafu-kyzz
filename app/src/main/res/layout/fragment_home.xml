@@ -17,52 +17,72 @@
             app:layout_scrollFlags="scroll|exitUntilCollapsed"
             app:contentScrim="@color/claude_bg">
 
-            <LinearLayout
+            <FrameLayout
                 android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:background="@drawable/bg_header_gradient"
-                android:gravity="center_horizontal"
-                android:orientation="vertical"
-                android:paddingStart="32dp"
-                android:paddingTop="40dp"
-                android:paddingEnd="32dp"
-                android:paddingBottom="24dp">
+                android:layout_height="match_parent">
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    style="@style/ClaudeDisplay.Light"
-                    android:text="@string/app_name"
-                    android:textSize="36sp" />
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_header_decor" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    style="@style/ClaudeSubtitle.Light"
-                    android:text="@string/main_subtitle"
-                    android:textSize="13sp" />
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_header_gradient"
+                    android:gravity="center_horizontal"
+                    android:orientation="vertical"
+                    android:paddingStart="32dp"
+                    android:paddingTop="40dp"
+                    android:paddingEnd="32dp"
+                    android:paddingBottom="24dp">
 
-                <TextView
-                    android:id="@+id/tvWelcome"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:fontFamily="@font/claude_serif"
-                    android:textColor="@color/white"
-                    android:textSize="16sp"
-                    android:letterSpacing="0.02" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        style="@style/ClaudeDisplay.Light"
+                        android:text="@string/app_name"
+                        android:textSize="36sp" />
 
-                <TextView
-                    android:id="@+id/tvTodaySummary"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:fontFamily="@font/claude_serif"
-                    android:textColor="#B3FFFFFF"
-                    android:textSize="12sp" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        style="@style/ClaudeSubtitle.Light"
+                        android:text="@string/main_subtitle"
+                        android:textSize="13sp" />
 
-            </LinearLayout>
+                    <TextView
+                        android:id="@+id/tvWelcome"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="16dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="@color/white"
+                        android:textSize="16sp"
+                        android:letterSpacing="0.02" />
+
+                    <TextView
+                        android:id="@+id/tvTodaySummary"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="#B3FFFFFF"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/tvDateInfo"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="#99FFFFFF"
+                        android:textSize="11sp" />
+
+                </LinearLayout>
+
+            </FrameLayout>
 
         </com.google.android.material.appbar.CollapsingToolbarLayout>
 
@@ -82,6 +102,63 @@
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
             android:paddingBottom="16dp">
+
+            <!-- Quick info chips -->
+            <HorizontalScrollView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:layout_marginBottom="4dp"
+                android:scrollbars="none"
+                android:clipToPadding="false"
+                android:paddingStart="4dp"
+                android:paddingEnd="4dp">
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/chipWeek"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:background="@drawable/bg_info_chip"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="@color/claude_terracotta"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/chipCoursesCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/bg_info_chip"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="@color/claude_terracotta"
+                        android:textSize="12sp" />
+
+                    <TextView
+                        android:id="@+id/chipExamCountdown"
+                        android:layout_width="wrap_content"
+                        android:layout_height="32dp"
+                        android:layout_marginStart="8dp"
+                        android:background="@drawable/bg_info_chip"
+                        android:gravity="center"
+                        android:paddingStart="14dp"
+                        android:paddingEnd="14dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="@color/claude_terracotta"
+                        android:textSize="12sp" />
+
+                </LinearLayout>
+            </HorizontalScrollView>
 
             <TextView
                 android:id="@+id/tvTodaySection"
@@ -127,6 +204,43 @@
                 </LinearLayout>
 
             </com.google.android.material.card.MaterialCardView>
+
+            <!-- Empty state for no courses -->
+            <LinearLayout
+                android:id="@+id/emptyCoursesState"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:gravity="center"
+                android:paddingTop="24dp"
+                android:paddingBottom="24dp"
+                android:visibility="gone">
+
+                <ImageView
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:src="@drawable/bg_empty_state"
+                    android:alpha="0.5" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:fontFamily="@font/claude_serif"
+                    android:text="@string/empty_courses_title"
+                    android:textColor="@color/claude_text_secondary"
+                    android:textSize="15sp" />
+
+                <TextView
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:fontFamily="@font/claude_serif"
+                    android:text="@string/empty_courses_subtitle"
+                    android:textColor="@color/claude_text_tertiary"
+                    android:textSize="13sp" />
+
+            </LinearLayout>
 
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardExamCountdown"
@@ -188,17 +302,23 @@
                     android:orientation="horizontal"
                     android:padding="16dp">
 
-                    <View
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:background="@drawable/bg_icon_circle" />
+                    <FrameLayout
+                        android:layout_width="40dp"
+                        android:layout_height="40dp">
 
-                    <ImageView
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
-                        android:layout_marginStart="-27dp"
-                        android:src="@android:drawable/ic_menu_view"
-                        app:tint="@color/claude_terracotta" />
+                        <View
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:background="@drawable/bg_icon_circle" />
+
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_grid_syllabus"
+                            app:tint="@color/claude_terracotta" />
+
+                    </FrameLayout>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -225,10 +345,10 @@
                     </LinearLayout>
 
                     <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
                         android:alpha="0.3"
-                        android:src="@android:drawable/ic_media_play"
+                        android:src="@drawable/ic_chevron_right"
                         app:tint="@color/claude_text_tertiary" />
 
                 </LinearLayout>
@@ -252,17 +372,23 @@
                     android:orientation="horizontal"
                     android:padding="16dp">
 
-                    <View
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:background="@drawable/bg_icon_circle" />
+                    <FrameLayout
+                        android:layout_width="40dp"
+                        android:layout_height="40dp">
 
-                    <ImageView
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
-                        android:layout_marginStart="-27dp"
-                        android:src="@android:drawable/ic_menu_add"
-                        app:tint="@color/claude_terracotta" />
+                        <View
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:background="@drawable/bg_icon_circle" />
+
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_elective"
+                            app:tint="@color/claude_terracotta" />
+
+                    </FrameLayout>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -289,10 +415,10 @@
                     </LinearLayout>
 
                     <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
                         android:alpha="0.3"
-                        android:src="@android:drawable/ic_media_play"
+                        android:src="@drawable/ic_chevron_right"
                         app:tint="@color/claude_text_tertiary" />
 
                 </LinearLayout>
@@ -316,17 +442,23 @@
                     android:orientation="horizontal"
                     android:padding="16dp">
 
-                    <View
-                        android:layout_width="36dp"
-                        android:layout_height="36dp"
-                        android:background="@drawable/bg_icon_circle" />
+                    <FrameLayout
+                        android:layout_width="40dp"
+                        android:layout_height="40dp">
 
-                    <ImageView
-                        android:layout_width="18dp"
-                        android:layout_height="18dp"
-                        android:layout_marginStart="-27dp"
-                        android:src="@android:drawable/ic_menu_manage"
-                        app:tint="@color/claude_terracotta" />
+                        <View
+                            android:layout_width="40dp"
+                            android:layout_height="40dp"
+                            android:background="@drawable/bg_icon_circle" />
+
+                        <ImageView
+                            android:layout_width="22dp"
+                            android:layout_height="22dp"
+                            android:layout_gravity="center"
+                            android:src="@drawable/ic_toolbox"
+                            app:tint="@color/claude_terracotta" />
+
+                    </FrameLayout>
 
                     <LinearLayout
                         android:layout_width="0dp"
@@ -353,10 +485,10 @@
                     </LinearLayout>
 
                     <ImageView
-                        android:layout_width="14dp"
-                        android:layout_height="14dp"
+                        android:layout_width="16dp"
+                        android:layout_height="16dp"
                         android:alpha="0.3"
-                        android:src="@android:drawable/ic_media_play"
+                        android:src="@drawable/ic_chevron_right"
                         app:tint="@color/claude_text_tertiary" />
 
                 </LinearLayout>
