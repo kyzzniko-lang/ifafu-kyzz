@@ -4,7 +4,7 @@ from ifafu_kyzz import ifafu_kyzz_create
 
 
 class IfafuKyzzTests(unittest.TestCase):
-    def test_ifafu_kyzz_create_returns_expected_value(self) -> None:
+    def test_create_returns_token(self) -> None:
         self.assertEqual(ifafu_kyzz_create(), "ifafu_kyzz_create")
 
 
