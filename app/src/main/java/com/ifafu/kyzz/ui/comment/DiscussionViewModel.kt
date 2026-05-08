@@ -39,9 +39,16 @@ class DiscussionViewModel @Inject constructor(
         get() {
             val account = userRepository.getUser().account
             return if (account.isNotEmpty()) {
-                "u_${account.hashCode().toString(16)}"
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                val hash = digest.digest(account.toByteArray())
+                "u_${hash.take(8).joinToString("") { "%02x".format(it) }}"
             } else ""
         }
+
+    private fun oldUserId(): String {
+        val account = userRepository.getUser().account
+        return if (account.isNotEmpty()) "u_${account.hashCode().toString(16)}" else ""
+    }
 
     fun checkNickname() {
         val uid = userId
@@ -53,6 +60,16 @@ class DiscussionViewModel @Inject constructor(
             try {
                 val nickname = commentRepository.getNickname(uid)
                 if (nickname.isNullOrEmpty()) {
+                    // Try migrating from old hashCode-based userId
+                    val oldId = oldUserId()
+                    if (oldId != uid) {
+                        val oldNickname = commentRepository.getNickname(oldId)
+                        if (!oldNickname.isNullOrEmpty()) {
+                            commentRepository.saveNickname(uid, oldNickname)
+                            _nicknameState.value = NicknameState.Ready(oldNickname)
+                            return@launch
+                        }
+                    }
                     _nicknameState.value = NicknameState.NotSet
                 } else {
                     _nicknameState.value = NicknameState.Ready(nickname)
@@ -157,6 +174,12 @@ class DiscussionViewModel @Inject constructor(
     }
 
     fun deleteComment(objectId: String) {
+        val currentUserId = userId
+        val comment = comments.find { it.objectId == objectId }
+        if (comment == null || comment.authorId != currentUserId) {
+            _deleteState.value = DeleteState.Error("只能删除自己的评论")
+            return
+        }
         _deleteState.value = DeleteState.Loading
         viewModelScope.launch {
             try {

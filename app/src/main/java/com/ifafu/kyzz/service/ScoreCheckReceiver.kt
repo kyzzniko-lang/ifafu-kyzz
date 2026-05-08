@@ -15,6 +15,9 @@ import com.ifafu.kyzz.data.model.Score
 class ScoreCheckReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
+        val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("notify_score", true)) return
+
         val pendingResult = goAsync()
         Thread {
             try {

@@ -12,6 +12,7 @@ import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.StudentInfo
 import com.ifafu.kyzz.databinding.ActivityStudentInfoBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
+import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
@@ -28,9 +29,11 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
 
         viewModel.state.observe(this) { state ->
             when (state) {
-                is StudentInfoViewModel.State.Loading -> showLoading()
-                is StudentInfoViewModel.State.Success -> showInfo(state.info)
-                is StudentInfoViewModel.State.Error -> showError(state.message)
+                is UiState.Idle -> {}
+                is UiState.Loading -> showLoading()
+                is UiState.Success -> showInfo(state.data)
+                is UiState.Cached -> showInfo(state.data)
+                is UiState.Error -> showError(state.message)
             }
         }
 

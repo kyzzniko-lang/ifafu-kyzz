@@ -11,6 +11,7 @@ import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.GradeExam
 import com.ifafu.kyzz.databinding.ActivityGradeExamBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
+import com.ifafu.kyzz.ui.base.UiState
 import com.google.android.material.card.MaterialCardView
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -28,9 +29,11 @@ class GradeExamActivity : BaseActivity<ActivityGradeExamBinding>() {
 
         viewModel.state.observe(this) { state ->
             when (state) {
-                is GradeExamViewModel.State.Loading -> showLoading()
-                is GradeExamViewModel.State.Success -> showExams(state.exams)
-                is GradeExamViewModel.State.Error -> showError(state.message)
+                is UiState.Idle -> {}
+                is UiState.Loading -> showLoading()
+                is UiState.Success -> showExams(state.data)
+                is UiState.Cached -> showExams(state.data)
+                is UiState.Error -> showError(state.message)
             }
         }
 

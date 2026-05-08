@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<navigation xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:id="@+id/nav_graph"
+    app:startDestination="@id/homeFragment">
+
+    <fragment
+        android:id="@+id/homeFragment"
+        android:name="com.ifafu.kyzz.ui.main.HomeFragment"
+        android:label="首页" />
+
+    <fragment
+        android:id="@+id/syllabusFragment"
+        android:name="com.ifafu.kyzz.ui.syllabus.SyllabusFragment"
+        android:label="课表" />
+
+    <fragment
+        android:id="@+id/scoreFragment"
+        android:name="com.ifafu.kyzz.ui.score.ScoreFragment"
+        android:label="成绩" />
+
+    <fragment
+        android:id="@+id/examFragment"
+        android:name="com.ifafu.kyzz.ui.exam.ExamFragment"
+        android:label="考试" />
+
+    <fragment
+        android:id="@+id/toolboxFragment"
+        android:name="com.ifafu.kyzz.ui.toolbox.ToolboxFragment"
+        android:label="工具" />
+
+</navigation>

@@ -13,6 +13,7 @@ import com.ifafu.kyzz.data.model.TrainingCourse
 import com.ifafu.kyzz.data.model.TrainingPlan
 import com.ifafu.kyzz.databinding.ActivityTrainingPlanBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
+import com.ifafu.kyzz.ui.base.UiState
 import com.google.android.material.card.MaterialCardView
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -30,9 +31,11 @@ class TrainingPlanActivity : BaseActivity<ActivityTrainingPlanBinding>() {
 
         viewModel.state.observe(this) { state ->
             when (state) {
-                is TrainingPlanViewModel.State.Loading -> showLoading()
-                is TrainingPlanViewModel.State.Success -> showPlan(state.plan)
-                is TrainingPlanViewModel.State.Error -> showError(state.message)
+                is UiState.Idle -> {}
+                is UiState.Loading -> showLoading()
+                is UiState.Success -> showPlan(state.data)
+                is UiState.Cached -> showPlan(state.data)
+                is UiState.Error -> showError(state.message)
             }
         }
 

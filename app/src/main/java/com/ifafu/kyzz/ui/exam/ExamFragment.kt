@@ -1,43 +1,55 @@
 package com.ifafu.kyzz.ui.exam
 
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.activity.viewModels
-import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.observe
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.facebook.shimmer.ShimmerFrameLayout
+import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Exam
-import com.google.android.material.card.MaterialCardView
-import com.ifafu.kyzz.databinding.ActivityExamBinding
-import com.ifafu.kyzz.ui.base.BaseActivity
+import com.ifafu.kyzz.databinding.FragmentExamBinding
 import com.ifafu.kyzz.ui.base.UiState
-import android.widget.FrameLayout
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
-class ExamActivity : BaseActivity<ActivityExamBinding>() {
+class ExamFragment : Fragment() {
 
+    private var _binding: FragmentExamBinding? = null
+    private val binding get() = _binding!!
     private val viewModel: ExamViewModel by viewModels()
 
-    override fun createBinding(): ActivityExamBinding = ActivityExamBinding.inflate(layoutInflater)
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        _binding = FragmentExamBinding.inflate(inflater, container, false)
+        return binding.root
+    }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding.toolbar.setNavigationOnClickListener { finish() }
-        binding.toolbar.title = getString(R.string.exam_title)
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadExams(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadExams(forceRefresh = true) }
 
-        viewModel.state.observe(this) { state ->
+        viewModel.state.observe(viewLifecycleOwner) { state ->
             binding.swipeRefresh.isRefreshing = false
             when (state) {
                 is UiState.Idle -> {}
                 is UiState.Loading -> showLoading()
-                is UiState.Success -> showExams(state.data.exams)
-                is UiState.Cached -> showExams(state.data.exams)
+                is UiState.Success -> {
+                    binding.offlineBanner.root.visibility = View.GONE
+                    showExams(state.data.exams)
+                }
+                is UiState.Cached -> {
+                    binding.offlineBanner.root.visibility = View.VISIBLE
+                    showExams(state.data.exams)
+                }
                 is UiState.Error -> showError(state.message)
             }
         }
@@ -45,21 +57,26 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
         viewModel.loadExams()
     }
 
+    private val shimmer get() = binding.shimmerPlaceholder.root
+
     private fun showLoading() {
-        binding.loadingLayout.visibility = View.VISIBLE
+        shimmer.startShimmer()
+        shimmer.visibility = View.VISIBLE
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
-        binding.loadingLayout.visibility = View.GONE
+        shimmer.stopShimmer()
+        shimmer.visibility = View.GONE
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
     }
 
     private fun showExams(exams: List<Exam>) {
-        binding.loadingLayout.visibility = View.GONE
+        shimmer.stopShimmer()
+        shimmer.visibility = View.GONE
         binding.recyclerView.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
 
@@ -70,13 +87,11 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
         }
         allItems.addAll(exams)
 
-        val adapter = ExamAdapter(allItems)
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
+        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        binding.recyclerView.adapter = ExamAdapter(allItems)
     }
 
     private fun findConflicts(exams: List<Exam>): List<List<Exam>> {
-        val dateFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
         val datePatterns = listOf(
             java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()),
             java.text.SimpleDateFormat("yyyy/M/d", java.util.Locale.getDefault()),
@@ -104,7 +119,7 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
 
         override fun getItemViewType(position: Int) = if (items[position] is ConflictWarning) TYPE_WARNING else TYPE_EXAM
 
-        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
             if (viewType == TYPE_WARNING) {
                 val card = MaterialCardView(parent.context).apply {
                     layoutParams = FrameLayout.LayoutParams(
@@ -143,51 +158,47 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
             if (holder is WarningVH) {
                 val warning = items[position] as ConflictWarning
                 holder.content.removeAllViews()
-                val title = TextView(this@ExamActivity).apply {
+                holder.content.addView(TextView(requireContext()).apply {
                     text = "⚠ 考试冲突提醒"
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(0xFFFF6D00.toInt())
                     typeface = resources.getFont(R.font.claude_serif)
                     textSize = 15f
-                }
-                holder.content.addView(title)
+                })
                 for (group in warning.groups) {
                     val dateStr = group.first().datetime.split(" ", "(", "（").first()
                     val names = group.joinToString("、") { it.name }
-                    val msg = TextView(this@ExamActivity).apply {
+                    holder.content.addView(TextView(requireContext()).apply {
                         text = "${dateStr}: $names"
                         setTextAppearance(R.style.ClaudeCaption)
                         setPadding(0, 6, 0, 0)
                         typeface = resources.getFont(R.font.claude_serif)
-                    }
-                    holder.content.addView(msg)
+                    })
                 }
             } else if (holder is ExamVH) {
                 val exam = items[position] as Exam
                 holder.content.removeAllViews()
-                val name = TextView(this@ExamActivity).apply {
+                holder.content.addView(TextView(requireContext()).apply {
                     text = exam.name; setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                     typeface = resources.getFont(R.font.claude_serif)
-                }
-                val time = TextView(this@ExamActivity).apply {
+                })
+                holder.content.addView(TextView(requireContext()).apply {
                     text = "时间: ${exam.datetime}"; setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
-                }
-                val location = TextView(this@ExamActivity).apply {
+                })
+                holder.content.addView(TextView(requireContext()).apply {
                     text = "地点: ${exam.address}"; setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
-                }
-                val seat = TextView(this@ExamActivity).apply {
+                })
+                holder.content.addView(TextView(requireContext()).apply {
                     text = "座位号: ${exam.seatNumber}"; setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
-                }
-                val campus = TextView(this@ExamActivity).apply {
+                })
+                holder.content.addView(TextView(requireContext()).apply {
                     text = "校区: ${exam.campus}"; setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
-                }
-                holder.content.addView(name); holder.content.addView(time)
-                holder.content.addView(location); holder.content.addView(seat); holder.content.addView(campus)
+                })
             }
         }
 
@@ -195,5 +206,10 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
 
         inner class WarningVH(itemView: View, val content: LinearLayout) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView)
         inner class ExamVH(itemView: View, val content: LinearLayout) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView)
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
     }
 }

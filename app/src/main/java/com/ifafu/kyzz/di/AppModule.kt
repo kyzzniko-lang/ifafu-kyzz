@@ -52,7 +52,10 @@ object AppModule {
             val request = chain.request()
             val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
 
-            val requestHeaders = request.headers.joinToString("\n") { "  ${it.first}: ${it.second}" }
+            val requestHeaders = request.headers.joinToString("\n") { (name, value) ->
+                val displayValue = if (name.equals("Authorization", ignoreCase = true)) "[REDACTED]" else value
+                "  $name: $displayValue"
+            }
             val requestBody = try {
                 val buf = okio.Buffer()
                 request.body?.writeTo(buf)

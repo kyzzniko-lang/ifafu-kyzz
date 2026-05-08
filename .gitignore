@@ -8,3 +8,19 @@
 .externalNativeBuild
 .cxx
 local.properties
+
+# Build output
+app/build/
+
+# Claude Code working directory
+.claude/
+
+# HTTP capture logs
+http_capture_log.txt
+
+# Stray files
+/app/main/
+/gradle-8.5-bin.zip
+/ifafu-kyzz(1).png
+/kyzz/
+/post.txt

@@ -42,10 +42,13 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
                 }
                 is LoginViewModel.LoginState.Success -> {
                     showLoading(false)
-                    val intent = Intent(this, MainActivity::class.java)
-                    intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                    startActivity(intent)
-                    finish()
+                    val prefs = getSharedPreferences("ifafu_user", MODE_PRIVATE)
+                    if (!prefs.getBoolean("has_seen_welcome", false)) {
+                        prefs.edit().putBoolean("has_seen_welcome", true).apply()
+                        showWelcomeDialog()
+                    } else {
+                        goToMain()
+                    }
                 }
                 is LoginViewModel.LoginState.Error -> {
                     showLoading(false)
@@ -54,6 +57,28 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
                 }
             }
         }
+    }
+
+    private fun showWelcomeDialog() {
+        val view = layoutInflater.inflate(R.layout.dialog_welcome, null)
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(this)
+            .setView(view)
+            .setCancelable(false)
+            .create()
+        dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
+        view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnDismiss)
+            .setOnClickListener {
+                dialog.dismiss()
+                goToMain()
+            }
+        dialog.show()
+    }
+
+    private fun goToMain() {
+        val intent = Intent(this, MainActivity::class.java)
+        intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+        startActivity(intent)
+        finish()
     }
 
     private fun showLoading(loading: Boolean) {

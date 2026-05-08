@@ -2,56 +2,56 @@ package com.ifafu.kyzz.ui.score
 
 import android.os.Bundle
 import android.view.Gravity
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
-import androidx.activity.viewModels
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.viewModels
 import androidx.lifecycle.observe
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.facebook.shimmer.ShimmerFrameLayout
 import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Score
-import com.ifafu.kyzz.databinding.ActivityScoreBinding
-import com.ifafu.kyzz.ui.base.BaseActivity
+import com.ifafu.kyzz.databinding.FragmentScoreBinding
 import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
-class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
+class ScoreFragment : Fragment() {
 
+    private var _binding: FragmentScoreBinding? = null
+    private val binding get() = _binding!!
     private val viewModel: ScoreViewModel by viewModels()
     private var selectedYear: String? = null
     private var selectedTerm: String? = null
     private var spinnerReady = false
 
-    override fun createBinding(): ActivityScoreBinding = ActivityScoreBinding.inflate(layoutInflater)
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
+        _binding = FragmentScoreBinding.inflate(inflater, container, false)
+        return binding.root
+    }
 
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        binding.toolbar.setNavigationOnClickListener { finish() }
-        binding.toolbar.title = getString(R.string.score_title)
-        binding.toolbar.inflateMenu(R.menu.menu_score)
-        binding.toolbar.setOnMenuItemClickListener { item ->
-            when (item.itemId) {
-                R.id.action_share_score -> { shareScoreCard(); true }
-                else -> false
-            }
-        }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadScores(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadScores(forceRefresh = true) }
 
         setupTermButtons()
 
-        viewModel.state.observe(this) { state ->
+        viewModel.state.observe(viewLifecycleOwner) { state ->
             binding.swipeRefresh.isRefreshing = false
             when (state) {
                 is UiState.Idle -> {}
                 is UiState.Loading -> showLoading()
                 is UiState.Success -> {
+                    binding.offlineBanner.root.visibility = View.GONE
                     if (!spinnerReady) {
                         setupYearSpinner()
                         spinnerReady = true
@@ -59,6 +59,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
                     showScores(state.data)
                 }
                 is UiState.Cached -> {
+                    binding.offlineBanner.root.visibility = View.VISIBLE
                     if (!spinnerReady) {
                         setupYearSpinner()
                         spinnerReady = true
@@ -77,7 +78,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         val options = mutableListOf("全部")
         options.addAll(years)
 
-        val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options)
+        val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerYear.adapter = adapter
         binding.spinnerYear.setSelection(0)
@@ -102,21 +103,26 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         }
     }
 
+    private val shimmer get() = binding.shimmerPlaceholder.root
+
     private fun showLoading() {
-        binding.loadingLayout.visibility = View.VISIBLE
+        shimmer.startShimmer()
+        shimmer.visibility = View.VISIBLE
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
-        binding.loadingLayout.visibility = View.GONE
+        shimmer.stopShimmer()
+        shimmer.visibility = View.GONE
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
     }
 
     private fun showScores(scores: List<Score>) {
-        binding.loadingLayout.visibility = View.GONE
+        shimmer.stopShimmer()
+        shimmer.visibility = View.GONE
         binding.recyclerView.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
 
@@ -128,7 +134,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         if (trendData != null) items.add(trendData)
         items.addAll(scores)
 
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
         binding.recyclerView.adapter = ScoreAdapter(items, validScores)
     }
 
@@ -172,75 +178,6 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         return if (grouped.size >= 2) grouped else null
     }
 
-    private fun shareScoreCard() {
-        try {
-            val container = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(resources.getColor(R.color.claude_bg, null))
-                setPadding(40, 40, 40, 40)
-            }
-            val title = TextView(this).apply {
-                text = "我的成绩单"
-                textSize = 22f
-                setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                typeface = resources.getFont(R.font.claude_serif)
-                setPadding(0, 0, 0, 20)
-            }
-            container.addView(title)
-
-            val statsText = TextView(this).apply {
-                text = "GPA: ${binding.tvGPA.text}  |  加权均分: ${binding.tvWeightedAvg.text}  |  总学分: ${binding.tvTotalCredits.text}"
-                textSize = 16f
-                setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
-                setPadding(0, 0, 0, 30)
-            }
-            container.addView(statsText)
-
-            val scores = (viewModel.state.value as? UiState.Success)?.data ?: emptyList()
-            for (score in scores.filter { it.score > 0 }.take(20)) {
-                val row = LinearLayout(this).apply {
-                    orientation = LinearLayout.HORIZONTAL
-                    setPadding(0, 6, 0, 6)
-                }
-                val name = TextView(this).apply {
-                    text = score.courseName
-                    textSize = 14f
-                    setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                    typeface = resources.getFont(R.font.claude_serif)
-                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                }
-                val scoreVal = TextView(this).apply {
-                    text = "${score.score}"
-                    textSize = 14f
-                    setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
-                }
-                row.addView(name); row.addView(scoreVal)
-                container.addView(row)
-            }
-
-            val w = 800
-            val spec = android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.UNSPECIFIED)
-            container.measure(spec, android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED))
-            container.layout(0, 0, container.measuredWidth, container.measuredHeight)
-            val bitmap = android.graphics.Bitmap.createBitmap(container.measuredWidth, container.measuredHeight, android.graphics.Bitmap.Config.ARGB_8888)
-            container.draw(android.graphics.Canvas(bitmap))
-
-            val file = java.io.File(cacheDir, "score_share.png")
-            java.io.FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
-            val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
-            val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
-                type = "image/png"
-                putExtra(android.content.Intent.EXTRA_STREAM, uri)
-                addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            }
-            startActivity(android.content.Intent.createChooser(intent, "分享成绩单"))
-        } catch (e: Exception) {
-            android.widget.Toast.makeText(this, "分享失败: ${e.message}", android.widget.Toast.LENGTH_SHORT).show()
-        }
-    }
-
     inner class ScoreAdapter(
         private val items: List<Any>,
         private val validScores: List<Score>
@@ -252,7 +189,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         override fun getItemViewType(position: Int) =
             if (items[position] is List<*>) TYPE_TREND else TYPE_SCORE
 
-        override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
             if (viewType == TYPE_TREND) {
                 val card = MaterialCardView(parent.context).apply {
                     layoutParams = FrameLayout.LayoutParams(
@@ -290,43 +227,41 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         override fun onBindViewHolder(holder: androidx.recyclerview.widget.RecyclerView.ViewHolder, position: Int) {
             if (holder is TrendVH) {
                 holder.content.removeAllViews()
-                val title = TextView(this@ScoreActivity).apply {
+                holder.content.addView(TextView(requireContext()).apply {
                     text = "GPA趋势"
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                     typeface = resources.getFont(R.font.claude_serif)
                     textSize = 14f
-                }
-                holder.content.addView(title)
-                val trendView = GpaTrendView(this@ScoreActivity)
+                })
+                val trendView = GpaTrendView(requireContext())
                 trendView.setData(items[position] as List<GpaTrendView.Point>)
                 holder.content.addView(trendView)
             } else if (holder is ScoreVH) {
                 val score = items[position] as Score
                 holder.content.removeAllViews()
-                val topRow = LinearLayout(this@ScoreActivity).apply {
+                val topRow = LinearLayout(requireContext()).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = Gravity.CENTER_VERTICAL
                 }
-                val name = TextView(this@ScoreActivity).apply {
+                topRow.addView(TextView(requireContext()).apply {
                     text = score.courseName; setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_text_primary, null))
                     typeface = resources.getFont(R.font.claude_serif)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                }
-                val scoreValue = TextView(this@ScoreActivity).apply {
+                })
+                topRow.addView(TextView(requireContext()).apply {
                     text = if (score.score > 0) "${score.score}" else "--"
                     typeface = resources.getFont(R.font.claude_serif); textSize = 22f
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                }
-                topRow.addView(name); topRow.addView(scoreValue); holder.content.addView(topRow)
+                })
+                holder.content.addView(topRow)
                 val infoParts = mutableListOf("${score.year} 第${score.term}学期", score.courseType, "学分: ${score.studyScore}")
                 if (score.makeupScore > 0) infoParts.add("补考: ${score.makeupScore}")
-                val info = TextView(this@ScoreActivity).apply {
+                holder.content.addView(TextView(requireContext()).apply {
                     text = infoParts.joinToString(" | "); setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
-                }
-                holder.content.addView(info)
+                })
             }
         }
 
@@ -334,5 +269,10 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
 
         inner class TrendVH(itemView: View, val content: LinearLayout) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView)
         inner class ScoreVH(itemView: View, val content: LinearLayout) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView)
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        _binding = null
     }
 }

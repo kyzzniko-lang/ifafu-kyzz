@@ -6,6 +6,7 @@ import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Score
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.ui.base.ReloginViewModel
+import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
@@ -19,8 +20,8 @@ class ScoreViewModel @Inject constructor(
     private val cacheManager: CacheManager
 ) : ReloginViewModel() {
 
-    private val _state = MutableLiveData<ScoreState>()
-    val state: LiveData<ScoreState> = _state
+    private val _state = MutableLiveData<UiState<List<Score>>>()
+    val state: LiveData<UiState<List<Score>>> = _state
 
     private var allScores: List<Score> = emptyList()
 
@@ -28,31 +29,31 @@ class ScoreViewModel @Inject constructor(
     private var currentTerm: String? = null
 
     init {
-        _state.value = ScoreState.Idle
+        _state.value = UiState.Idle
     }
 
     fun loadScores(forceRefresh: Boolean = false) {
         val user = userRepository.getUser()
         if (!user.isLogin) {
-            _state.value = ScoreState.Error("未登录")
+            _state.value = UiState.Error("未登录")
             return
         }
 
         if (!forceRefresh) {
             if (allScores.isNotEmpty()) {
-                _state.value = ScoreState.Success(filterScores())
+                _state.value = UiState.Success(filterScores())
                 return
             }
             val cached = cacheManager.loadScores(user.account)
             if (cached != null && cached.isNotEmpty()) {
                 allScores = cached
-                _state.value = ScoreState.Success(filterScores())
+                _state.value = UiState.Success(filterScores())
                 return
             }
         }
 
         viewModelScope.launch {
-            _state.value = ScoreState.Loading
+            _state.value = UiState.Loading
             try {
                 val freshUser = userRepository.getUser()
                 val scores = scoreApi.getAllScores(
@@ -61,12 +62,24 @@ class ScoreViewModel @Inject constructor(
                 if (scores != null) {
                     allScores = scores
                     cacheManager.saveScores(freshUser.account, scores)
-                    _state.value = ScoreState.Success(filterScores())
+                    _state.value = UiState.Success(filterScores())
                 } else {
-                    _state.value = ScoreState.Error("获取成绩失败，请检查网络后重试")
+                    val cached = cacheManager.loadScores(freshUser.account)
+                    if (cached != null && cached.isNotEmpty()) {
+                        allScores = cached
+                        _state.value = UiState.Cached(filterScores(), "离线模式 · 显示缓存数据")
+                    } else {
+                        _state.value = UiState.Error("获取成绩失败，请检查网络后重试")
+                    }
                 }
             } catch (e: Exception) {
-                _state.value = ScoreState.Error("网络异常，请稍后重试")
+                val cached = cacheManager.loadScores(userRepository.getUser().account)
+                if (cached != null && cached.isNotEmpty()) {
+                    allScores = cached
+                    _state.value = UiState.Cached(filterScores(), "离线模式 · 显示缓存数据")
+                } else {
+                    _state.value = UiState.Error("网络异常，请稍后重试")
+                }
             }
         }
     }
@@ -75,7 +88,14 @@ class ScoreViewModel @Inject constructor(
         currentYear = year
         currentTerm = term
         if (allScores.isNotEmpty()) {
-            _state.value = ScoreState.Success(filterScores())
+            val current = _state.value
+            if (current is UiState.Success || current is UiState.Cached) {
+                _state.value = when (current) {
+                    is UiState.Success -> UiState.Success(filterScores())
+                    is UiState.Cached -> UiState.Cached(filterScores(), current.staleMessage)
+                    else -> UiState.Success(filterScores())
+                }
+            }
         }
     }
 
@@ -92,12 +112,5 @@ class ScoreViewModel @Inject constructor(
 
     fun getAvailableYears(): List<String> {
         return allScores.map { it.year }.distinct().sortedDescending()
-    }
-
-    sealed class ScoreState {
-        object Idle : ScoreState()
-        object Loading : ScoreState()
-        data class Success(val scores: List<Score>) : ScoreState()
-        data class Error(val message: String) : ScoreState()
     }
 }

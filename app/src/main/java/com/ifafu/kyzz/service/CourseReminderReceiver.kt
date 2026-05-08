@@ -17,6 +17,9 @@ import java.util.Locale
 class CourseReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
+        val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("notify_course", true)) return
+
         val text = buildReminderText(context)
         if (text.isEmpty()) return
 

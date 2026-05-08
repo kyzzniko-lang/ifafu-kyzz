@@ -36,6 +36,9 @@
     <color name="claude_error">#C53030</color>
     <color name="claude_warning">#B7791F</color>
 
+    <color name="claude_shimmer_base">#E8E5E0</color>
+    <color name="claude_shimmer_highlight">#F5F3EF</color>
+
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
     <color name="transparent">#00000000</color>

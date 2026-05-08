@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PreferenceScreen xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <PreferenceCategory
+        android:title="外观"
+        app:iconSpaceReserved="false">
+
+        <SwitchPreferenceCompat
+            android:key="dark_mode"
+            android:title="深色模式"
+            android:summary="切换深色/浅色主题"
+            android:defaultValue="false" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="通知"
+        app:iconSpaceReserved="false">
+
+        <SwitchPreferenceCompat
+            android:key="notify_course"
+            android:title="课程提醒"
+            android:summary="每天早上提醒今日课程"
+            android:defaultValue="true" />
+
+        <SwitchPreferenceCompat
+            android:key="notify_score"
+            android:title="成绩更新提醒"
+            android:summary="每天中午检查成绩更新"
+            android:defaultValue="true" />
+
+        <ListPreference
+            android:key="notify_advance"
+            android:title="提前提醒时间"
+            android:summary="课前提前多久提醒"
+            android:entries="@array/notify_advance_entries"
+            android:entryValues="@array/notify_advance_values"
+            android:defaultValue="15"
+            android:dependency="notify_course" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="数据"
+        app:iconSpaceReserved="false">
+
+        <Preference
+            android:key="clear_cache"
+            android:title="清除缓存"
+            android:summary="清除本地缓存数据" />
+
+        <SwitchPreferenceCompat
+            android:key="offline_mode"
+            android:title="离线模式"
+            android:summary="仅使用本地缓存数据"
+            android:defaultValue="false" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="账号"
+        app:iconSpaceReserved="false">
+
+        <Preference
+            android:key="account_info"
+            android:title="当前账号"
+            android:summary="" />
+
+        <Preference
+            android:key="switch_account"
+            android:title="切换账号"
+            android:summary="管理多个教务账号" />
+
+        <Preference
+            android:key="term_first_day"
+            android:title="设置学期首日"
+            android:summary="手动设置开学第一周的日期" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
+        android:title="关于"
+        app:iconSpaceReserved="false">
+
+        <Preference
+            android:key="version"
+            android:title="版本号"
+            android:summary="" />
+
+        <Preference
+            android:key="feedback"
+            android:title="意见反馈"
+            android:summary="在校园讨论区提出建议" />
+
+        <Preference
+            android:key="about"
+            android:title="关于 iFAFU"
+            android:summary="了解更多" />
+
+    </PreferenceCategory>
+
+</PreferenceScreen>

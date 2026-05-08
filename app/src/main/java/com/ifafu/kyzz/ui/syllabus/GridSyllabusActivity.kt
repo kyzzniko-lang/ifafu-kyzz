@@ -18,6 +18,7 @@ import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Course
 import com.ifafu.kyzz.databinding.ActivityGridSyllabusBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
+import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.AndroidEntryPoint
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -88,11 +89,11 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
         viewModel.state.observe(this) { state ->
             when (state) {
-                is SyllabusViewModel.SyllabusState.Idle -> {}
-                is SyllabusViewModel.SyllabusState.Loading -> showLoading()
-                is SyllabusViewModel.SyllabusState.Success -> {
+                is UiState.Idle -> {}
+                is UiState.Loading -> showLoading()
+                is UiState.Success -> {
                     hideLoading()
-                    allCourses = state.syllabus.courses
+                    allCourses = state.data.courses
                     calculateWeekRange()
                     currentWeek = calculateCurrentWeek()
                     realCurrentWeek = currentWeek
@@ -100,7 +101,17 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                     updateDateRow()
                     displayCoursesForWeek()
                 }
-                is SyllabusViewModel.SyllabusState.Error -> showError(state.message)
+                is UiState.Cached -> {
+                    hideLoading()
+                    allCourses = state.data.courses
+                    calculateWeekRange()
+                    currentWeek = calculateCurrentWeek()
+                    realCurrentWeek = currentWeek
+                    updateWeekDisplay()
+                    updateDateRow()
+                    displayCoursesForWeek()
+                }
+                is UiState.Error -> showError(state.message)
             }
         }
 
