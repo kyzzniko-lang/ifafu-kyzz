@@ -46,6 +46,7 @@ class MainViewModel @Inject constructor(
     fun refreshUser() {
         _user.value = userRepository.getUser()
         _currentWeek.value = calculateCurrentWeek()
+        fetchTermFirstDay()
         loadTodayCourses()
         loadNextExam()
     }
@@ -247,6 +248,12 @@ class MainViewModel @Inject constructor(
                     if (parsed != null) {
                         userRepository.termFirstDay = sdf.format(parsed)
                         _currentWeek.postValue(calculateCurrentWeek())
+                        // 重新计算今日课程（用新的学期首日）
+                        val user = userRepository.getUser()
+                        val syllabus = if (user.isLogin) cacheManager.loadSyllabus(user.account) else null
+                        if (syllabus != null) {
+                            computeTodayCourses(syllabus)
+                        }
                         android.util.Log.i("MainViewModel", "Term first day synced from GitHub: $dateStr")
                         return@launch
                     }
