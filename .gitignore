@@ -21,6 +21,7 @@ http_capture_log.txt
 # Stray files
 /app/main/
 /gradle-8.5-bin.zip
+/gradle-dist/
 /ifafu-kyzz(1).png
 /kyzz/
 /post.txt
