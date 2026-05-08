@@ -32,6 +32,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         setupTermFirstDay()
         setupClearCache()
         setupVersion()
+        setupCheckUpdate()
         setupFeedback()
         setupAbout()
     }
@@ -175,6 +176,35 @@ class SettingsFragment : PreferenceFragmentCompat() {
         } catch (_: Exception) {
             pref.summary = "1.0.0"
         }
+    }
+
+    private fun setupCheckUpdate() {
+        val pref = findPreference<Preference>("check_update") ?: return
+        pref.setOnPreferenceClickListener {
+            Toast.makeText(requireContext(), "正在检查更新...", Toast.LENGTH_SHORT).show()
+            UpdateChecker.checkForUpdate(requireContext()) { release ->
+                activity?.runOnUiThread {
+                    if (release != null) {
+                        showUpdateDialog(release)
+                    } else {
+                        Toast.makeText(requireContext(), "已是最新版本", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            true
+        }
+    }
+
+    private fun showUpdateDialog(release: UpdateChecker.ReleaseInfo) {
+        val sizeText = release.apkAsset?.let { " (${UpdateChecker.formatSize(it.size)})" } ?: ""
+        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+            .setTitle("发现新版本 v${release.versionName}")
+            .setMessage("${release.body ?: "修复已知问题并优化体验"}\n\n大小: $sizeText")
+            .setPositiveButton("立即更新") { _, _ ->
+                UpdateChecker.downloadAndInstall(requireContext(), release)
+            }
+            .setNegativeButton("稍后", null)
+            .show()
     }
 
     private fun setupFeedback() {

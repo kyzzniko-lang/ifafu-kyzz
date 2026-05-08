@@ -89,6 +89,11 @@
             android:summary="" />
 
         <Preference
+            android:key="check_update"
+            android:title="检查更新"
+            android:summary="从 GitHub 检查新版本" />
+
+        <Preference
             android:key="feedback"
             android:title="意见反馈"
             android:summary="在校园讨论区提出建议" />
