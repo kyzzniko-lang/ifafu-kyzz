@@ -28,9 +28,16 @@ android {
         buildConfigField("String", "GITHUB_TOKEN", "\"${localProperties.getProperty("github.token", "")}\"")
     }
 
+    signingConfigs {
+        getByName("debug") {
+            // 使用默认 debug keystore
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
