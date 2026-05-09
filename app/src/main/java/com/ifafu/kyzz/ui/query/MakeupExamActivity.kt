@@ -168,7 +168,7 @@ class MakeupExamViewModel @Inject constructor(
                 userRepository.host, user.token, user.account, user.name
             )
             if (result.success && result.data != null) {
-                data.value = result.data
+                data.value = result.data!!
                 state.value = MakeupExamActivity.State.Success
             } else {
                 state.value = MakeupExamActivity.State.Error(result.message)

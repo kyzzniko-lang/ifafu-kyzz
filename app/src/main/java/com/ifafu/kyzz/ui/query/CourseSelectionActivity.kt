@@ -249,7 +249,7 @@ class CourseSelectionViewModel @Inject constructor(
                 userRepository.host, user.token, user.account, user.name
             )
             if (result.success && result.data != null) {
-                data.value = result.data
+                data.value = result.data!!
                 state.value = CourseSelectionActivity.State.Success
             } else {
                 state.value = CourseSelectionActivity.State.Error(result.message)
