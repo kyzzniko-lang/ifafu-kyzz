@@ -41,17 +41,19 @@ class ElectiveScoreActivity : BaseActivity<ActivityElectiveScoreBinding>() {
     }
 
     private fun showLoading() {
-        binding.loadingLayout.visibility = View.VISIBLE
+        binding.petLoading.root.startLoading()
         binding.recyclerView.visibility = View.GONE
     }
 
     private fun showError(msg: String) {
-        binding.loadingLayout.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.recyclerView.visibility = View.GONE
+        binding.tvError.text = msg
+        binding.errorLayout.visibility = View.VISIBLE
     }
 
     private fun showScores(scores: List<Score>, totalCredits: Float) {
-        binding.loadingLayout.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.recyclerView.visibility = View.VISIBLE
 
         val allItems = mutableListOf<Any>()

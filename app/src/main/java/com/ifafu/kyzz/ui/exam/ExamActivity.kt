@@ -46,20 +46,20 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
     }
 
     private fun showLoading() {
-        binding.loadingLayout.visibility = View.VISIBLE
+        binding.petLoading.root.startLoading()
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
-        binding.loadingLayout.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
     }
 
     private fun showExams(exams: List<Exam>) {
-        binding.loadingLayout.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.recyclerView.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
 
@@ -76,7 +76,6 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
     }
 
     private fun findConflicts(exams: List<Exam>): List<List<Exam>> {
-        val dateFmt = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
         val datePatterns = listOf(
             java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()),
             java.text.SimpleDateFormat("yyyy/M/d", java.util.Locale.getDefault()),
@@ -89,8 +88,11 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
             for (fmt in datePatterns) {
                 try { dateStr = fmt.format(fmt.parse(raw)!!); break } catch (_: Exception) {}
             }
-            dateStr
-        }.filter { it.key.isNotEmpty() && it.value.size > 1 }
+            // Include time period in key to only group same-day same-period exams
+            val timePart = exam.datetime.replace("（", "(").replace("）", ")")
+                .split("(", " ").drop(1).firstOrNull()?.trim() ?: ""
+            "${dateStr}|$timePart"
+        }.filter { it.key.isNotBlank() && it.key != "|" && it.value.size > 1 }
         return grouped.values.toList()
     }
 

@@ -12,12 +12,13 @@ object DateUtil {
         if (parts.size != 3) return arrayOf("第1周", "1", "1")
 
         val cal = Calendar.getInstance(Locale.getDefault())
-        cal.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt())
+        cal.set(parts[0].toInt(), parts[1].toInt() - 1, parts[2].toInt(), 0, 0, 0)
+        cal.set(Calendar.MILLISECOND, 0)
         val firstWeekTime = cal.timeInMillis
 
         val now = System.currentTimeMillis()
-        val diffDays = ((now - firstWeekTime) / (1000 * 60 * 60 * 24)).toInt()
-        val nowWeek = diffDays / 7 + 1
+        val diffDays = ((now - firstWeekTime) / (1000 * 60 * 60 * 24L)).toInt()
+        val nowWeek = (diffDays / 7 + 1).coerceAtLeast(1)
         val weekDay = Calendar.getInstance().get(Calendar.DAY_OF_WEEK)
         val adjustedWeekDay = if (weekDay == Calendar.SUNDAY) 7 else weekDay - 1
 

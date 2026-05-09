@@ -1,0 +1,270 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/claude_bg"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="64dp"
+        android:background="@color/claude_bg"
+        android:elevation="0dp"
+        app:navigationIcon="?attr/homeAsUpIndicator"
+        app:navigationIconTint="@color/claude_text_primary"
+        app:title="成绩预测"
+        app:titleTextAppearance="@style/ClaudeTitle"
+        app:titleTextColor="@color/claude_text_primary" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="20dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- 说明 -->
+            <TextView
+                style="@style/ClaudeCaption"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="设置平时分权重和得分，预测期末需要多少分才能及格"
+                android:textColor="@color/claude_text_tertiary"
+                android:layout_marginBottom="20dp" />
+
+            <!-- 权重设置卡片 -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/ClaudeCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        style="@style/ClaudeSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="权重设置"
+                        android:textColor="@color/claude_text_primary" />
+
+                    <!-- 平时权重 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            style="@style/ClaudeBody"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="平时成绩占比" />
+
+                        <TextView
+                            android:id="@+id/tvRegularWeight"
+                            style="@style/ClaudeTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="40%"
+                            android:textColor="@color/claude_terracotta" />
+                    </LinearLayout>
+
+                    <SeekBar
+                        android:id="@+id/seekRegularWeight"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:max="100"
+                        android:progress="40"
+                        android:progressTint="@color/claude_terracotta"
+                        android:progressBackgroundTint="@color/claude_border" />
+
+                    <!-- 期末权重 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            style="@style/ClaudeBody"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:text="期末成绩占比" />
+
+                        <TextView
+                            android:id="@+id/tvExamWeight"
+                            style="@style/ClaudeTitle"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="60%"
+                            android:textColor="@color/claude_terracotta" />
+                    </LinearLayout>
+
+                    <SeekBar
+                        android:id="@+id/seekExamWeight"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:max="100"
+                        android:progress="60"
+                        android:progressTint="@color/claude_terracotta"
+                        android:progressBackgroundTint="@color/claude_border" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 平时成绩输入 -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/ClaudeCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        style="@style/ClaudeSubtitle"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="平时成绩"
+                        android:textColor="@color/claude_text_primary" />
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        style="@style/ClaudeInput"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:hint="输入平时成绩 (0-100)">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etRegularScore"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal"
+                            android:text="80" />
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <SeekBar
+                        android:id="@+id/seekRegularScore"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:max="100"
+                        android:progress="80"
+                        android:progressTint="@color/claude_terracotta"
+                        android:progressBackgroundTint="@color/claude_border" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- 计算结果卡片 -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardResult"
+                style="@style/ClaudeCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp"
+                    android:gravity="center">
+
+                    <TextView
+                        style="@style/ClaudeCaption"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="期末需要考"
+                        android:textColor="@color/claude_text_tertiary" />
+
+                    <TextView
+                        android:id="@+id/tvRequiredScore"
+                        style="@style/ClaudeDisplay"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:text="43.3"
+                        android:textColor="@color/claude_terracotta" />
+
+                    <TextView
+                        style="@style/ClaudeCaption"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="分才能及格"
+                        android:textColor="@color/claude_text_tertiary" />
+
+                    <TextView
+                        android:id="@+id/tvVerdict"
+                        style="@style/ClaudeBody"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="稳了"
+                        android:textColor="@color/claude_success" />
+
+                    <!-- 进度条可视化 -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:orientation="horizontal">
+
+                        <View
+                            android:id="@+id/barSafe"
+                            android:layout_width="0dp"
+                            android:layout_height="8dp"
+                            android:layout_weight="60"
+                            android:background="@color/claude_success" />
+
+                        <View
+                            android:id="@+id/barWarning"
+                            android:layout_width="0dp"
+                            android:layout_height="8dp"
+                            android:layout_weight="20"
+                            android:background="@color/claude_warning" />
+
+                        <View
+                            android:id="@+id/barDanger"
+                            android:layout_width="0dp"
+                            android:layout_height="8dp"
+                            android:background="@color/claude_error" />
+                    </LinearLayout>
+
+                    <TextView
+                        android:id="@+id/tvExtraInfo"
+                        style="@style/ClaudeCaption"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="即使期末考 0 分，总评也有 32.0 分"
+                        android:textColor="@color/claude_text_tertiary" />
+
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+    </androidx.core.widget.NestedScrollView>
+
+</LinearLayout>

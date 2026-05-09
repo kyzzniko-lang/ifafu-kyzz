@@ -10,7 +10,6 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.observe
-import com.facebook.shimmer.ShimmerFrameLayout
 import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.AdjustCourse
@@ -60,26 +59,21 @@ class SyllabusFragment : Fragment() {
         viewModel.loadSyllabus()
     }
 
-    private val shimmer get() = binding.shimmerPlaceholder.root
-
     private fun showLoading() {
-        shimmer.startShimmer()
-        shimmer.visibility = View.VISIBLE
+        binding.petLoading.root.startLoading()
         binding.contentLayout.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
-        shimmer.stopShimmer()
-        shimmer.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.contentLayout.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
     }
 
     private fun showSyllabus(syllabus: Syllabus) {
-        shimmer.stopShimmer()
-        shimmer.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.contentLayout.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
 

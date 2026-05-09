@@ -29,27 +29,9 @@
             android:clipToPadding="false"
             android:padding="20dp" />
 
-        <LinearLayout
-            android:id="@+id/loadingLayout"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:gravity="center"
-            android:orientation="vertical"
-            android:visibility="gone">
-
-            <ProgressBar
-                android:layout_width="36dp"
-                android:layout_height="36dp"
-                android:indeterminateTint="@color/claude_terracotta" />
-
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                style="@style/ClaudeCaption"
-                android:text="@string/loading" />
-
-        </LinearLayout>
+        <include
+            android:id="@+id/petLoading"
+            layout="@layout/layout_pet_loading" />
 
         <LinearLayout
             android:id="@+id/errorLayout"

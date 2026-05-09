@@ -31,14 +31,18 @@ class CommentViewModel @Inject constructor(
         }
         viewModelScope.launch {
             _state.value = CommentState.Loading
-            val freshUser = userRepository.getUser()
-            val response = commentTeacherApi.commentAllTeachers(
-                userRepository.host, freshUser.token, freshUser.account, freshUser.name
-            )
-            if (response.success) {
-                _state.value = CommentState.Success(response.message)
-            } else {
-                _state.value = CommentState.Error(response.message)
+            try {
+                val freshUser = userRepository.getUser()
+                val response = commentTeacherApi.commentAllTeachers(
+                    userRepository.host, freshUser.token, freshUser.account, freshUser.name
+                )
+                if (response.success) {
+                    _state.value = CommentState.Success(response.message)
+                } else {
+                    _state.value = CommentState.Error(response.message)
+                }
+            } catch (e: Exception) {
+                _state.value = CommentState.Error(e.message ?: "评教失败")
             }
         }
     }

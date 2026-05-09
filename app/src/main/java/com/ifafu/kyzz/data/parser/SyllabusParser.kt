@@ -91,8 +91,16 @@ class SyllabusParser @Inject constructor(
 
             var currentSection = 0
 
+            // Track rowspan occupancy: rowspanOccupied[col] = remaining rows occupied
+            var rowspanOccupied = IntArray(7) { 0 }
+
             for (row in rows) {
-                for (td in row.select("td")) {
+                // Decrement all occupied counters
+                rowspanOccupied = rowspanOccupied.map { (it - 1).coerceAtLeast(0) }.toIntArray()
+
+                // Collect all td elements in order, including section-label tds
+                val allTds = row.select("td")
+                for (td in allTds) {
                     val m = Regex("第(\\d+)节").find(td.text())
                     if (m != null) {
                         currentSection = m.groupValues[1].toIntOrNull() ?: currentSection
@@ -108,10 +116,22 @@ class SyllabusParser @Inject constructor(
                         !Regex("^(上午|下午|晚上|早晨)").containsMatchIn(text)
                 }
 
-                for ((colOffset, cell) in courseCells.withIndex()) {
-                    val weekDay = colOffset + 1
-                    if (weekDay > 7) break
-                    Log.d("SyllabusParser", "  Cell colOffset=$colOffset -> weekDay=$weekDay, section=$currentSection")
+                var colIndex = 0
+                for (cell in courseCells) {
+                    // Skip columns occupied by rowspan from previous rows
+                    while (colIndex < 7 && rowspanOccupied[colIndex] > 0) {
+                        colIndex++
+                    }
+                    if (colIndex >= 7) break
+
+                    val weekDay = colIndex + 1
+                    val rowspan = cell.attr("rowspan").toIntOrNull() ?: 1
+                    if (rowspan > 1) {
+                        rowspanOccupied[colIndex] = rowspan - 1
+                    }
+                    colIndex++
+
+                    Log.d("SyllabusParser", "  Cell weekDay=$weekDay, section=$currentSection")
                     parseCourseFromCell(cell, account, syllabus, courses, weekDay, currentSection)
                 }
             }
@@ -285,7 +305,7 @@ class SyllabusParser @Inject constructor(
             "一" to 1, "二" to 2, "三" to 3, "四" to 4,
             "五" to 5, "六" to 6, "日" to 7
         )
-        val pattern = Regex("周(.)(第?)(\\d+)([,，\\-](\\d+))?节\\{第(\\d+)-(\\d+)周(\\|(.)周)?\\}")
+        val pattern = Regex("周(.)(第?)(\\d+)(([,，\\-]\\d+)*)节\\{第(\\d+)-(\\d+)周(\\|(.)周)?\\}")
         val match = pattern.find(timeString)
         if (match == null) {
             Log.d("SyllabusParser", "    -> parseCourseTime NO MATCH for: $timeString")
@@ -296,7 +316,13 @@ class SyllabusParser @Inject constructor(
         course.weekDay = weekMap[match.groupValues[1]] ?: 1
 
         course.begin = match.groupValues[3].toIntOrNull() ?: 1
-        course.end = match.groupValues[5].toIntOrNull() ?: course.begin
+        val extraSections = match.groupValues[4]
+        if (extraSections.isNotEmpty()) {
+            val allNums = Regex("\\d+").findAll(extraSections).map { it.value.toInt() }.toList()
+            course.end = allNums.maxOrNull() ?: course.begin
+        } else {
+            course.end = course.begin
+        }
 
         course.weekBegin = match.groupValues[6].toIntOrNull() ?: 1
         course.weekEnd = match.groupValues[7].toIntOrNull() ?: 1
@@ -317,10 +343,12 @@ class SyllabusParser @Inject constructor(
         val sectionStart = html.indexOf("调、停（补）课信息")
         if (sectionStart < 0) return result
 
+        val sectionHtml = html.substring(sectionStart)
         val tables = doc.select("table")
         for (table in tables) {
             val tableHtml = table.html()
             if (!tableHtml.contains("原上课时间地点教师") && !tableHtml.contains("现上课时间地点教师")) continue
+            if (!sectionHtml.contains(tableHtml.take(80))) continue
 
             val rows = table.select("tr")
             for (i in 1 until rows.size) {
@@ -347,11 +375,13 @@ class SyllabusParser @Inject constructor(
         val sectionStart = html.indexOf("实践课(或无上课时间)信息")
         if (sectionStart < 0) return result
 
+        val sectionHtml = html.substring(sectionStart)
         val tables = doc.select("table")
         for (table in tables) {
             val tableHtml = table.html()
             if (!tableHtml.contains("课程名称") || !tableHtml.contains("起止周")) continue
             if (tableHtml.contains("原上课时间地点教师")) continue
+            if (!sectionHtml.contains(tableHtml.take(80))) continue
 
             val rows = table.select("tr")
             for (i in 1 until rows.size) {
@@ -379,12 +409,13 @@ class SyllabusParser @Inject constructor(
         val sectionStart = html.indexOf("实习课信息")
         if (sectionStart < 0) return result
 
+        val sectionHtml = html.substring(sectionStart)
         val tables = doc.select("table")
-        var found = false
         for (table in tables) {
             val tableHtml = table.html()
             if (!tableHtml.contains("实习时间") && !tableHtml.contains("模块代号")) continue
             if (tableHtml.contains("原上课时间地点教师") || tableHtml.contains("起止周")) continue
+            if (!sectionHtml.contains(tableHtml.take(80))) continue
 
             val rows = table.select("tr")
             for (i in 1 until rows.size) {
@@ -401,7 +432,6 @@ class SyllabusParser @Inject constructor(
                     ))
                 }
             }
-            found = true
             break
         }
         return result

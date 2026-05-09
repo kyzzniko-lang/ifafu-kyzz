@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/claude_bg_elevated"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        style="@style/ClaudeTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="写评价"
+        android:textColor="@color/claude_text_primary" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        style="@style/ClaudeInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:hint="课程名称">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etCourseName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.textfield.TextInputLayout
+        style="@style/ClaudeInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="教师姓名">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etTeacher"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="text"
+            android:maxLines="1" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <!-- Rating rows -->
+    <TextView
+        style="@style/ClaudeCaption"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="难度 (1简单 ~ 5很难)"
+        android:textColor="@color/claude_text_secondary" />
+    <SeekBar
+        android:id="@+id/seekDifficulty"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="4"
+        android:progress="2"
+        android:progressTint="@color/claude_terracotta" />
+
+    <TextView
+        style="@style/ClaudeCaption"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="给分 (1很严 ~ 5很松)"
+        android:textColor="@color/claude_text_secondary" />
+    <SeekBar
+        android:id="@+id/seekGrading"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="4"
+        android:progress="2"
+        android:progressTint="@color/claude_terracotta" />
+
+    <TextView
+        style="@style/ClaudeCaption"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:text="点名频率 (1不点 ~ 5每节点)"
+        android:textColor="@color/claude_text_secondary" />
+    <SeekBar
+        android:id="@+id/seekAttendance"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:max="4"
+        android:progress="2"
+        android:progressTint="@color/claude_terracotta" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        style="@style/ClaudeInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:hint="文字评价 (选填)">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etComment"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:inputType="textMultiLine"
+            android:maxLines="3"
+            android:maxLength="200" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/btnSubmit"
+        style="@style/ClaudeButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="发布评价" />
+
+</LinearLayout>

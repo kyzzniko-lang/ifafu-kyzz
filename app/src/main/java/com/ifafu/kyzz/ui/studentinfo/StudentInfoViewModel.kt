@@ -10,6 +10,7 @@ import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -56,6 +57,8 @@ class StudentInfoViewModel @Inject constructor(
                         _state.value = UiState.Error("获取信息失败，请检查网络后重试")
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val cached = cacheManager.loadStudentInfo(userRepository.getUser().account)
                 if (cached != null) {

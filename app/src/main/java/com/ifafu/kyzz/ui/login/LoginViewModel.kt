@@ -27,6 +27,7 @@ class LoginViewModel @Inject constructor(
     val captchaBitmap: LiveData<Bitmap?> = _captchaBitmap
 
     private var autoCaptcha: String = ""
+    private var isLoadingCaptcha = false
 
     init {
         _loginState.value = LoginState.Idle
@@ -34,6 +35,8 @@ class LoginViewModel @Inject constructor(
     }
 
     fun loadCaptcha() {
+        if (isLoadingCaptcha) return
+        isLoadingCaptcha = true
         viewModelScope.launch {
             try {
                 val bitmap = userApi.prepareLogin(userRepository.host)
@@ -51,16 +54,19 @@ class LoginViewModel @Inject constructor(
             } catch (e: Exception) {
                 autoCaptcha = ""
                 _loginState.value = LoginState.Error(e.message ?: "加载验证码失败")
+            } finally {
+                isLoadingCaptcha = false
             }
         }
     }
 
-    fun login(account: String, password: String) {
+    fun login(account: String, password: String, manualCaptcha: String? = null) {
         if (account.isBlank() || password.isBlank()) {
             _loginState.value = LoginState.Error("请输入学号和密码")
             return
         }
-        if (autoCaptcha.isBlank()) {
+        val captcha = manualCaptcha ?: autoCaptcha
+        if (captcha.isBlank()) {
             loadCaptcha()
             _loginState.value = LoginState.Error("验证码识别失败，请重试")
             return
@@ -69,17 +75,15 @@ class LoginViewModel @Inject constructor(
             _loginState.value = LoginState.Loading
             try {
                 val user = User()
-                val response = userApi.login(account, password, autoCaptcha, user)
+                val response = userApi.login(account, password, captcha, user)
                 if (response.success) {
                     userRepository.saveUser(user)
                     userRepository.savePassword(password)
                     _loginState.value = LoginState.Success(user)
                 } else {
-                    loadCaptcha()
                     _loginState.value = LoginState.Error(response.message)
                 }
             } catch (e: Exception) {
-                loadCaptcha()
                 _loginState.value = LoginState.Error(e.message ?: "登录失败")
             }
         }

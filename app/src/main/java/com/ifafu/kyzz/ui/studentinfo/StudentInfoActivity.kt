@@ -41,20 +41,20 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
     }
 
     private fun showLoading() {
-        binding.loadingLayout.visibility = View.VISIBLE
+        binding.petLoading.root.startLoading()
         binding.scrollContent.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
-        binding.loadingLayout.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.scrollContent.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
     }
 
     private fun showInfo(info: StudentInfo) {
-        binding.loadingLayout.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.scrollContent.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
         binding.contentLayout.removeAllViews()

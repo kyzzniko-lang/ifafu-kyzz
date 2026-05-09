@@ -3,6 +3,7 @@ package com.ifafu.kyzz.data.api
 import android.util.Log
 import com.ifafu.kyzz.data.model.Syllabus
 import com.ifafu.kyzz.data.network.HtmlClient
+import com.ifafu.kyzz.data.parser.HtmlParser
 import com.ifafu.kyzz.data.parser.SyllabusParser
 import com.ifafu.kyzz.data.repository.UserRepository
 import java.net.URLEncoder
@@ -16,6 +17,7 @@ import javax.inject.Singleton
 class SyllabusApi @Inject constructor(
     private val htmlClient: HtmlClient,
     private val syllabusParser: SyllabusParser,
+    private val htmlParser: HtmlParser,
     private val userApi: UserApi,
     private val reloginHelper: ReloginHelper,
     private val userRepository: UserRepository
@@ -43,6 +45,51 @@ class SyllabusApi @Inject constructor(
             syllabus
         } catch (e: Exception) {
             Log.e("SyllabusApi", "Failed to fetch syllabus", e)
+            null
+        }
+    }
+
+    suspend fun getSyllabusWithTerm(
+        host: String, token: String, number: String, name: String,
+        year: String, term: String
+    ): Syllabus? {
+        return try {
+            var accessUrl = "${host}/(${token})/xskbcx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
+            // 1. GET 获取 __VIEWSTATE
+            val initialDoc = htmlClient.get(accessUrl)
+            val initialHtml = initialDoc.html()
+            if (userApi.isSessionExpired(initialHtml)) {
+                val response = reloginHelper.relogin()
+                if (!response.success) return null
+                val user = userRepository.getUser()
+                accessUrl = "${host}/(${user.token})/xskbcx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121603"
+                htmlClient.get(accessUrl)
+            }
+
+            // 2. POST 切换学年+学期（__EVENTTARGET=xnd），与浏览器抓包完全一致
+            Log.d("SyllabusApi", "POST xnd=$year, xqd=$term")
+            val formBody = htmlClient.buildFormBody(
+                "__EVENTTARGET" to "xnd",
+                "__EVENTARGUMENT" to "",
+                "__VIEWSTATE" to htmlClient.viewState,
+                "xnd" to year,
+                "xqd" to term
+            )
+
+            val doc = htmlClient.post(accessUrl, formBody)
+            val html = doc.html()
+            Log.d("SyllabusApi", "Response length=${html.length}")
+            val tableIdx = html.indexOf("kbtable")
+            Log.d("SyllabusApi", "kbtable index=$tableIdx")
+            if (userApi.isSessionExpired(html)) {
+                Log.e("SyllabusApi", "Session expired after POST!")
+                return null
+            }
+            val syllabus = syllabusParser.parseSyllabus(doc, number)
+            Log.d("SyllabusApi", "Parsed: courses=${syllabus.courses.size}")
+            syllabus
+        } catch (e: Exception) {
+            Log.e("SyllabusApi", "Failed to fetch syllabus with term", e)
             null
         }
     }

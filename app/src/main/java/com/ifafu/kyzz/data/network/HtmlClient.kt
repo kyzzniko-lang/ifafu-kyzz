@@ -126,6 +126,19 @@ class HtmlClient @Inject constructor(
             .add("__VIEWSTATEGENERATOR", viewStateGenerator)
     }
 
+    data class SelectOptions(val options: List<String>, val selectedValue: String?)
+
+    fun parseSelectOptions(html: String, selectId: String): SelectOptions {
+        val doc = Jsoup.parse(html)
+        val select = doc.select("select[id=$selectId]").first()
+            ?: doc.select("select[name=$selectId]").first()
+            ?: return SelectOptions(emptyList(), null)
+        val options = select.select("option")
+        val values = options.map { it.attr("value") }
+        val selected = options.firstOrNull { it.hasAttr("selected") }?.attr("value")
+        return SelectOptions(values, selected)
+    }
+
     fun checkAlert(html: String): Response? {
         val doc = Jsoup.parse(html)
         val scripts = doc.select("script")

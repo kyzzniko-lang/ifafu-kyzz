@@ -17,8 +17,12 @@ import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.databinding.FragmentToolboxBinding
 import com.ifafu.kyzz.ui.about.AboutActivity
+import com.ifafu.kyzz.ui.calculator.ScoreCalculatorActivity
 import com.ifafu.kyzz.ui.comment.CommentTeacherActivity
+import com.ifafu.kyzz.ui.review.CourseReviewActivity
 import com.ifafu.kyzz.ui.comment.DiscussionActivity
+import com.ifafu.kyzz.ui.query.CourseSelectionActivity
+import com.ifafu.kyzz.ui.query.MakeupExamActivity
 import com.ifafu.kyzz.ui.score.ElectiveScoreActivity
 import com.ifafu.kyzz.ui.settings.SettingsActivity
 import com.ifafu.kyzz.ui.studentinfo.StudentInfoActivity
@@ -41,8 +45,12 @@ class ToolboxFragment : Fragment() {
 
         val items = listOf(
             ToolboxItem("校园讨论", "匿名讨论，畅所欲言", "", "") { startActivity(Intent(requireContext(), DiscussionActivity::class.java)) },
+            ToolboxItem("课程评价", "查看课程评价，避坑选课", "", "") { startActivity(Intent(requireContext(), CourseReviewActivity::class.java)) },
             ToolboxItem("教师评价", "快速完成教师评价", "xsjxpj.aspx", "N121401") { startActivity(Intent(requireContext(), CommentTeacherActivity::class.java)) },
+            ToolboxItem("成绩预测", "预测期末需要多少分及格", "", "") { startActivity(Intent(requireContext(), ScoreCalculatorActivity::class.java)) },
             ToolboxItem("选修学分查询", "查看选修学分完成情况", "", "") { startActivity(Intent(requireContext(), ElectiveScoreActivity::class.java)) },
+            ToolboxItem("选课情况查询", "查看全部选课记录", "xsxkqk.aspx", "N121615") { startActivity(Intent(requireContext(), CourseSelectionActivity::class.java)) },
+            ToolboxItem("补考考试查询", "查询补考考试安排", "xsbkkscx.aspx", "N121617") { startActivity(Intent(requireContext(), MakeupExamActivity::class.java)) },
             ToolboxItem("培养计划", "查看个人培养方案", "pyjh.aspx", "N121607") { startActivity(Intent(requireContext(), TrainingPlanActivity::class.java)) },
             ToolboxItem("个人信息", "查看学籍基本信息", "xsgrxx.aspx", "N121501") { startActivity(Intent(requireContext(), StudentInfoActivity::class.java)) },
             ToolboxItem("密码修改", "修改教务系统密码", "mmxg.aspx", "N121502") { startActivity(Intent(requireContext(), PasswordModifyActivity::class.java)) },

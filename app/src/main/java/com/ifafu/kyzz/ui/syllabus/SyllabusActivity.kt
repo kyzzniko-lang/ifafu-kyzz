@@ -49,20 +49,20 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
     }
 
     private fun showLoading() {
-        binding.loadingLayout.visibility = View.VISIBLE
+        binding.petLoading.root.startLoading()
         binding.contentLayout.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
-        binding.loadingLayout.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.contentLayout.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
     }
 
     private fun showSyllabus(syllabus: Syllabus) {
-        binding.loadingLayout.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.contentLayout.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
 

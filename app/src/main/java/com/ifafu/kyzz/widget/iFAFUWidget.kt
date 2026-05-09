@@ -43,8 +43,8 @@ class iFAFUWidget : AppWidgetProvider() {
                 val parsed = sdf.parse(firstDay) ?: return "日期格式错误"
                 val termStart = Calendar.getInstance().apply { time = parsed }
                 val today = Calendar.getInstance()
-                val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
-                val currentWeek = (diffDays / 7) + 1
+                val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
+                val currentWeek = ((diffDays / 7) + 1).coerceAtLeast(1)
                 val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
                 val todayDay = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
 

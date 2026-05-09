@@ -42,6 +42,8 @@ class ToolboxActivity : BaseActivity<ActivityToolboxBinding>() {
             ToolboxItem("校园讨论", "匿名讨论，畅所欲言", "", "") { startActivity(Intent(this, DiscussionActivity::class.java)) },
             ToolboxItem("教师评价", "快速完成教师评价", "xsjxpj.aspx", "N121401") { startActivity(Intent(this, CommentTeacherActivity::class.java)) },
             ToolboxItem("选修学分查询", "查看选修学分完成情况", "", "") { startActivity(Intent(this, ElectiveScoreActivity::class.java)) },
+            ToolboxItem("选课情况查询", "查看全部选课记录", "xsxkqk.aspx", "N121615") { startActivity(Intent(this, com.ifafu.kyzz.ui.query.CourseSelectionActivity::class.java)) },
+            ToolboxItem("补考考试查询", "查询补考考试安排", "xsbkkscx.aspx", "N121617") { startActivity(Intent(this, com.ifafu.kyzz.ui.query.MakeupExamActivity::class.java)) },
             ToolboxItem("培养计划", "查看个人培养方案", "pyjh.aspx", "N121607") { startActivity(Intent(this, TrainingPlanActivity::class.java)) },
             ToolboxItem("个人信息", "查看学籍基本信息", "xsgrxx.aspx", "N121501") { startActivity(Intent(this, StudentInfoActivity::class.java)) },
             ToolboxItem("密码修改", "修改教务系统密码", "mmxg.aspx", "N121502") { startActivity(Intent(this, PasswordModifyActivity::class.java)) },

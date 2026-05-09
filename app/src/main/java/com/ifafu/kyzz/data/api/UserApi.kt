@@ -111,7 +111,7 @@ class UserApi @Inject constructor(
             "__VIEWSTATEGENERATOR" to htmlClient.viewStateGenerator,
             "TextBox2" to oldPwd,
             "TextBox3" to newPwd,
-            "Textbox4" to newPwd,
+            "TextBox4" to newPwd,
             "Button1" to "修  改"
         )
 
@@ -172,6 +172,10 @@ class UserApi @Inject constructor(
     }
 
     fun isSessionExpired(html: String): Boolean {
-        return html.contains("账号或密码") || html.contains("请登录") || html.contains("default.aspx") || html.contains("default2.aspx")
+        if (html.contains("账号或密码") || html.contains("请登录")) return true
+        // Check for redirect to login page (URL-like pattern, not just any mention)
+        if (Regex("""location\s*[=.]\s*["'].*default[2]?\.aspx""").containsMatchIn(html)) return true
+        if (Regex("""window\.location\s*=\s*["'].*default[2]?\.aspx""").containsMatchIn(html)) return true
+        return false
     }
 }

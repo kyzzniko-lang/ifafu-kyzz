@@ -15,20 +15,23 @@ class ZFVerify(context: Context) {
 
     init {
         try {
-            val inputStream = context.assets.open("theta.dat")
-            val scanner = Scanner(inputStream)
-            for (i in 0 until 34) {
-                for (j in 0 until 337) {
-                    weight[i][j] = scanner.nextBigDecimal()
+            context.assets.open("theta.dat").use { inputStream ->
+                Scanner(inputStream).use { scanner ->
+                    for (i in 0 until 34) {
+                        for (j in 0 until 337) {
+                            weight[i][j] = scanner.nextBigDecimal()
+                        }
+                    }
                 }
             }
             initialized = true
-        } catch (e: IOException) {
+        } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
     fun recognize(bitmap: Bitmap): String {
+        if (!initialized) return ""
         val data = prepareData(bitmap)
         val x = Array(4) { Array(337) { BigDecimal.ZERO } }
         for (i in 0 until 4) {

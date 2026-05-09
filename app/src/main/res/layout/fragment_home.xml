@@ -13,7 +13,7 @@
 
         <com.google.android.material.appbar.CollapsingToolbarLayout
             android:layout_width="match_parent"
-            android:layout_height="240dp"
+            android:layout_height="260dp"
             app:layout_scrollFlags="scroll|exitUntilCollapsed"
             app:contentScrim="@color/claude_bg">
 
@@ -22,6 +22,13 @@
                 android:layout_height="match_parent">
 
                 <View
+                    android:id="@+id/headerBackground"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_header_gradient" />
+
+                <View
+                    android:id="@+id/headerDecor"
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_header_decor" />
@@ -29,15 +36,15 @@
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
-                    android:background="@drawable/bg_header_gradient"
                     android:gravity="center_horizontal"
                     android:orientation="vertical"
                     android:paddingStart="32dp"
-                    android:paddingTop="40dp"
+                    android:paddingTop="48dp"
                     android:paddingEnd="32dp"
                     android:paddingBottom="24dp">
 
                     <TextView
+                        android:id="@+id/tvAppName"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         style="@style/ClaudeDisplay.Light"
@@ -56,29 +63,21 @@
                         android:id="@+id/tvWelcome"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="16dp"
+                        android:layout_marginTop="20dp"
                         android:fontFamily="@font/claude_serif"
                         android:textColor="@color/white"
-                        android:textSize="16sp"
-                        android:letterSpacing="0.02" />
-
-                    <TextView
-                        android:id="@+id/tvTodaySummary"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="#B3FFFFFF"
-                        android:textSize="12sp" />
+                        android:textSize="18sp"
+                        android:letterSpacing="0.03" />
 
                     <TextView
                         android:id="@+id/tvDateInfo"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="2dp"
+                        android:layout_marginTop="6dp"
                         android:fontFamily="@font/claude_serif"
                         android:textColor="#99FFFFFF"
-                        android:textSize="11sp" />
+                        android:textSize="12sp"
+                        android:letterSpacing="0.05" />
 
                 </LinearLayout>
 
@@ -88,12 +87,17 @@
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <androidx.core.widget.NestedScrollView
+    <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
+        android:id="@+id/swipeRefresh"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:layout_marginTop="-16dp"
-        android:clipToPadding="false"
         app:layout_behavior="@string/appbar_scrolling_view_behavior">
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:clipToPadding="false">
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -101,10 +105,11 @@
             android:orientation="vertical"
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
-            android:paddingBottom="16dp">
+            android:paddingBottom="24dp">
 
             <!-- Quick info chips -->
             <HorizontalScrollView
+                android:id="@+id/chipsContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
@@ -160,50 +165,63 @@
                 </LinearLayout>
             </HorizontalScrollView>
 
-            <TextView
-                android:id="@+id/tvTodaySection"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:layout_marginBottom="10dp"
-                android:layout_marginTop="24dp"
-                android:visibility="gone"
-                style="@style/ClaudeOverline"
-                android:text="今日" />
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardTodayCourses"
-                style="@style/ClaudeCard"
+            <!-- Course progress bar -->
+            <LinearLayout
+                android:id="@+id/courseProgressContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
+                android:orientation="vertical"
+                android:layout_marginTop="16dp"
                 android:visibility="gone">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="16dp">
+                    android:gravity="center_vertical">
+
+                    <ProgressBar
+                        android:id="@+id/courseProgressBar"
+                        style="@android:style/Widget.ProgressBar.Horizontal"
+                        android:layout_width="0dp"
+                        android:layout_height="6dp"
+                        android:layout_weight="1"
+                        android:max="100"
+                        android:progress="0"
+                        android:progressTint="@color/claude_terracotta"
+                        android:progressBackgroundTint="@color/claude_border"
+                        android:layout_marginEnd="10dp" />
 
                     <TextView
+                        android:id="@+id/courseProgressText"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:fontFamily="@font/claude_serif"
-                        android:text="今日课程"
-                        android:textColor="@color/claude_terracotta"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-
-                    <LinearLayout
-                        android:id="@+id/todayCoursesContainer"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:orientation="vertical"
-                        android:layout_marginTop="8dp" />
+                        android:textColor="@color/claude_text_secondary"
+                        android:textSize="11sp" />
 
                 </LinearLayout>
 
-            </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
+
+            <!-- Today courses section -->
+            <TextView
+                android:id="@+id/tvTodaySection"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="4dp"
+                android:layout_marginBottom="12dp"
+                android:layout_marginTop="8dp"
+                android:visibility="gone"
+                style="@style/ClaudeOverline"
+                android:text="今日课程" />
+
+            <!-- Timeline courses container -->
+            <LinearLayout
+                android:id="@+id/timelineContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone" />
 
             <!-- Empty state for no courses -->
             <LinearLayout
@@ -216,11 +234,13 @@
                 android:paddingBottom="24dp"
                 android:visibility="gone">
 
-                <ImageView
-                    android:layout_width="48dp"
-                    android:layout_height="48dp"
-                    android:src="@drawable/bg_empty_state"
-                    android:alpha="0.5" />
+                <com.airbnb.lottie.LottieAnimationView
+                    android:id="@+id/emptyLottie"
+                    android:layout_width="120dp"
+                    android:layout_height="120dp"
+                    app:lottie_autoPlay="true"
+                    app:lottie_loop="true"
+                    android:src="@drawable/bg_empty_state" />
 
                 <TextView
                     android:layout_width="wrap_content"
@@ -242,11 +262,13 @@
 
             </LinearLayout>
 
+            <!-- Exam countdown card -->
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardExamCountdown"
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
                 android:layout_marginBottom="10dp"
                 android:visibility="gone">
 
@@ -276,250 +298,164 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Quick entry grid -->
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
                 android:layout_marginBottom="12dp"
-                android:layout_marginTop="12dp"
+                android:layout_marginTop="16dp"
                 style="@style/ClaudeOverline"
-                android:text="更多功能" />
+                android:text="快捷入口" />
 
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardGridSyllabus"
-                style="@style/ClaudeCard"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="?attr/selectableItemBackground">
+                android:orientation="horizontal"
+                android:layout_marginBottom="6dp">
 
                 <LinearLayout
-                    android:layout_width="match_parent"
+                    android:id="@+id/gridSyllabus"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="16dp">
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="16dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true">
 
                     <FrameLayout
-                        android:layout_width="40dp"
-                        android:layout_height="40dp">
+                        android:layout_width="52dp"
+                        android:layout_height="52dp">
 
                         <View
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:background="@drawable/bg_icon_circle" />
+                            android:layout_width="52dp"
+                            android:layout_height="52dp"
+                            android:background="@drawable/bg_grid_icon" />
 
                         <ImageView
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
+                            android:layout_width="26dp"
+                            android:layout_height="26dp"
                             android:layout_gravity="center"
                             android:src="@drawable/ic_grid_syllabus"
                             app:tint="@color/claude_terracotta" />
 
                     </FrameLayout>
 
-                    <LinearLayout
-                        android:layout_width="0dp"
+                    <TextView
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
-                            android:text="@string/nav_grid_syllabus"
-                            android:textColor="@color/claude_text_primary"
-                            android:textSize="15sp" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            style="@style/ClaudeCaption"
-                            android:text="二维表格形式查看课表" />
-
-                    </LinearLayout>
-
-                    <ImageView
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
-                        android:alpha="0.3"
-                        android:src="@drawable/ic_chevron_right"
-                        app:tint="@color/claude_text_tertiary" />
+                        android:layout_marginTop="10dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:text="@string/nav_grid_syllabus"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="12sp"
+                        android:gravity="center" />
 
                 </LinearLayout>
 
-            </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardElective"
-                style="@style/ClaudeCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="?attr/selectableItemBackground">
-
                 <LinearLayout
-                    android:layout_width="match_parent"
+                    android:id="@+id/gridElective"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="16dp">
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="16dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true">
 
                     <FrameLayout
-                        android:layout_width="40dp"
-                        android:layout_height="40dp">
+                        android:layout_width="52dp"
+                        android:layout_height="52dp">
 
                         <View
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:background="@drawable/bg_icon_circle" />
+                            android:layout_width="52dp"
+                            android:layout_height="52dp"
+                            android:background="@drawable/bg_grid_icon" />
 
                         <ImageView
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
+                            android:layout_width="26dp"
+                            android:layout_height="26dp"
                             android:layout_gravity="center"
                             android:src="@drawable/ic_elective"
                             app:tint="@color/claude_terracotta" />
 
                     </FrameLayout>
 
-                    <LinearLayout
-                        android:layout_width="0dp"
+                    <TextView
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
-                            android:text="@string/nav_elective"
-                            android:textColor="@color/claude_text_primary"
-                            android:textSize="15sp" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            style="@style/ClaudeCaption"
-                            android:text="在线选修课程" />
-
-                    </LinearLayout>
-
-                    <ImageView
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
-                        android:alpha="0.3"
-                        android:src="@drawable/ic_chevron_right"
-                        app:tint="@color/claude_text_tertiary" />
+                        android:layout_marginTop="10dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:text="@string/nav_elective"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="12sp"
+                        android:gravity="center" />
 
                 </LinearLayout>
 
-            </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardKyzzToolbox"
-                style="@style/ClaudeCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="?attr/selectableItemBackground">
-
                 <LinearLayout
-                    android:layout_width="match_parent"
+                    android:id="@+id/gridToolbox"
+                    android:layout_width="0dp"
                     android:layout_height="wrap_content"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal"
-                    android:padding="16dp">
+                    android:layout_weight="1"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:padding="16dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:clickable="true"
+                    android:focusable="true">
 
                     <FrameLayout
-                        android:layout_width="40dp"
-                        android:layout_height="40dp">
+                        android:layout_width="52dp"
+                        android:layout_height="52dp">
 
                         <View
-                            android:layout_width="40dp"
-                            android:layout_height="40dp"
-                            android:background="@drawable/bg_icon_circle" />
+                            android:layout_width="52dp"
+                            android:layout_height="52dp"
+                            android:background="@drawable/bg_grid_icon" />
 
                         <ImageView
-                            android:layout_width="22dp"
-                            android:layout_height="22dp"
+                            android:layout_width="26dp"
+                            android:layout_height="26dp"
                             android:layout_gravity="center"
                             android:src="@drawable/ic_toolbox"
                             app:tint="@color/claude_terracotta" />
 
                     </FrameLayout>
 
-                    <LinearLayout
-                        android:layout_width="0dp"
+                    <TextView
+                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginStart="16dp"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
-                            android:text="KYZZ工具箱"
-                            android:textColor="@color/claude_text_primary"
-                            android:textSize="15sp" />
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="2dp"
-                            style="@style/ClaudeCaption"
-                            android:text="帮抢选修课、体育课等" />
-
-                    </LinearLayout>
-
-                    <ImageView
-                        android:layout_width="16dp"
-                        android:layout_height="16dp"
-                        android:alpha="0.3"
-                        android:src="@drawable/ic_chevron_right"
-                        app:tint="@color/claude_text_tertiary" />
+                        android:layout_marginTop="10dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:text="KYZZ工具箱"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="12sp"
+                        android:gravity="center" />
 
                 </LinearLayout>
 
-            </com.google.android.material.card.MaterialCardView>
-
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardLogout"
-                style="@style/ClaudeCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:clickable="true"
-                android:focusable="true"
-                android:foreground="?attr/selectableItemBackground"
-                app:strokeColor="@color/claude_error">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="@font/claude_serif"
-                    android:gravity="center"
-                    android:padding="14dp"
-                    android:text="@string/nav_logout"
-                    android:textColor="@color/claude_error"
-                    android:textSize="14sp" />
-
-            </com.google.android.material.card.MaterialCardView>
+            </LinearLayout>
 
         </LinearLayout>
 
     </androidx.core.widget.NestedScrollView>
+
+    </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
+
+    <!-- Pet floating widget (positioned programmatically for drag support) -->
+    <include
+        android:id="@+id/petWidget"
+        layout="@layout/layout_pet"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="24dp" />
 
 </androidx.coordinatorlayout.widget.CoordinatorLayout>

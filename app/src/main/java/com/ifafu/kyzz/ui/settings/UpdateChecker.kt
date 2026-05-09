@@ -52,12 +52,12 @@ object UpdateChecker {
 
                 val response = client.newCall(request).execute()
                 if (!response.isSuccessful) {
-                    callback(null)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
                     return@Thread
                 }
 
                 val body = response.body?.string() ?: run {
-                    callback(null)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
                     return@Thread
                 }
 
@@ -65,12 +65,12 @@ object UpdateChecker {
                 val currentVersion = getCurrentVersion(context)
 
                 if (isNewerVersion(release.versionName, currentVersion) && release.apkAsset != null) {
-                    callback(release)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { callback(release) }
                 } else {
-                    callback(null)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
                 }
             } catch (_: Exception) {
-                callback(null)
+                android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
             }
         }.start()
     }
@@ -85,8 +85,8 @@ object UpdateChecker {
     }
 
     private fun isNewerVersion(latest: String, current: String): Boolean {
-        val latestParts = latest.split(".").map { it.toIntOrNull() ?: 0 }
-        val currentParts = current.split(".").map { it.toIntOrNull() ?: 0 }
+        val latestParts = latest.split(".").map { it.takeWhile { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+        val currentParts = current.split(".").map { it.takeWhile { c -> c.isDigit() }.toIntOrNull() ?: 0 }
         val maxLen = maxOf(latestParts.size, currentParts.size)
         for (i in 0 until maxLen) {
             val l = latestParts.getOrElse(i) { 0 }
@@ -117,10 +117,8 @@ object UpdateChecker {
 
                 context.unregisterReceiver(this)
 
-                val file = File(
-                    ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                    "ifafu-update.apk"
-                )
+                val dir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
+                val file = File(dir, "ifafu-update.apk")
 
                 val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)

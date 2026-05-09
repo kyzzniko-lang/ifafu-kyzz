@@ -198,11 +198,8 @@
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
         <include
-            android:id="@+id/shimmerPlaceholder"
-            layout="@layout/layout_shimmer_placeholder"
-            android:layout_width="match_parent"
-            android:layout_height="match_parent"
-            android:visibility="gone" />
+            android:id="@+id/petLoading"
+            layout="@layout/layout_pet_loading" />
 
         <LinearLayout
             android:id="@+id/errorLayout"

@@ -10,6 +10,7 @@ import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -22,6 +23,10 @@ class TrainingPlanViewModel @Inject constructor(
 
     private val _state = MutableLiveData<UiState<TrainingPlan>>()
     val state: LiveData<UiState<TrainingPlan>> = _state
+
+    init {
+        _state.value = UiState.Idle
+    }
 
     fun load(forceRefresh: Boolean = false) {
         val user = userRepository.getUser()
@@ -56,6 +61,8 @@ class TrainingPlanViewModel @Inject constructor(
                         _state.value = UiState.Error("获取培养计划失败，请检查网络后重试")
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val cached = cacheManager.loadTrainingPlan(userRepository.getUser().account)
                 if (cached != null && cached.courses.isNotEmpty()) {

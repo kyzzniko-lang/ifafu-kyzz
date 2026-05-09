@@ -33,6 +33,7 @@
         <activity android:name=".ui.score.ElectiveScoreActivity" />
         <activity android:name=".ui.exam.ExamActivity" />
         <activity android:name=".ui.elective.ElectiveCourseActivity" />
+        <activity android:name=".ui.elective.SimpleElectiveActivity" />
         <activity android:name=".ui.comment.CommentTeacherActivity" />
         <activity android:name=".ui.comment.DiscussionActivity" />
         <activity android:name=".ui.about.AboutActivity" />
@@ -45,6 +46,10 @@
         <activity android:name=".ui.toolbox.GradeExamActivity" />
         <activity android:name=".ui.toolbox.OnlineRegistrationActivity" />
         <activity android:name=".ui.settings.SettingsActivity" />
+        <activity android:name=".ui.query.CourseSelectionActivity" />
+        <activity android:name=".ui.query.MakeupExamActivity" />
+        <activity android:name=".ui.calculator.ScoreCalculatorActivity" />
+        <activity android:name=".ui.review.CourseReviewActivity" />
 
         <receiver
             android:name=".widget.iFAFUWidget"

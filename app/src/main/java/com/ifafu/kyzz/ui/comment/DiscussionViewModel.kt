@@ -41,7 +41,7 @@ class DiscussionViewModel @Inject constructor(
             return if (account.isNotEmpty()) {
                 val digest = java.security.MessageDigest.getInstance("SHA-256")
                 val hash = digest.digest(account.toByteArray())
-                "u_${hash.take(8).joinToString("") { "%02x".format(it) }}"
+                "u_${hash.take(8).joinToString("") { "%02x".format(it.toInt() and 0xFF) }}"
             } else ""
         }
 
@@ -161,7 +161,9 @@ class DiscussionViewModel @Inject constructor(
             try {
                 val comment = commentRepository.postComment(content, nickname, uid)
                 if (comment != null) {
-                    comments.add(0, comment)
+                    if (comments.none { it.objectId == comment.objectId }) {
+                        comments.add(0, comment)
+                    }
                     _postState.value = PostState.Success
                     _state.value = DiscussionState.Success(comments.toList(), userId)
                 } else {

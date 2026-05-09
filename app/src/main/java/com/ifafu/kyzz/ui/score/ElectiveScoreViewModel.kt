@@ -9,6 +9,7 @@ import com.ifafu.kyzz.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -21,6 +22,10 @@ class ElectiveScoreViewModel @Inject constructor(
 
     private val _state = MutableLiveData<State>()
     val state: LiveData<State> = _state
+
+    init {
+        _state.value = State.Loading
+    }
 
     fun load() {
         val user = userRepository.getUser()
@@ -43,6 +48,8 @@ class ElectiveScoreViewModel @Inject constructor(
                 } else {
                     _state.value = State.Error("加载失败")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = State.Error(e.message ?: "加载失败")
             }

@@ -8,7 +8,7 @@ object ContentFilter {
         // 色情低俗
         "色情", "裸聊", "约炮", "援交", "卖淫", "嫖娼", "淫秽", "黄片",
         "成人视频", "一夜情", "性交", "口交", "肛交", "自慰", "情趣用品",
-        "sm调教", "淫荡", "骚货", "荡妇", "鸡巴", "逼", "操你", "日你",
+        "sm调教", "淫荡", "骚货", "荡妇", "鸡巴", "操你", "日你",
         "草你", "干你", "肏", "屌", "骚逼", "贱逼", "婊子", "鸡巴",
 
         // 违法犯罪
@@ -41,9 +41,9 @@ object ContentFilter {
 
     // 正则模式：手机号、银行卡号等（防诈骗信息）
     private val suspiciousPatterns = listOf(
-        Regex("""1[3-9]\d{9}"""),           // 手机号
-        Regex("""\d{16,19}"""),              // 银行卡号
-        Regex("""(微信|QQ|qq)\s*[:：]?\s*\d{5,}"""),  // 联系方式引流
+        Regex("""(?<![0-9])1[3-9]\d{9}(?![0-9])"""),  // 手机号（前后非数字）
+        Regex("""(?<![0-9])\d{16,19}(?![0-9])"""),     // 银行卡号
+        Regex("""(微信|QQ|qq)\s*[:：]?\s*\d{5,}"""),   // 联系方式引流
         Regex("""(加我|加v|加V|扫码)[^，。,.]{0,10}"""),  // 引流话术
     )
 
@@ -51,7 +51,6 @@ object ContentFilter {
     private val spamPatterns = listOf(
         Regex("""(日赚|月入|躺赚|暴富)\d+"""),
         Regex("""(免费领|扫码领|点击领取)"""),
-        Regex("""(http|https)://[^\s]+"""),
     )
 
     fun check(content: String): FilterResult {
@@ -80,6 +79,10 @@ object ContentFilter {
                 if (pattern.containsMatchIn(text)) {
                     return FilterResult(false, "评论疑似包含联系方式或敏感信息")
                 }
+            }
+            // URL 拦截仅对短内容生效（长内容可能包含正常链接）
+            if (Regex("""(http|https)://[^\s]+""").containsMatchIn(text)) {
+                return FilterResult(false, "评论疑似垃圾信息")
             }
         }
 

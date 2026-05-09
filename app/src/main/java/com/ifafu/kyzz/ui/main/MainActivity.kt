@@ -1,7 +1,11 @@
 package com.ifafu.kyzz.ui.main
 
+import android.animation.ObjectAnimator
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
+import android.view.ViewGroup
+import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.navigation.NavController
@@ -39,6 +43,8 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
             if (navController.currentDestination?.id != item.itemId) {
                 navController.navigate(item.itemId, null, fadeOptions)
             }
+            // Animate the selected icon
+            animateNavIcon(item.itemId)
             true
         }
 
@@ -47,6 +53,24 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
         }
 
         scheduleCourseReminder()
+    }
+
+    private fun animateNavIcon(itemId: Int) {
+        // Find the icon view inside the selected BottomNavigationItemView
+        val menuView = binding.bottomNav.getChildAt(0) as? ViewGroup ?: return
+        for (i in 0 until menuView.childCount) {
+            val itemView = menuView.getChildAt(i)
+            val item = binding.bottomNav.menu.getItem(i)
+            val icon = itemView.findViewById<ImageView>(com.google.android.material.R.id.icon) ?: continue
+            if (item.itemId == itemId) {
+                // Bounce scale animation on selected tab
+                ObjectAnimator.ofFloat(icon, View.SCALE_X, 1f, 1.3f, 1f).setDuration(300).start()
+                ObjectAnimator.ofFloat(icon, View.SCALE_Y, 1f, 1.3f, 1f).setDuration(300).start()
+            } else {
+                icon.scaleX = 1f
+                icon.scaleY = 1f
+            }
+        }
     }
 
     private fun scheduleCourseReminder() {
@@ -85,7 +109,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
         if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_DOWN) {
             if (navController.currentDestination?.id != R.id.homeFragment) {
-                navController.navigate(R.id.homeFragment)
+                navController.popBackStack(R.id.homeFragment, false)
                 binding.bottomNav.selectedItemId = R.id.homeFragment
                 return true
             }

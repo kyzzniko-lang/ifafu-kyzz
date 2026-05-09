@@ -1,10 +1,12 @@
 package com.ifafu.kyzz.ui.score
 
+import android.animation.ValueAnimator
 import android.os.Bundle
 import android.view.Gravity
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.FrameLayout
@@ -14,7 +16,6 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.observe
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.facebook.shimmer.ShimmerFrameLayout
 import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Score
@@ -32,6 +33,12 @@ class ScoreFragment : Fragment() {
     private var selectedTerm: String? = null
     private var spinnerReady = false
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putString("selectedYear", selectedYear)
+        outState.putString("selectedTerm", selectedTerm)
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentScoreBinding.inflate(inflater, container, false)
         return binding.root
@@ -39,6 +46,8 @@ class ScoreFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        selectedYear = savedInstanceState?.getString("selectedYear")
+        selectedTerm = savedInstanceState?.getString("selectedTerm")
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadScores(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadScores(forceRefresh = true) }
@@ -103,26 +112,21 @@ class ScoreFragment : Fragment() {
         }
     }
 
-    private val shimmer get() = binding.shimmerPlaceholder.root
-
     private fun showLoading() {
-        shimmer.startShimmer()
-        shimmer.visibility = View.VISIBLE
+        binding.petLoading.root.startLoading()
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
-        shimmer.stopShimmer()
-        shimmer.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
     }
 
     private fun showScores(scores: List<Score>) {
-        shimmer.stopShimmer()
-        shimmer.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.recyclerView.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
 
@@ -156,9 +160,18 @@ class ScoreFragment : Fragment() {
             if (totalCredits > 0) weightedSum / totalCredits / 25f else 0f
         }
 
-        binding.tvGPA.text = String.format("%.2f", gpa)
-        binding.tvWeightedAvg.text = String.format("%.1f", weightedAvg)
-        binding.tvTotalCredits.text = String.format("%.1f", totalCredits)
+        // Animated counter for stats
+        animateCounter(binding.tvGPA, 0f, gpa, "%.2f", 800)
+        animateCounter(binding.tvWeightedAvg, 0f, weightedAvg, "%.1f", 800)
+        animateCounter(binding.tvTotalCredits, 0f, totalCredits, "%.1f", 800)
+    }
+
+    private fun animateCounter(textView: TextView, from: Float, to: Float, format: String, duration: Long) {
+        val animator = ValueAnimator.ofFloat(from, to)
+        animator.duration = duration
+        animator.interpolator = AccelerateDecelerateInterpolator()
+        animator.addUpdateListener { textView.text = String.format(format, it.animatedValue as Float) }
+        animator.start()
     }
 
     private fun computeTrendData(scores: List<Score>): List<GpaTrendView.Point>? {

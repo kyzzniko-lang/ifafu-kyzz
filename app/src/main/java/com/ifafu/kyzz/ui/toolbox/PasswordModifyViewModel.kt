@@ -19,6 +19,10 @@ class PasswordModifyViewModel @Inject constructor(
     private val _state = MutableLiveData<State>()
     val state: LiveData<State> = _state
 
+    init {
+        _state.value = State.Idle
+    }
+
     fun submitPassword(newPwd: String, confirmPwd: String, confirmPwd2: String) {
         val user = userRepository.getUser()
         if (!user.isLogin) {
@@ -40,7 +44,7 @@ class PasswordModifyViewModel @Inject constructor(
                 val formBody = htmlClient.buildViewStateFormBody()
                     .add("TextBox2", newPwd)
                     .add("TextBox3", confirmPwd)
-                    .add("Textbox4", confirmPwd2)
+                    .add("TextBox4", confirmPwd2)
                     .add("Button1", "修 改")
                     .build()
 

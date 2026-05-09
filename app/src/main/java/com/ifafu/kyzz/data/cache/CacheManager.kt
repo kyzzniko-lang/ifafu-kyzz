@@ -37,6 +37,20 @@ class CacheManager @Inject constructor(
     fun loadSyllabusTimestamp(account: String): Long =
         prefs.getLong("syllabus_${account}_ts", 0L)
 
+    fun saveSyllabus(account: String, syllabus: Syllabus, yearTermKey: String) {
+        val key = if (yearTermKey.isEmpty()) "syllabus_$account" else "syllabus_${account}_$yearTermKey"
+        prefs.edit()
+            .putString(key, gson.toJson(syllabus))
+            .putLong("${key}_ts", System.currentTimeMillis())
+            .apply()
+    }
+
+    fun loadSyllabus(account: String, yearTermKey: String): Syllabus? {
+        val key = if (yearTermKey.isEmpty()) "syllabus_$account" else "syllabus_${account}_$yearTermKey"
+        val json = prefs.getString(key, null) ?: return null
+        return try { gson.fromJson(json, Syllabus::class.java) } catch (_: Exception) { null }
+    }
+
     fun saveScores(account: String, scores: List<Score>) {
         prefs.edit()
             .putString("scores_$account", gson.toJson(scores))
@@ -71,7 +85,14 @@ class CacheManager @Inject constructor(
 
     fun clearCache(account: String) {
         prefs.edit().apply {
+            // Remove default syllabus cache
             remove("syllabus_$account"); remove("syllabus_${account}_ts")
+            // Remove year-term-specific syllabus caches
+            for ((key, _) in prefs.all) {
+                if (key.startsWith("syllabus_${account}_") && key != "syllabus_${account}_ts") {
+                    remove(key)
+                }
+            }
             remove("scores_$account"); remove("scores_${account}_ts")
             remove("exams_$account"); remove("exams_${account}_ts")
             remove("student_info_$account"); remove("student_info_${account}_ts")
@@ -149,5 +170,30 @@ class CacheManager @Inject constructor(
             }
         }
         return size
+    }
+
+    fun saveChatHistory(account: String, messages: List<com.ifafu.kyzz.data.api.PetChatApi.ChatMessage>) {
+        prefs.edit()
+            .putString("chat_history_$account", gson.toJson(messages.map { mapOf("content" to it.content, "isUser" to it.isUser) }))
+            .apply()
+    }
+
+    fun loadChatHistory(account: String): List<com.ifafu.kyzz.data.api.PetChatApi.ChatMessage> {
+        val json = prefs.getString("chat_history_$account", null) ?: return emptyList()
+        return try {
+            val list = gson.fromJson(json, object : TypeToken<List<Map<String, Any>>>() {}.type) as List<Map<String, Any>>
+            list.map { com.ifafu.kyzz.data.api.PetChatApi.ChatMessage(it["content"] as? String ?: "", it["isUser"] as? Boolean ?: false) }
+        } catch (_: Exception) { emptyList() }
+    }
+
+    fun saveExamProgress(account: String, progress: List<com.ifafu.kyzz.data.model.ExamProgress>) {
+        prefs.edit().putString("exam_progress_$account", gson.toJson(progress)).apply()
+    }
+
+    fun loadExamProgress(account: String): List<com.ifafu.kyzz.data.model.ExamProgress> {
+        val json = prefs.getString("exam_progress_$account", null) ?: return emptyList()
+        return try {
+            gson.fromJson(json, object : TypeToken<List<com.ifafu.kyzz.data.model.ExamProgress>>() {}.type)
+        } catch (_: Exception) { emptyList() }
     }
 }

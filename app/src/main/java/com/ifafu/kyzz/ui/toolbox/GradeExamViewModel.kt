@@ -10,6 +10,7 @@ import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -22,6 +23,10 @@ class GradeExamViewModel @Inject constructor(
 
     private val _state = MutableLiveData<UiState<List<GradeExam>>>()
     val state: LiveData<UiState<List<GradeExam>>> = _state
+
+    init {
+        _state.value = UiState.Idle
+    }
 
     fun load(forceRefresh: Boolean = false) {
         val user = userRepository.getUser()
@@ -47,6 +52,8 @@ class GradeExamViewModel @Inject constructor(
                 )
                 cacheManager.saveGradeExams(freshUser.account, exams)
                 _state.value = UiState.Success(exams)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val cached = cacheManager.loadGradeExams(userRepository.getUser().account)
                 if (cached != null && cached.isNotEmpty()) {

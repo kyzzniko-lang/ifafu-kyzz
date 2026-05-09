@@ -10,6 +10,7 @@ import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -59,7 +60,7 @@ class MainViewModel @Inject constructor(
             val parsed = sdf.parse(firstDay) ?: return 0
             val termStart = Calendar.getInstance().apply { time = parsed }
             val today = Calendar.getInstance()
-            val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
+            val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
             (diffDays / 7) + 1
         } catch (_: Exception) { 0 }
     }
@@ -92,6 +93,8 @@ class MainViewModel @Inject constructor(
                 } else {
                     _todayCourses.value = emptyList()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 _todayCourses.value = emptyList()
             }
@@ -111,7 +114,7 @@ class MainViewModel @Inject constructor(
             }
             val termStart = Calendar.getInstance().apply { time = parsed }
             val today = Calendar.getInstance()
-            val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000)).toInt()
+            val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
             val currentWeek = (diffDays / 7) + 1
             _currentWeek.postValue(currentWeek)
             val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
@@ -121,7 +124,7 @@ class MainViewModel @Inject constructor(
                 currentWeek in c.weekBegin..c.weekEnd && c.weekDay == todayDay &&
                     (c.oddOrTwice == 0 || (c.oddOrTwice == 1 && currentWeek % 2 == 1) || (c.oddOrTwice == 2 && currentWeek % 2 == 0))
             }.sortedBy { it.begin }.map { TodayCourse(it.name, it.teacher, it.address, it.begin, it.end) }
-            _todayCourses.value = matched
+            _todayCourses.postValue(matched)
         } catch (_: Exception) {
             _todayCourses.value = emptyList()
         }
@@ -150,6 +153,8 @@ class MainViewModel @Inject constructor(
                 } else {
                     _nextExam.value = null
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 _nextExam.value = null
             }
@@ -192,7 +197,7 @@ class MainViewModel @Inject constructor(
                     set(nowCal.get(Calendar.YEAR), nowCal.get(Calendar.MONTH), nowCal.get(Calendar.DAY_OF_MONTH), 0, 0, 0)
                     set(Calendar.MILLISECOND, 0)
                 }
-                val dayDiff = ((examDay.timeInMillis - todayDay.timeInMillis) / (24.0 * 60 * 60 * 1000)).toInt()
+                val dayDiff = ((examDay.timeInMillis - todayDay.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
                 if (dayDiff >= -1) Triple(exam, dayDiff, parsedTime) else null
             } catch (e: Exception) {
                 android.util.Log.w("MainViewModel", "Error parsing exam: ${e.message}")
@@ -220,10 +225,7 @@ class MainViewModel @Inject constructor(
     private fun fetchTermFirstDayFromGitHub() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
-                val client = okhttp3.OkHttpClient.Builder()
-                    .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
-                    .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
-                    .build()
+                val client = githubClient
                 val request = okhttp3.Request.Builder()
                     .url("https://api.github.com/repos/kyzzniko-lang/ifafu-kyzz/issues/2")
                     .header("Accept", "application/vnd.github.v3+json")
@@ -286,9 +288,9 @@ class MainViewModel @Inject constructor(
         val month = cal.get(Calendar.MONTH)
         val year = cal.get(Calendar.YEAR)
         val termStart = if (month in 1..6) {
-            Calendar.getInstance().apply { set(year, Calendar.MARCH, 2, 0, 0, 0) }
+            Calendar.getInstance().apply { set(year, Calendar.MARCH, 2, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
         } else {
-            Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0) }
+            Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
         }
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         userRepository.termFirstDay = sdf.format(termStart.time)
@@ -301,4 +303,13 @@ class MainViewModel @Inject constructor(
         val begin: Int,
         val end: Int
     )
+
+    companion object {
+        private val githubClient by lazy {
+            okhttp3.OkHttpClient.Builder()
+                .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+        }
+    }
 }

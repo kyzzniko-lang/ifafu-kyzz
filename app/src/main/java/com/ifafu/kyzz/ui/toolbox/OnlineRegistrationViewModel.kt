@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.net.URLEncoder
 import javax.inject.Inject
@@ -19,6 +20,10 @@ class OnlineRegistrationViewModel @Inject constructor(
 
     private val _state = MutableLiveData<State>()
     val state: LiveData<State> = _state
+
+    init {
+        _state.value = State.Loading
+    }
 
     fun load() {
         val user = userRepository.getUser()
@@ -36,6 +41,8 @@ class OnlineRegistrationViewModel @Inject constructor(
                 } else {
                     _state.value = State.Success(html)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = State.Error(e.message ?: "加载失败")
             }

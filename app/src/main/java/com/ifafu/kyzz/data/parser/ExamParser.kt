@@ -39,6 +39,7 @@ class ExamParser @Inject constructor(
         if (table != null) {
             val rows = table.select("tr")
             for (row in rows) {
+                if (row.select("th").isNotEmpty()) continue
                 val cells = row.select("td")
                 if (cells.size >= 8) {
                     exams.add(Exam(

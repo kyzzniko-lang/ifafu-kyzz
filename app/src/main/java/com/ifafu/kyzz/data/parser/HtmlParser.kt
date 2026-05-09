@@ -16,7 +16,7 @@ class HtmlParser @Inject constructor() {
         val html = doc.html()
         val startIdx = html.indexOf(startTag)
         val endIdx = html.indexOf(endTag)
-        if (startIdx < 0 || endIdx < 0) return ParsedOptions()
+        if (startIdx < 0 || endIdx < 0 || startIdx >= endIdx) return ParsedOptions()
 
         val options = mutableListOf<String>()
         var selectedIndex = 0
@@ -37,7 +37,7 @@ class HtmlParser @Inject constructor() {
         val startIdx = html.indexOf(startTag)
         if (startIdx < 0) return ParsedOptions()
         val endIdx = if (endTag != null) html.indexOf(endTag) else html.length
-        if (endIdx < 0) return ParsedOptions()
+        if (endIdx < 0 || startIdx >= endIdx) return ParsedOptions()
 
         val options = mutableListOf<String>()
         var selectedIndex = 0

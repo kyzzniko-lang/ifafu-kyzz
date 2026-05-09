@@ -18,7 +18,7 @@ class CommentTeacherApi @Inject constructor(
 ) {
 
     suspend fun commentAllTeachers(host: String, token: String, number: String, name: String): Response {
-        val accessUrl = "${host}/(${token})/xsjxpj2fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121400"
+        val accessUrl = "${host}/(${token})/xsjxpj.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121401"
 
         var html = htmlClient.getString(accessUrl)
         if (html.isBlank()) return Response(false, -1, "网络异常")
@@ -28,7 +28,7 @@ class CommentTeacherApi @Inject constructor(
             if (!reloginResp.success) return Response(false, -1, reloginResp.message)
             val user = userRepository.getUser()
             val newToken = user.token
-            val retryUrl = "${host}/(${newToken})/xsjxpj2fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121400"
+            val retryUrl = "${host}/(${newToken})/xsjxpj.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121401"
             html = htmlClient.getString(retryUrl)
             if (html.isBlank() || userApi.isSessionExpired(html)) {
                 return Response(false, -1, "会话已过期，请重新登录")
@@ -43,7 +43,7 @@ class CommentTeacherApi @Inject constructor(
     }
 
     private suspend fun commentAllTeachersInternal(host: String, token: String, number: String, name: String, html: String): Response {
-        val accessUrl = "${host}/(${token})/xsjxpj2fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121400"
+        val accessUrl = "${host}/(${token})/xsjxpj.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121401"
 
         val patternList = Regex("open\\('(.*?)',")
         patternList.findAll(html).forEach { match ->
@@ -86,11 +86,11 @@ class CommentTeacherApi @Inject constructor(
         val pattern = Regex("table id=\"Datagrid1__(.*?)_rb\"")
         pattern.findAll(html).forEach { match ->
             val value = if (random.nextInt(100) > 10) "94" else "82"
-            formBuilder.add("Datagrid1%3A_${match.groupValues[1]}%3Arb", value)
+            formBuilder.add("Datagrid1\$_${match.groupValues[1]}\$_rb", value)
         }
 
-        formBuilder.add("Datagrid1%3A_${String.format("ctl%d", 4 + random.nextInt(2))}%3Arb", "94")
-        formBuilder.add("Datagrid1%3A_${String.format("ctl%d", 2 + random.nextInt(2))}%3Arb", "82")
+        formBuilder.add("Datagrid1\$_${String.format("ctl%d", 4 + random.nextInt(2))}\$_rb", "94")
+        formBuilder.add("Datagrid1\$_${String.format("ctl%d", 2 + random.nextInt(2))}\$_rb", "82")
         formBuilder.add("__VIEWSTATE", htmlClient.viewState)
         formBuilder.add("__VIEWSTATEGENERATOR", htmlClient.viewStateGenerator)
         formBuilder.add("txt_pjxx", "")

@@ -11,6 +11,7 @@ import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -31,6 +32,8 @@ class ExamViewModel @Inject constructor(
     init {
         _state.value = UiState.Idle
     }
+
+    fun getUser() = userRepository.getUser()
 
     fun loadExams(forceRefresh: Boolean = false) {
         val user = userRepository.getUser()
@@ -65,6 +68,8 @@ class ExamViewModel @Inject constructor(
                         _state.value = UiState.Error("获取考试信息失败，请检查网络后重试")
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load exams", e)
                 val cached = cacheManager.loadExamTable(userRepository.getUser().account)

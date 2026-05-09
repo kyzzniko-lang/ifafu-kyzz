@@ -2,6 +2,7 @@ package com.ifafu.kyzz.ui.toolbox
 
 import android.os.Bundle
 import android.widget.Toast
+import com.ifafu.kyzz.BuildConfig
 import androidx.lifecycle.lifecycleScope
 import com.ifafu.kyzz.databinding.ActivityKyzzToolboxBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
@@ -19,9 +20,9 @@ import org.json.JSONObject
 @AndroidEntryPoint
 class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
 
-    private val repoOwner = "26651lll"
+    private val repoOwner = "kyzzniko-lang"
     private val repoName = "ifafu-kyzz"
-    private val githubToken = ""
+    private val githubToken = com.ifafu.kyzz.BuildConfig.GITHUB_TOKEN.orEmpty()
 
     override fun createBinding(): ActivityKyzzToolboxBinding = ActivityKyzzToolboxBinding.inflate(layoutInflater)
 

@@ -11,13 +11,15 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.observe
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.facebook.shimmer.ShimmerFrameLayout
 import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
+import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Exam
+import com.ifafu.kyzz.data.model.ExamProgress
 import com.ifafu.kyzz.databinding.FragmentExamBinding
 import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class ExamFragment : Fragment() {
@@ -25,6 +27,9 @@ class ExamFragment : Fragment() {
     private var _binding: FragmentExamBinding? = null
     private val binding get() = _binding!!
     private val viewModel: ExamViewModel by viewModels()
+
+    @Inject
+    lateinit var cacheManager: CacheManager
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = FragmentExamBinding.inflate(inflater, container, false)
@@ -57,26 +62,21 @@ class ExamFragment : Fragment() {
         viewModel.loadExams()
     }
 
-    private val shimmer get() = binding.shimmerPlaceholder.root
-
     private fun showLoading() {
-        shimmer.startShimmer()
-        shimmer.visibility = View.VISIBLE
+        binding.petLoading.root.startLoading()
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
-        shimmer.stopShimmer()
-        shimmer.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
     }
 
     private fun showExams(exams: List<Exam>) {
-        shimmer.stopShimmer()
-        shimmer.visibility = View.GONE
+        binding.petLoading.root.stopLoading()
         binding.recyclerView.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
 
@@ -87,8 +87,14 @@ class ExamFragment : Fragment() {
         }
         allItems.addAll(exams)
 
+        // Load exam progress
+        val account = viewModel.getUser()?.account ?: ""
+        val progressMap = if (account.isNotEmpty()) {
+            cacheManager.loadExamProgress(account).associateBy { it.examId }
+        } else emptyMap()
+
         binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
-        binding.recyclerView.adapter = ExamAdapter(allItems)
+        binding.recyclerView.adapter = ExamAdapter(allItems, progressMap.toMutableMap())
     }
 
     private fun findConflicts(exams: List<Exam>): List<List<Exam>> {
@@ -104,14 +110,19 @@ class ExamFragment : Fragment() {
             for (fmt in datePatterns) {
                 try { dateStr = fmt.format(fmt.parse(raw)!!); break } catch (_: Exception) {}
             }
-            dateStr
-        }.filter { it.key.isNotEmpty() && it.value.size > 1 }
+            val timePart = exam.datetime.replace("（", "(").replace("）", ")")
+                .split("(", " ").drop(1).firstOrNull()?.trim() ?: ""
+            "${dateStr}|$timePart"
+        }.filter { it.key.isNotBlank() && it.key != "|" && it.value.size > 1 }
         return grouped.values.toList()
     }
 
     data class ConflictWarning(val groups: List<List<Exam>>)
 
-    inner class ExamAdapter(private val items: List<Any>) :
+    inner class ExamAdapter(
+        private val items: List<Any>,
+        private val progressMap: MutableMap<String, ExamProgress>
+    ) :
         androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
 
         private val TYPE_WARNING = 0
@@ -178,11 +189,75 @@ class ExamFragment : Fragment() {
             } else if (holder is ExamVH) {
                 val exam = items[position] as Exam
                 holder.content.removeAllViews()
-                holder.content.addView(TextView(requireContext()).apply {
+
+                // Title row with review status tag
+                val titleRow = LinearLayout(requireContext()).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                }
+                titleRow.addView(TextView(requireContext()).apply {
                     text = exam.name; setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                     typeface = resources.getFont(R.font.claude_serif)
+                    layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
+                val progress = progressMap[exam.id]
+                val statusTag = TextView(requireContext()).apply {
+                    text = when (progress?.status) {
+                        1 -> "复习中"
+                        2 -> "已掌握"
+                        else -> "未开始"
+                    }
+                    textSize = 11f
+                    typeface = resources.getFont(R.font.claude_serif)
+                    setPadding(12, 4, 12, 4)
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                        cornerRadius = 10f
+                        setColor(when (progress?.status) {
+                            1 -> 0x1AB7791F.toInt() // warning bg
+                            2 -> 0x1A2D7A4F.toInt() // success bg
+                            else -> 0x1A9C958E.toInt() // hint bg
+                        })
+                    }
+                    setTextColor(when (progress?.status) {
+                        1 -> resources.getColor(R.color.claude_warning, null)
+                        2 -> resources.getColor(R.color.claude_success, null)
+                        else -> resources.getColor(R.color.claude_text_tertiary, null)
+                    })
+                    setOnClickListener {
+                        val currentStatus = progressMap[exam.id]?.status ?: 0
+                        val newStatus = (currentStatus + 1) % 3
+                        progressMap[exam.id] = ExamProgress(exam.id, newStatus)
+                        // Save to cache
+                        val account = viewModel.getUser()?.account ?: return@setOnClickListener
+                        cacheManager.saveExamProgress(account, progressMap.values.toList())
+                        // Update tag display
+                        text = when (newStatus) {
+                            1 -> "复习中"
+                            2 -> "已掌握"
+                            else -> "未开始"
+                        }
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                            cornerRadius = 10f
+                            setColor(when (newStatus) {
+                                1 -> 0x1AB7791F.toInt()
+                                2 -> 0x1A2D7A4F.toInt()
+                                else -> 0x1A9C958E.toInt()
+                            })
+                        }
+                        setTextColor(when (newStatus) {
+                            1 -> resources.getColor(R.color.claude_warning, null)
+                            2 -> resources.getColor(R.color.claude_success, null)
+                            else -> resources.getColor(R.color.claude_text_tertiary, null)
+                        })
+                    }
+                    isClickable = true
+                }
+                titleRow.addView(statusTag)
+                holder.content.addView(titleRow)
+
                 holder.content.addView(TextView(requireContext()).apply {
                     text = "时间: ${exam.datetime}"; setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)

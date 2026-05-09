@@ -34,55 +34,70 @@ class ElectiveViewModel @Inject constructor(
             return
         }
         viewModelScope.launch {
-            _state.value = ElectiveState.Loading
-            val freshUser = userRepository.getUser()
-            val list = ElectiveCourseList()
-            val response = electiveCourseApi.getElectiveCourseIndex(
-                userRepository.host, freshUser.token, freshUser.account, freshUser.name, list
-            )
-            if (response.success) {
-                _courseList.value = list
-                _state.value = ElectiveState.Success(response.message)
-            } else {
-                _state.value = ElectiveState.Error(response.message)
+            try {
+                _state.value = ElectiveState.Loading
+                val freshUser = userRepository.getUser()
+                val list = ElectiveCourseList()
+                val response = electiveCourseApi.getElectiveCourseIndex(
+                    userRepository.host, freshUser.token, freshUser.account, freshUser.name, list
+                )
+                if (response.success) {
+                    _courseList.value = list
+                    _state.value = ElectiveState.Success(response.message)
+                } else {
+                    _state.value = ElectiveState.Error(response.message)
+                }
+            } catch (e: Exception) {
+                _state.value = ElectiveState.Error("加载失败：${e.message}")
             }
         }
     }
 
     fun searchCourses() {
         viewModelScope.launch {
-            _state.value = ElectiveState.Loading
-            val freshUser = userRepository.getUser()
-            val response = electiveCourseApi.searchElectiveCourse(
-                userRepository.host, freshUser.token, freshUser.account, freshUser.name, _courseList.value ?: ElectiveCourseList()
-            )
-            if (response.success) {
-                _state.value = ElectiveState.Success(response.message)
-            } else {
-                _state.value = ElectiveState.Error(response.message)
+            try {
+                _state.value = ElectiveState.Loading
+                val freshUser = userRepository.getUser()
+                val response = electiveCourseApi.searchElectiveCourse(
+                    userRepository.host, freshUser.token, freshUser.account, freshUser.name, _courseList.value ?: ElectiveCourseList()
+                )
+                if (response.success) {
+                    _state.value = ElectiveState.Success(response.message)
+                } else {
+                    _state.value = ElectiveState.Error(response.message)
+                }
+            } catch (e: Exception) {
+                _state.value = ElectiveState.Error("搜索失败：${e.message}")
             }
         }
     }
 
     fun selectCourse(courseIndex: String) {
         viewModelScope.launch {
-            _state.value = ElectiveState.Loading
-            val freshUser = userRepository.getUser()
-            val response = electiveCourseApi.electiveCourse(
-                userRepository.host, freshUser.token, freshUser.account, freshUser.name,
-                _courseList.value ?: ElectiveCourseList(), courseIndex
-            )
-            if (response.success) {
-                val list = ElectiveCourseList()
-                val listResponse = electiveCourseApi.getElectiveCourseIndex(
-                    userRepository.host, freshUser.token, freshUser.account, freshUser.name, list
+            try {
+                _state.value = ElectiveState.Loading
+                val freshUser = userRepository.getUser()
+                val response = electiveCourseApi.electiveCourse(
+                    userRepository.host, freshUser.token, freshUser.account, freshUser.name,
+                    _courseList.value ?: ElectiveCourseList(), courseIndex
                 )
-                if (listResponse.success) {
-                    _courseList.value = list
+                if (response.success) {
+                    _state.value = ElectiveState.Success(response.message)
+                    // Refresh course list after successful selection
+                    try {
+                        val list = ElectiveCourseList()
+                        val listResponse = electiveCourseApi.getElectiveCourseIndex(
+                            userRepository.host, freshUser.token, freshUser.account, freshUser.name, list
+                        )
+                        if (listResponse.success) {
+                            _courseList.value = list
+                        }
+                    } catch (_: Exception) { }
+                } else {
+                    _state.value = ElectiveState.Error(response.message)
                 }
-                _state.value = ElectiveState.Success(response.message)
-            } else {
-                _state.value = ElectiveState.Error(response.message)
+            } catch (e: Exception) {
+                _state.value = ElectiveState.Error("选课失败：${e.message}")
             }
         }
     }

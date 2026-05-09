@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="24dp"
+    android:gravity="center_horizontal">
+
+    <!-- Pet image -->
+    <com.airbnb.lottie.LottieAnimationView
+        android:id="@+id/ivPetDialog"
+        android:layout_width="160dp"
+        android:layout_height="160dp"
+        app:lottie_autoPlay="true"
+        app:lottie_loop="true"
+        android:src="@drawable/pet_cat_happy" />
+
+    <!-- Pet name + level -->
+    <TextView
+        android:id="@+id/tvPetName"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:fontFamily="@font/claude_serif"
+        android:textColor="@color/claude_text_primary"
+        android:textSize="20sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvPetTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:fontFamily="@font/claude_serif"
+        android:textColor="@color/claude_terracotta"
+        android:textSize="13sp" />
+
+    <!-- Stats -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:orientation="vertical">
+
+        <!-- Mood bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:text="心情"
+                android:fontFamily="@font/claude_serif"
+                android:textColor="@color/claude_text_secondary"
+                android:textSize="12sp" />
+
+            <ProgressBar
+                android:id="@+id/progressMood"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="0dp"
+                android:layout_height="8dp"
+                android:layout_weight="1"
+                android:max="100"
+                android:progressTint="@color/claude_terracotta"
+                android:progressBackgroundTint="@color/claude_border" />
+
+            <TextView
+                android:id="@+id/tvMoodValue"
+                android:layout_width="36dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:fontFamily="@font/claude_serif"
+                android:textColor="@color/claude_text_secondary"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+
+        <!-- Hunger bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:layout_marginBottom="8dp">
+
+            <TextView
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:text="饱食"
+                android:fontFamily="@font/claude_serif"
+                android:textColor="@color/claude_text_secondary"
+                android:textSize="12sp" />
+
+            <ProgressBar
+                android:id="@+id/progressHunger"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="0dp"
+                android:layout_height="8dp"
+                android:layout_weight="1"
+                android:max="100"
+                android:progressTint="@color/claude_success"
+                android:progressBackgroundTint="@color/claude_border" />
+
+            <TextView
+                android:id="@+id/tvHungerValue"
+                android:layout_width="36dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:fontFamily="@font/claude_serif"
+                android:textColor="@color/claude_text_secondary"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+
+        <!-- Exp bar -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="48dp"
+                android:layout_height="wrap_content"
+                android:text="经验"
+                android:fontFamily="@font/claude_serif"
+                android:textColor="@color/claude_text_secondary"
+                android:textSize="12sp" />
+
+            <ProgressBar
+                android:id="@+id/progressExp"
+                style="@android:style/Widget.ProgressBar.Horizontal"
+                android:layout_width="0dp"
+                android:layout_height="8dp"
+                android:layout_weight="1"
+                android:max="100"
+                android:progressTint="#B7791F"
+                android:progressBackgroundTint="@color/claude_border" />
+
+            <TextView
+                android:id="@+id/tvExpValue"
+                android:layout_width="36dp"
+                android:layout_height="wrap_content"
+                android:gravity="end"
+                android:fontFamily="@font/claude_serif"
+                android:textColor="@color/claude_text_secondary"
+                android:textSize="11sp" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- Action buttons -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="20dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnFeed"
+            style="@style/ClaudeButton.Outlined"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="喂食"
+            android:textSize="13sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnPlay"
+            style="@style/ClaudeButton.Outlined"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="12dp"
+            android:text="玩耍"
+            android:textSize="13sp" />
+
+    </LinearLayout>
+
+</LinearLayout>

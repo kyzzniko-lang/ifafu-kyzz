@@ -96,7 +96,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
         viewModel.state.observe(this) { state ->
             when (state) {
                 is DiscussionViewModel.DiscussionState.Loading -> {
-                    binding.loadingLayout.visibility = View.VISIBLE
+                    binding.petLoading.root.startLoading()
                     binding.recyclerView.visibility = View.GONE
                     binding.errorLayout.visibility = View.GONE
                     binding.tvEmpty.visibility = View.GONE
@@ -105,7 +105,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                     // 保持当前列表显示
                 }
                 is DiscussionViewModel.DiscussionState.Success -> {
-                    binding.loadingLayout.visibility = View.GONE
+                    binding.petLoading.root.stopLoading()
                     binding.swipeRefresh.isRefreshing = false
                     if (state.comments.isEmpty()) {
                         binding.recyclerView.visibility = View.GONE
@@ -119,7 +119,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                     }
                 }
                 is DiscussionViewModel.DiscussionState.Error -> {
-                    binding.loadingLayout.visibility = View.GONE
+                    binding.petLoading.root.stopLoading()
                     binding.swipeRefresh.isRefreshing = false
                     binding.errorLayout.visibility = View.VISIBLE
                     binding.tvError.text = state.message

@@ -4,10 +4,13 @@ import android.app.DatePickerDialog
 import android.os.Bundle
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.preference.EditTextPreference
+import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.cache.CacheManager
+import com.ifafu.kyzz.data.repository.PetRepository
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.ui.about.AboutActivity
 import com.ifafu.kyzz.ui.comment.DiscussionActivity
@@ -22,11 +25,15 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     @Inject lateinit var userRepository: UserRepository
     @Inject lateinit var cacheManager: CacheManager
+    @Inject lateinit var petRepository: PetRepository
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences, rootKey)
 
         setupDarkMode()
+        setupShowPet()
+        setupPetType()
+        setupPetName()
         setupAccountInfo()
         setupSwitchAccount()
         setupTermFirstDay()
@@ -35,6 +42,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         setupCheckUpdate()
         setupFeedback()
         setupAbout()
+        setupLogout()
     }
 
     private fun setupDarkMode() {
@@ -46,6 +54,55 @@ class SettingsFragment : PreferenceFragmentCompat() {
             requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
                 .edit().putInt("dark_mode", mode).apply()
             AppCompatDelegate.setDefaultNightMode(mode)
+            true
+        }
+    }
+
+    private fun setupShowPet() {
+        val pref = findPreference<androidx.preference.SwitchPreferenceCompat>("show_pet") ?: return
+        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+        pref.isChecked = prefs.getBoolean("show_pet", true)
+        pref.summary = if (pref.isChecked) "首页显示宠物" else "首页隐藏宠物"
+        pref.setOnPreferenceChangeListener { _, newValue ->
+            prefs.edit().putBoolean("show_pet", newValue == true).apply()
+            pref.summary = if (newValue == true) "首页显示宠物" else "首页隐藏宠物"
+            true
+        }
+    }
+
+    private fun setupPetType() {
+        val pref = findPreference<ListPreference>("pet_type") ?: return
+        val pet = petRepository.loadPet()
+        pref.value = pet.petType
+        pref.summary = when (pet.petType) {
+            "dog" -> "小狗"
+            "dragon" -> "小龙"
+            else -> "猫咪"
+        }
+        pref.setOnPreferenceChangeListener { _, newValue ->
+            val pet2 = petRepository.loadPet()
+            pet2.petType = newValue as String
+            petRepository.savePet(pet2)
+            pref.summary = when (newValue) {
+                "dog" -> "小狗"
+                "dragon" -> "小龙"
+                else -> "猫咪"
+            }
+            true
+        }
+    }
+
+    private fun setupPetName() {
+        val pref = findPreference<EditTextPreference>("pet_name") ?: return
+        val pet = petRepository.loadPet()
+        pref.text = pet.name
+        pref.summary = pet.name
+        pref.setOnPreferenceChangeListener { _, newValue ->
+            val newName = (newValue as String).ifBlank { "小农" }
+            val pet2 = petRepository.loadPet()
+            pet2.name = newName
+            petRepository.savePet(pet2)
+            pref.summary = newName
             true
         }
     }
@@ -219,6 +276,22 @@ class SettingsFragment : PreferenceFragmentCompat() {
         val pref = findPreference<Preference>("about") ?: return
         pref.setOnPreferenceClickListener {
             startActivity(android.content.Intent(requireContext(), AboutActivity::class.java))
+            true
+        }
+    }
+
+    private fun setupLogout() {
+        val pref = findPreference<Preference>("logout") ?: return
+        pref.setOnPreferenceClickListener {
+            androidx.appcompat.app.AlertDialog.Builder(requireContext())
+                .setMessage(R.string.confirm_logout)
+                .setPositiveButton(R.string.nav_logout) { _, _ ->
+                    userRepository.clearUser()
+                    startActivity(android.content.Intent(requireContext(), com.ifafu.kyzz.ui.login.LoginActivity::class.java))
+                    requireActivity().finish()
+                }
+                .setNegativeButton(android.R.string.cancel, null)
+                .show()
             true
         }
     }

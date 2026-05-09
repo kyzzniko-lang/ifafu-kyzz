@@ -43,7 +43,7 @@ class UserRepository @Inject constructor(
             putString("clas", user.clas)
             putInt("enrollment", user.enrollment)
             putBoolean("isLogin", user.isLogin)
-            commit()
+            apply()
         }
         saveAccountProfile(user.account)
     }
@@ -69,6 +69,7 @@ class UserRepository @Inject constructor(
 
     fun clearUser() {
         prefs.edit().clear().apply()
+        securePrefs.edit().remove("password").apply()
     }
 
     var host: String
@@ -89,6 +90,11 @@ class UserRepository @Inject constructor(
         if (account.isEmpty()) return
         val name = prefs.getString("name", "") ?: ""
         val password = securePrefs.getString("password", "") ?: ""
+        saveAccountProfileInternal(account, name, password)
+    }
+
+    private fun saveAccountProfileInternal(account: String, name: String, password: String) {
+        if (account.isEmpty()) return
         val profiles = getAccountProfiles().toMutableList()
         val existing = profiles.indexOfFirst { it.account == account }
         val profile = AccountProfile(account, name, password)
@@ -108,6 +114,7 @@ class UserRepository @Inject constructor(
         prefs.edit().apply {
             putString("account", profile.account)
             putString("name", profile.name)
+            putString("token", "")
             putBoolean("isLogin", false)
             apply()
         }

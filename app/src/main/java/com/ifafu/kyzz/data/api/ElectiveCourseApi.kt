@@ -75,7 +75,8 @@ class ElectiveCourseApi @Inject constructor(
     }
 
     private suspend fun searchElectiveCourseInternal(
-        host: String, token: String, number: String, name: String, courseList: ElectiveCourseList
+        host: String, token: String, number: String, name: String, courseList: ElectiveCourseList,
+        depth: Int = 0
     ): Response {
         val accessUrl = "${host}/(${token})/xf_xsqxxxk.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121203"
         val filter = courseList.filter
@@ -92,7 +93,7 @@ class ElectiveCourseApi @Inject constructor(
             "ddl_xqbs" to filter.courseCampus.getOrElse(filter.courseCampusIndex) { "" },
             "ddl_sksj" to filter.courseTime.getOrElse(filter.courseTimeIndex) { "" },
             "TextBox1" to courseName,
-            "dpkcmcGrid%3AtxtChoosePage" to courseList.curPage.toString(),
+            "dpkcmcGrid:txtChoosePage" to courseList.curPage.toString(),
             "dpkcmcGrid%3AtxtPageSize" to "15"
         )
 
@@ -100,11 +101,12 @@ class ElectiveCourseApi @Inject constructor(
         if (html.isBlank()) return Response(false, 0, "网络异常")
 
         if (userApi.isSessionExpired(html)) {
+            if (depth >= 2) return Response(false, -1, "会话已过期，请重新登录")
             Log.d(TAG, "Session expired during search, attempting relogin...")
             val reloginResp = reloginHelper.relogin()
             if (!reloginResp.success) return Response(false, -1, reloginResp.message)
             val user = userRepository.getUser()
-            return searchElectiveCourseInternal(host, user.token, user.account, user.name, courseList)
+            return searchElectiveCourseInternal(host, user.token, user.account, user.name, courseList, depth + 1)
         }
 
         htmlClient.extractViewState(html)
@@ -127,7 +129,8 @@ class ElectiveCourseApi @Inject constructor(
 
     private suspend fun electiveCourseInternal(
         host: String, token: String, number: String, name: String,
-        courseList: ElectiveCourseList, courseIndex: String
+        courseList: ElectiveCourseList, courseIndex: String,
+        depth: Int = 0
     ): Response {
         val accessUrl = "${host}/(${token})/xf_xsqxxxk.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121203"
         val filter = courseList.filter
@@ -143,7 +146,7 @@ class ElectiveCourseApi @Inject constructor(
             "ddl_xqbs" to filter.courseCampus.getOrElse(filter.courseCampusIndex) { "" },
             "ddl_sksj" to filter.courseTime.getOrElse(filter.courseTimeIndex) { "" },
             "TextBox1" to (filter.courseNameFilter ?: ""),
-            "dpkcmcGrid%3AtxtChoosePage" to courseList.curPage.toString(),
+            "dpkcmcGrid:txtChoosePage" to courseList.curPage.toString(),
             "dpkcmcGrid%3AtxtPageSize" to "15",
             courseIndex to "on",
             "Button1" to "提  交"
@@ -153,11 +156,12 @@ class ElectiveCourseApi @Inject constructor(
         if (html.isBlank()) return Response(false, 0, "网络异常")
 
         if (userApi.isSessionExpired(html)) {
+            if (depth >= 2) return Response(false, -1, "会话已过期，请重新登录")
             Log.d(TAG, "Session expired during elective, attempting relogin...")
             val reloginResp = reloginHelper.relogin()
             if (!reloginResp.success) return Response(false, -1, reloginResp.message)
             val user = userRepository.getUser()
-            return electiveCourseInternal(host, user.token, user.account, user.name, courseList, courseIndex)
+            return electiveCourseInternal(host, user.token, user.account, user.name, courseList, courseIndex, depth + 1)
         }
 
         htmlClient.extractViewState(html)

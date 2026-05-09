@@ -25,6 +25,7 @@ class ScoreApi @Inject constructor(
     suspend fun getAllScores(host: String, token: String, number: String, name: String): List<Score>? {
         return try {
             val accessUrl = "${host}/(${token})/xscjcx_dq_fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
+
             val doc = htmlClient.get(accessUrl)
             val html = doc.html()
 
@@ -37,19 +38,18 @@ class ScoreApi @Inject constructor(
                 }
                 val user = userRepository.getUser()
                 val retryUrl = "${host}/(${user.token})/xscjcx_dq_fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121605"
-                return fetchAllScores(retryUrl, user.account, user.name)
+                return fetchAllScores(retryUrl, doc)
             }
 
-            fetchAllScores(accessUrl, number, name)
+            fetchAllScores(accessUrl, doc)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to fetch scores", e)
             null
         }
     }
 
-    private suspend fun fetchAllScores(accessUrl: String, number: String, name: String): List<Score>? {
-        val doc = htmlClient.get(accessUrl)
-        val html = doc.html()
+    private suspend fun fetchAllScores(accessUrl: String, initialDoc: org.jsoup.nodes.Document): List<Score>? {
+        val html = initialDoc.html()
 
         if (userApi.isSessionExpired(html)) return null
 
@@ -57,7 +57,7 @@ class ScoreApi @Inject constructor(
             return null
         }
 
-        val initialScores = scoreParser.parseScores(doc)
+        val initialScores = scoreParser.parseScores(initialDoc)
 
         val formBody = htmlClient.buildViewStateFormBody()
             .add("__EVENTTARGET", "")

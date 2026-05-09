@@ -15,6 +15,32 @@
     </PreferenceCategory>
 
     <PreferenceCategory
+        android:title="宠物"
+        app:iconSpaceReserved="false">
+
+        <SwitchPreferenceCompat
+            android:key="show_pet"
+            android:title="显示宠物"
+            android:summary="在首页显示宠物伙伴"
+            android:defaultValue="true" />
+
+        <ListPreference
+            android:key="pet_type"
+            android:title="宠物类型"
+            android:summary="选择你的宠物伙伴"
+            android:entries="@array/pet_type_entries"
+            android:entryValues="@array/pet_type_values"
+            android:defaultValue="cat" />
+
+        <EditTextPreference
+            android:key="pet_name"
+            android:title="宠物名字"
+            android:summary="给你的宠物起个名字"
+            android:defaultValue="小农" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
         android:title="通知"
         app:iconSpaceReserved="false">
 
@@ -76,6 +102,11 @@
             android:key="term_first_day"
             android:title="设置学期首日"
             android:summary="手动设置开学第一周的日期" />
+
+        <Preference
+            android:key="logout"
+            android:title="退出登录"
+            android:summary="退出当前账号" />
 
     </PreferenceCategory>
 
