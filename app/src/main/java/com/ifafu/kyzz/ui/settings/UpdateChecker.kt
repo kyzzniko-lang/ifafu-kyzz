@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 object UpdateChecker {
 
     private const val REPO = "kyzzniko-lang/ifafu-kyzz"
-    private const val API_URL = "https://api.github.com/repos/$REPO/releases/latest"
+    private const val API_URL = "https://gh-proxy.com/https://api.github.com/repos/$REPO/releases/latest"
 
     data class ReleaseInfo(
         @SerializedName("tag_name") val tagName: String,
@@ -99,9 +99,14 @@ object UpdateChecker {
 
     fun downloadAndInstall(context: Context, release: ReleaseInfo) {
         val asset = release.apkAsset ?: return
+        val url = if (asset.downloadUrl.contains("github.com")) {
+            "https://gh-proxy.com/${asset.downloadUrl}"
+        } else {
+            asset.downloadUrl
+        }
 
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(asset.downloadUrl))
+        val request = DownloadManager.Request(Uri.parse(url))
             .setTitle("iFAFU 更新")
             .setDescription("正在下载 v${release.versionName}")
             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)

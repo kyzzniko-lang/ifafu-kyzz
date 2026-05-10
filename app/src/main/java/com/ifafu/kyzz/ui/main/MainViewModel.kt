@@ -257,7 +257,7 @@ class MainViewModel @Inject constructor(
             try {
                 val client = githubClient
                 val request = okhttp3.Request.Builder()
-                    .url("https://api.github.com/repos/kyzzniko-lang/ifafu-kyzz/issues/2")
+                    .url("https://gh-proxy.com/https://api.github.com/repos/kyzzniko-lang/ifafu-kyzz/issues/2")
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
                 val response = client.newCall(request).execute()
