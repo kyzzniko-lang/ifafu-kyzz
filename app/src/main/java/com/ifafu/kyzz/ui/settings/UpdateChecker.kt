@@ -179,7 +179,7 @@ object UpdateChecker {
     private const val KEY_CACHED_SIZE = "cached_size"
     private const val KEY_CACHED_URL = "cached_url"
     private const val KEY_DISMISSED_VERSION = "dismissed_version"
-    private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
+    private const val CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000L // 4 hours
 
     fun shouldCheck(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
