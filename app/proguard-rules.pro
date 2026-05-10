@@ -5,6 +5,8 @@
 
 # Models (serialized by Gson)
 -keep class com.ifafu.kyzz.data.model.** { *; }
+-keep class com.ifafu.kyzz.ui.settings.UpdateChecker$ReleaseInfo { *; }
+-keep class com.ifafu.kyzz.ui.settings.UpdateChecker$ReleaseInfo$Asset { *; }
 
 # Hilt
 -dontwarn dagger.hilt.**
