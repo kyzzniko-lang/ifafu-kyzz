@@ -146,28 +146,36 @@ class GitHubIssuesApi @Inject constructor(
     suspend fun getNickname(userId: String): String? = withContext(Dispatchers.IO) {
         if (!isConfigured()) return@withContext null
         try {
-            // 获取所有昵称评论（量不大）
-            val url = "$BASE/issues/$NICKNAMES_ISSUE/comments?per_page=100"
-            val request = Request.Builder().url(url).apply {
-                authHeaders().forEach { (k, v) -> header(k, v) }
-            }.get().build()
+            var page = 1
+            var result: String? = null
+            while (result == null) {
+                val url = "$BASE/issues/$NICKNAMES_ISSUE/comments?per_page=100&page=$page"
+                val request = Request.Builder().url(url).apply {
+                    authHeaders().forEach { (k, v) -> header(k, v) }
+                }.get().build()
 
-            client.newCall(request).execute().use { response ->
-                val body = response.body?.string() ?: return@withContext null
-                if (!response.isSuccessful) return@withContext null
-                val arr = JsonParser.parseString(body).asJsonArray
-                for (element in arr) {
-                    try {
-                        val obj = element.asJsonObject
-                        val bodyStr = obj.get("body")?.asString ?: continue
-                        val data = JsonParser.parseString(bodyStr).asJsonObject
-                        if (data.get("userId")?.asString == userId) {
-                            return@withContext data.get("nickname")?.asString
-                        }
-                    } catch (_: Exception) {}
+                val shouldContinue = client.newCall(request).execute().use { response ->
+                    val body = response.body?.string() ?: return@use false
+                    if (!response.isSuccessful) return@use false
+                    val arr = JsonParser.parseString(body).asJsonArray
+                    if (arr.size() == 0) return@use false
+                    for (element in arr) {
+                        try {
+                            val obj = element.asJsonObject
+                            val bodyStr = obj.get("body")?.asString ?: continue
+                            val data = JsonParser.parseString(bodyStr).asJsonObject
+                            if (data.get("userId")?.asString == userId) {
+                                result = data.get("nickname")?.asString
+                                return@use false
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    arr.size() >= 100
                 }
-                null
+                if (!shouldContinue) break
+                page++
             }
+            result
         } catch (e: Exception) {
             Log.e(TAG, "getNickname error", e)
             null
@@ -177,26 +185,41 @@ class GitHubIssuesApi @Inject constructor(
     suspend fun saveNickname(userId: String, nickname: String): Boolean = withContext(Dispatchers.IO) {
         if (!isConfigured()) return@withContext false
         try {
-            // 查找是否已有该用户的昵称评论
-            val listUrl = "$BASE/issues/$NICKNAMES_ISSUE/comments?per_page=100"
-            val listRequest = Request.Builder().url(listUrl).apply {
-                authHeaders().forEach { (k, v) -> header(k, v) }
-            }.get().build()
+            var existingCommentId: Long? = null
+            var page = 1
+            while (existingCommentId == null) {
+                val listUrl = "$BASE/issues/$NICKNAMES_ISSUE/comments?per_page=100&page=$page"
+                val listRequest = Request.Builder().url(listUrl).apply {
+                    authHeaders().forEach { (k, v) -> header(k, v) }
+                }.get().build()
 
-            val existingCommentId = client.newCall(listRequest).execute().use { response ->
-                val body = response.body?.string() ?: return@withContext false
-                val arr = JsonParser.parseString(body).asJsonArray
-                for (element in arr) {
-                    try {
-                        val obj = element.asJsonObject
-                        val bodyStr = obj.get("body")?.asString ?: continue
-                        val data = JsonParser.parseString(bodyStr).asJsonObject
-                        if (data.get("userId")?.asString == userId) {
-                            return@use obj.get("id")?.asLong
-                        }
-                    } catch (_: Exception) {}
+                val found = client.newCall(listRequest).execute().use { response ->
+                    val body = response.body?.string() ?: return@withContext false
+                    val arr = JsonParser.parseString(body).asJsonArray
+                    if (arr.size() == 0) return@use true // no more pages, not found
+                    var foundId: Long? = null
+                    for (element in arr) {
+                        try {
+                            val obj = element.asJsonObject
+                            val bodyStr = obj.get("body")?.asString ?: continue
+                            val data = JsonParser.parseString(bodyStr).asJsonObject
+                            if (data.get("userId")?.asString == userId) {
+                                foundId = obj.get("id")?.asLong
+                                break
+                            }
+                        } catch (_: Exception) {}
+                    }
+                    if (foundId != null) {
+                        existingCommentId = foundId
+                        true
+                    } else if (arr.size() < 100) {
+                        true // no more pages
+                    } else {
+                        page++
+                        false
+                    }
                 }
-                null
+                if (found) break
             }
 
             val nicknameBody = gson.toJson(mapOf("body" to gson.toJson(mapOf(

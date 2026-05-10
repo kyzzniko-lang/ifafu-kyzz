@@ -50,26 +50,29 @@ object UpdateChecker {
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
 
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
-                    return@Thread
-                }
+                client.newCall(request).execute().use { response ->
+                    if (!response.isSuccessful) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
+                        return@Thread
+                    }
 
-                val body = response.body?.string() ?: run {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
-                    return@Thread
-                }
+                    val body = response.body?.string() ?: run {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
+                        return@Thread
+                    }
 
-                val release = Gson().fromJson(body, ReleaseInfo::class.java)
-                val currentVersion = getCurrentVersion(context)
+                    val release = Gson().fromJson(body, ReleaseInfo::class.java)
+                    val currentVersion = getCurrentVersion(context)
+                    android.util.Log.i("UpdateChecker", "Remote: ${release.versionName}, Local: $currentVersion, APK: ${release.apkAsset?.name}")
 
-                if (isNewerVersion(release.versionName, currentVersion) && release.apkAsset != null) {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post { callback(release) }
-                } else {
-                    android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
+                    if (isNewerVersion(release.versionName, currentVersion) && release.apkAsset != null) {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post { callback(release) }
+                    } else {
+                        android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
+                    }
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                android.util.Log.e("UpdateChecker", "Check failed: ${e.message}", e)
                 android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
             }
         }.start()
@@ -115,12 +118,13 @@ object UpdateChecker {
 
         val downloadId = dm.enqueue(request)
 
-        val receiver = object : BroadcastReceiver() {
+        var receiver: BroadcastReceiver? = null
+        receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
                 if (id != downloadId) return
 
-                context.unregisterReceiver(this)
+                try { ctx.unregisterReceiver(receiver) } catch (_: Exception) {}
 
                 val dir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
                 val file = File(dir, "ifafu-update.apk")
@@ -152,6 +156,11 @@ object UpdateChecker {
                 IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
             )
         }
+
+        // Safety net: auto-unregister after 10 minutes to prevent leak
+        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+            try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
+        }, 10 * 60 * 1000L)
     }
 
     fun formatSize(bytes: Long): String {

@@ -30,6 +30,20 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
         "#1ABC9C", "#E67E22", "#34495E", "#16A085"
     )
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        arguments?.let { args ->
+            courseColor = args.getInt(ARG_COLOR, 0)
+            val json = args.getString(ARG_COURSES, null)
+            if (json != null) {
+                try {
+                    val type = object : com.google.gson.reflect.TypeToken<List<Course>>() {}.type
+                    courses = com.google.gson.Gson().fromJson(json, type) ?: emptyList()
+                } catch (_: Exception) { courses = emptyList() }
+            }
+        }
+    }
+
     override fun onCreateView(inflater: LayoutInflater, container: android.view.ViewGroup?, savedInstanceState: Bundle?): View {
         _binding = DialogCourseDetailSheetBinding.inflate(inflater, container, false)
         return binding.root
@@ -107,15 +121,20 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
     }
 
     companion object {
+        private const val ARG_COURSES = "courses_json"
+        private const val ARG_COLOR = "course_color"
+
         fun newInstance(
             courses: List<Course>,
             color: Int,
             onColorChanged: (courseName: String, colorHex: String) -> Unit
         ): CourseDetailBottomSheet {
             return CourseDetailBottomSheet().apply {
-                this.courses = courses
-                this.courseColor = color
                 this.onColorChanged = onColorChanged
+                arguments = Bundle().apply {
+                    putInt(ARG_COLOR, color)
+                    putString(ARG_COURSES, com.google.gson.Gson().toJson(courses))
+                }
             }
         }
     }

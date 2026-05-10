@@ -22,10 +22,15 @@ class PasswordModifyActivity : BaseActivity<ActivityPasswordModifyBinding>() {
         binding.toolbar.setNavigationOnClickListener { finish() }
 
         binding.btnSubmit.setOnClickListener {
+            val oldPwd = binding.etOldPassword.text.toString()
             val newPwd = binding.etNewPassword.text.toString()
             val confirmPwd = binding.etConfirmPassword.text.toString()
             val confirmPwd2 = binding.etConfirmPassword2.text.toString()
 
+            if (oldPwd.isEmpty()) {
+                binding.tilOldPassword.error = "请输入原密码"
+                return@setOnClickListener
+            }
             if (newPwd.isEmpty()) {
                 binding.tilNewPassword.error = "请输入新密码"
                 return@setOnClickListener
@@ -47,7 +52,7 @@ class PasswordModifyActivity : BaseActivity<ActivityPasswordModifyBinding>() {
                 return@setOnClickListener
             }
 
-            viewModel.submitPassword(newPwd, confirmPwd, confirmPwd2)
+            viewModel.submitPassword(oldPwd, newPwd, confirmPwd)
         }
 
         viewModel.state.observe(this) { state ->

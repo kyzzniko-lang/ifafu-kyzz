@@ -56,7 +56,9 @@ class ElectiveCourseApi @Inject constructor(
         if (alert != null) return Response(false, 0, alert.message)
         if (html.contains("防刷")) return Response(false, 0, "防刷限制")
 
-        htmlClient.extractViewState(html)
+        val vs = htmlClient.parseViewState(html)
+        courseList.viewState = vs.viewState
+        courseList.viewStateGenerator = vs.viewStateGenerator
         val doc = org.jsoup.Jsoup.parse(html)
         electiveParser.parseFilter(doc, courseList.filter)
         electiveParser.parseCourseList(doc, courseList)
@@ -85,8 +87,8 @@ class ElectiveCourseApi @Inject constructor(
         val formBody = htmlClient.buildFormBody(
             "__EVENTTARGET" to "ddl_kcgs",
             "__EVENTARGUMENT" to "",
-            "__VIEWSTATE" to htmlClient.viewState,
-            "__VIEWSTATEGENERATOR" to htmlClient.viewStateGenerator,
+            "__VIEWSTATE" to courseList.viewState,
+            "__VIEWSTATEGENERATOR" to courseList.viewStateGenerator,
             "ddl_kcxz" to filter.courseNature.getOrElse(filter.courseNatureIndex) { "" },
             "ddl_ywyl" to filter.isFree.getOrElse(filter.isFreeIndex) { "" },
             "ddl_kcgs" to filter.courseOwner.getOrElse(filter.courseOwnerIndex) { "" },
@@ -94,7 +96,7 @@ class ElectiveCourseApi @Inject constructor(
             "ddl_sksj" to filter.courseTime.getOrElse(filter.courseTimeIndex) { "" },
             "TextBox1" to courseName,
             "dpkcmcGrid:txtChoosePage" to courseList.curPage.toString(),
-            "dpkcmcGrid%3AtxtPageSize" to "15"
+            "dpkcmcGrid:txtPageSize" to "15"
         )
 
         val html = htmlClient.postString(accessUrl, formBody)
@@ -109,7 +111,9 @@ class ElectiveCourseApi @Inject constructor(
             return searchElectiveCourseInternal(host, user.token, user.account, user.name, courseList, depth + 1)
         }
 
-        htmlClient.extractViewState(html)
+        val vs = htmlClient.parseViewState(html)
+        courseList.viewState = vs.viewState
+        courseList.viewStateGenerator = vs.viewStateGenerator
         val doc = org.jsoup.Jsoup.parse(html)
         electiveParser.parseCourseList(doc, courseList)
         return Response(true, 0, "获取成功")
@@ -138,8 +142,8 @@ class ElectiveCourseApi @Inject constructor(
         val formBody = htmlClient.buildFormBody(
             "__EVENTTARGET" to "",
             "__EVENTARGUMENT" to "",
-            "__VIEWSTATE" to htmlClient.viewState,
-            "__VIEWSTATEGENERATOR" to htmlClient.viewStateGenerator,
+            "__VIEWSTATE" to courseList.viewState,
+            "__VIEWSTATEGENERATOR" to courseList.viewStateGenerator,
             "ddl_kcxz" to filter.courseNature.getOrElse(filter.courseNatureIndex) { "" },
             "ddl_ywyl" to filter.isFree.getOrElse(filter.isFreeIndex) { "" },
             "ddl_kcgs" to filter.courseOwner.getOrElse(filter.courseOwnerIndex) { "" },
@@ -147,7 +151,7 @@ class ElectiveCourseApi @Inject constructor(
             "ddl_sksj" to filter.courseTime.getOrElse(filter.courseTimeIndex) { "" },
             "TextBox1" to (filter.courseNameFilter ?: ""),
             "dpkcmcGrid:txtChoosePage" to courseList.curPage.toString(),
-            "dpkcmcGrid%3AtxtPageSize" to "15",
+            "dpkcmcGrid:txtPageSize" to "15",
             courseIndex to "on",
             "Button1" to "提  交"
         )
@@ -164,7 +168,9 @@ class ElectiveCourseApi @Inject constructor(
             return electiveCourseInternal(host, user.token, user.account, user.name, courseList, courseIndex, depth + 1)
         }
 
-        htmlClient.extractViewState(html)
+        val vs = htmlClient.parseViewState(html)
+        courseList.viewState = vs.viewState
+        courseList.viewStateGenerator = vs.viewStateGenerator
         val alert = htmlClient.checkAlert(html)
         return if (alert != null) {
             Response(false, 0, alert.message)

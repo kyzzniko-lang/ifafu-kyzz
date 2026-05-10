@@ -105,13 +105,12 @@ class PetViewModel @Inject constructor(
 
         // 增加心情
         pet.mood = (pet.mood + 3).coerceAtMost(100)
-        pet.addExp(2)
+        val leveled = pet.addExp(2)
 
         // 随机对话
         val dialogue = getRandomDialogue(pet)
         _bubbleText.value = dialogue
 
-        val leveled = pet.addExp(0) // check if leveled
         if (leveled) {
             _showLevelUp.value = pet.level
         }

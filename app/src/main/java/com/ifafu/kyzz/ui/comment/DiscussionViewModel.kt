@@ -9,6 +9,7 @@ import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -82,6 +83,8 @@ class DiscussionViewModel @Inject constructor(
                 } else {
                     _nicknameState.value = NicknameState.Ready(nickname)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _nicknameState.value = NicknameState.NotSet
             }
@@ -112,6 +115,8 @@ class DiscussionViewModel @Inject constructor(
                 } else {
                     _nicknameState.value = NicknameState.Error("保存失败，请重试")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _nicknameState.value = NicknameState.Error("网络异常")
             }
@@ -140,6 +145,8 @@ class DiscussionViewModel @Inject constructor(
                     currentPage++
                 }
                 emitFiltered()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = if (comments.isEmpty()) {
                     DiscussionState.Error("加载失败，请重试")
@@ -177,6 +184,8 @@ class DiscussionViewModel @Inject constructor(
                 } else {
                     _postState.value = PostState.Error("发送失败")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _postState.value = PostState.Error("网络异常")
             }
@@ -199,6 +208,8 @@ class DiscussionViewModel @Inject constructor(
                     if (idx >= 0) comments[idx] = updated
                     emitFiltered()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
     }
@@ -232,6 +243,8 @@ class DiscussionViewModel @Inject constructor(
                 } else {
                     _deleteState.value = DeleteState.Error("删除失败")
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _deleteState.value = DeleteState.Error("网络异常")
             }

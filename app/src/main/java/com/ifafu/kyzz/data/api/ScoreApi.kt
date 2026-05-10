@@ -38,7 +38,10 @@ class ScoreApi @Inject constructor(
                 }
                 val user = userRepository.getUser()
                 val retryUrl = "${host}/(${user.token})/xscjcx_dq_fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121605"
-                return fetchAllScores(retryUrl, doc)
+                val retryDoc = htmlClient.get(retryUrl)
+                val retryHtml = retryDoc.html()
+                if (userApi.isSessionExpired(retryHtml)) return null
+                return fetchAllScores(retryUrl, retryDoc)
             }
 
             fetchAllScores(accessUrl, doc)
@@ -59,7 +62,8 @@ class ScoreApi @Inject constructor(
 
         val initialScores = scoreParser.parseScores(initialDoc)
 
-        val formBody = htmlClient.buildViewStateFormBody()
+        val viewState = htmlClient.parseViewState(html)
+        val formBody = htmlClient.buildViewStateFormBody(viewState)
             .add("__EVENTTARGET", "")
             .add("__EVENTARGUMENT", "")
             .add("ddlxn", "全部")

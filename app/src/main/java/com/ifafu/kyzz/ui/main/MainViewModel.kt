@@ -83,7 +83,7 @@ class MainViewModel @Inject constructor(
 
     private fun loadTodayCourses() {
         val user = userRepository.getUser()
-        if (!user.isLogin) { _todayCourses.value = emptyList(); return }
+        if (!user.isLogin) { _todayCourses.postValue(emptyList()); return }
 
         val syllabus = cacheManager.loadSyllabus(user.account)
         if (syllabus == null) {
@@ -121,13 +121,13 @@ class MainViewModel @Inject constructor(
 
     private fun computeTodayCourses(syllabus: com.ifafu.kyzz.data.model.Syllabus) {
         val firstDay = userRepository.termFirstDay
-        if (firstDay.isEmpty()) { _todayCourses.value = emptyList(); return }
+        if (firstDay.isEmpty()) { _todayCourses.postValue(emptyList()); return }
 
         try {
             val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             val parsed = sdf.parse(firstDay)
             if (parsed == null) {
-                _todayCourses.value = emptyList()
+                _todayCourses.postValue(emptyList())
                 return
             }
             val termStart = Calendar.getInstance().apply {
@@ -155,13 +155,13 @@ class MainViewModel @Inject constructor(
             }.sortedBy { it.begin }.map { TodayCourse(it.name, it.teacher, it.address, it.begin, it.end) }
             _todayCourses.postValue(matched)
         } catch (_: Exception) {
-            _todayCourses.value = emptyList()
+            _todayCourses.postValue(emptyList())
         }
     }
 
     private fun loadNextExam() {
         val user = userRepository.getUser()
-        if (!user.isLogin) { _nextExam.value = null; return }
+        if (!user.isLogin) { _nextExam.postValue(null); return }
 
         val examTable = cacheManager.loadExamTable(user.account)
         if (examTable == null) {
@@ -262,10 +262,12 @@ class MainViewModel @Inject constructor(
                     .build()
                 val response = client.newCall(request).execute()
                 if (!response.isSuccessful) {
+                    response.close()
                     fallbackTermFirstDay()
                     return@launch
                 }
                 val body = response.body?.string() ?: run {
+                    response.close()
                     fallbackTermFirstDay()
                     return@launch
                 }

@@ -101,6 +101,8 @@ class SyllabusViewModel @Inject constructor(
                         _state.value = UiState.Error("获取课表失败，请检查网络后重试")
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 val cached = cacheManager.loadSyllabus(userRepository.getUser().account, yearTermKey)
                 if (cached != null && cached.courses.isNotEmpty()) {

@@ -11,6 +11,13 @@ import java.net.URI
 
 class WebActivity : BaseActivity<ActivityWebBinding>() {
 
+    companion object {
+        private val ALLOWED_HOSTS = setOf(
+            "jwgl.fafu.edu.cn", "fafu.edu.cn",
+            "gh-proxy.com", "github.com"
+        )
+    }
+
     override fun createBinding(): ActivityWebBinding = ActivityWebBinding.inflate(layoutInflater)
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -21,26 +28,38 @@ class WebActivity : BaseActivity<ActivityWebBinding>() {
 
         binding.toolbar.title = title
         binding.toolbar.setNavigationOnClickListener { finish() }
-        binding.webView.settings.javaScriptEnabled = true
-        binding.webView.settings.domStorageEnabled = true
-        binding.webView.webViewClient = object : WebViewClient() {
-            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
-                val redirectUrl = request?.url?.toString() ?: ""
-                if (redirectUrl.contains("default.aspx") || redirectUrl.contains("default2.aspx")) {
-                    view?.stopLoading()
-                    android.widget.Toast.makeText(this@WebActivity, "会话已过期，请重新登录", android.widget.Toast.LENGTH_SHORT).show()
-                    return true
-                }
-                return false
-            }
-        }
 
-        if (url.isNotEmpty()) {
+        if (url.isNotEmpty() && isUrlAllowed(url)) {
+            binding.webView.settings.javaScriptEnabled = true
+            binding.webView.settings.domStorageEnabled = true
+            binding.webView.webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                    val redirectUrl = request?.url?.toString() ?: ""
+                    if (!isUrlAllowed(redirectUrl)) return true
+                    if (redirectUrl.contains("default.aspx") || redirectUrl.contains("default2.aspx")) {
+                        view?.stopLoading()
+                        android.widget.Toast.makeText(this@WebActivity, "会话已过期，请重新登录", android.widget.Toast.LENGTH_SHORT).show()
+                        return true
+                    }
+                    return false
+                }
+            }
+
             syncCookies(url)
             val referer = extractMainUrl(url)
             val headers = mapOf("Referer" to referer)
             binding.webView.loadUrl(url, headers)
+        } else if (url.isNotEmpty()) {
+            android.widget.Toast.makeText(this, "不支持加载该链接", android.widget.Toast.LENGTH_SHORT).show()
+            finish()
         }
+    }
+
+    private fun isUrlAllowed(url: String): Boolean {
+        return try {
+            val host = java.net.URI(url).host ?: return false
+            ALLOWED_HOSTS.any { allowed -> host == allowed || host.endsWith(".$allowed") }
+        } catch (_: Exception) { false }
     }
 
     private fun extractMainUrl(url: String): String {
@@ -57,7 +76,7 @@ class WebActivity : BaseActivity<ActivityWebBinding>() {
     private fun syncCookies(url: String) {
         val webCookieManager = android.webkit.CookieManager.getInstance()
         webCookieManager.setAcceptCookie(true)
-        webCookieManager.setAcceptThirdPartyCookies(binding.webView, true)
+        webCookieManager.setAcceptThirdPartyCookies(binding.webView, false)
 
         val host = try { URI(url).host ?: "" } catch (_: Exception) { "" }
         if (host.isEmpty()) return

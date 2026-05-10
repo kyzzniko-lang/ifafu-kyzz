@@ -24,7 +24,9 @@ data class ElectiveCourseList(
     var electived: MutableList<ElectiveCourse> = mutableListOf(),
     var curPage: Int = 1,
     var pageSize: Int = 1,
-    var filter: ElectiveFilter = ElectiveFilter()
+    var filter: ElectiveFilter = ElectiveFilter(),
+    var viewState: String = "",
+    var viewStateGenerator: String = ""
 )
 
 data class ElectiveFilter(

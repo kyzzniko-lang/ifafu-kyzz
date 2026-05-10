@@ -53,13 +53,12 @@ class CommentTeacherApi @Inject constructor(
             }
         }
 
-        htmlClient.extractViewState(html)
-        val formBody = htmlClient.buildFormBody(
+        val vs = htmlClient.parseViewState(html)
+        val formBody = htmlClient.buildFormBodyWithViewState(
             "__EVENTARGUMENT" to "",
             "__EVENTTARGET" to "",
-            "__VIEWSTATE" to htmlClient.viewState,
-            "__VIEWSTATEGENERATOR" to htmlClient.viewStateGenerator,
-            "btn_tj" to "提 交"
+            "btn_tj" to "提 交",
+            state = vs
         )
 
         val postHtml = htmlClient.postString(accessUrl, formBody)
@@ -80,7 +79,7 @@ class CommentTeacherApi @Inject constructor(
         val html = htmlClient.getString(accessUrl)
         if (html.isBlank()) return false
 
-        htmlClient.extractViewState(html)
+        val vs = htmlClient.parseViewState(html)
 
         val formBuilder = okhttp3.FormBody.Builder(charset("GBK"))
         val pattern = Regex("table id=\"Datagrid1__(.*?)_rb\"")
@@ -91,8 +90,8 @@ class CommentTeacherApi @Inject constructor(
 
         formBuilder.add("Datagrid1\$_${String.format("ctl%d", 4 + random.nextInt(2))}\$_rb", "94")
         formBuilder.add("Datagrid1\$_${String.format("ctl%d", 2 + random.nextInt(2))}\$_rb", "82")
-        formBuilder.add("__VIEWSTATE", htmlClient.viewState)
-        formBuilder.add("__VIEWSTATEGENERATOR", htmlClient.viewStateGenerator)
+        formBuilder.add("__VIEWSTATE", vs.viewState)
+        formBuilder.add("__VIEWSTATEGENERATOR", vs.viewStateGenerator)
         formBuilder.add("txt_pjxx", "")
         formBuilder.add("Button1", "提  交")
 

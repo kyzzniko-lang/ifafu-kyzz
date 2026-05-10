@@ -3,9 +3,7 @@ package com.ifafu.kyzz.ui.timer
 import android.os.Bundle
 import android.os.CountDownTimer
 import android.widget.Toast
-import com.google.gson.Gson
 import com.ifafu.kyzz.R
-import com.ifafu.kyzz.data.model.Pet
 import com.ifafu.kyzz.databinding.ActivityPomodoroTimerBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import java.text.SimpleDateFormat
@@ -16,7 +14,6 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
 
     override fun createBinding() = ActivityPomodoroTimerBinding.inflate(layoutInflater)
 
-    private val petPrefs by lazy { getSharedPreferences("pet_data", MODE_PRIVATE) }
     private val prefs by lazy { getSharedPreferences("pomodoro_prefs", MODE_PRIVATE) }
 
     private var timer: CountDownTimer? = null
@@ -98,14 +95,11 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
         prefs.edit().putInt("pomodoros_$today", count).apply()
         updateTodayCount()
 
-        // 宠物 +10 经验
-        val gson = Gson()
-        val json = petPrefs.getString("pet", null)
-        val pet = if (json != null) {
-            try { gson.fromJson(json, Pet::class.java) } catch (_: Exception) { Pet() }
-        } else Pet()
+        // 宠物 +10 经验 (使用 PetRepository 保证数据一致性)
+        val petRepo = com.ifafu.kyzz.data.repository.PetRepository(applicationContext)
+        val pet = petRepo.loadPet()
         pet.addExp(10)
-        petPrefs.edit().putString("pet", gson.toJson(pet)).apply()
+        petRepo.savePet(pet)
 
         Toast.makeText(this, "完成一个番茄！宠物+10经验", Toast.LENGTH_SHORT).show()
     }

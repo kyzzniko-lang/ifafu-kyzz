@@ -21,7 +21,7 @@ class HtmlParser @Inject constructor() {
         val options = mutableListOf<String>()
         var selectedIndex = 0
 
-        val optionRegex = Regex("""<option( selected="selected")? value="([^"]*)">""")
+        val optionRegex = Regex("""<option(\s+[Ss][Ee][Ll][Ee][Cc][Tt][Ee][Dd](?:="[^"]*")?)?\s+value="([^"]*)">""")
         optionRegex.findAll(html.substring(startIdx, endIdx)).forEach { match ->
             options.add(match.groupValues[2])
             if (match.groupValues[1].isNotEmpty()) {
@@ -42,7 +42,7 @@ class HtmlParser @Inject constructor() {
         val options = mutableListOf<String>()
         var selectedIndex = 0
 
-        val optionRegex = Regex("""<option( selected="selected")? value="([^"]*)">""")
+        val optionRegex = Regex("""<option(\s+[Ss][Ee][Ll][Ee][Cc][Tt][Ee][Dd](?:="[^"]*")?)?\s+value="([^"]*)">""")
         optionRegex.findAll(html.substring(startIdx, endIdx)).forEach { match ->
             options.add(match.groupValues[2])
             if (match.groupValues[1].isNotEmpty()) {

@@ -305,7 +305,7 @@ class SyllabusParser @Inject constructor(
             "一" to 1, "二" to 2, "三" to 3, "四" to 4,
             "五" to 5, "六" to 6, "日" to 7
         )
-        val pattern = Regex("周(.)(第?)(\\d+)(([,，\\-]\\d+)*)节\\{第(\\d+)-(\\d+)周(\\|(.)周)?\\}")
+        val pattern = Regex("周(.)(上午|下午|晚上)?第(\\d+)(([,，\\-]\\d+)*)节\\{第(\\d+)-(\\d+)周(\\|(.)周)?\\}")
         val match = pattern.find(timeString)
         if (match == null) {
             Log.d("SyllabusParser", "    -> parseCourseTime NO MATCH for: $timeString")

@@ -86,7 +86,7 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
             val raw = exam.datetime.replace("（", "(").replace("）", ")").split("(", "~", " ").first().trim()
             var dateStr = ""
             for (fmt in datePatterns) {
-                try { dateStr = fmt.format(fmt.parse(raw)!!); break } catch (_: Exception) {}
+                try { val parsed = fmt.parse(raw); if (parsed != null) { dateStr = fmt.format(parsed); break } } catch (_: Exception) {}
             }
             // Include time period in key to only group same-day same-period exams
             val timePart = exam.datetime.replace("（", "(").replace("）", ")")

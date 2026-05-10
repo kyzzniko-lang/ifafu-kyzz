@@ -87,7 +87,7 @@ class UserApi @Inject constructor(
             user.token = tokenFromUrl?.groupValues?.get(1) ?: sessionToken
         }
 
-        val nameMatch = Regex("xhxm\">(.*)同学").find(postHtml)
+        val nameMatch = Regex("xhxm\">(.+?)同学").find(postHtml)
         if (nameMatch != null) {
             user.name = nameMatch.groupValues[1]
         }
@@ -147,7 +147,6 @@ class UserApi @Inject constructor(
                 }
 
                 val captcha = zfVerify.recognize(captchaBitmap)
-                Log.d(TAG, "Relogin attempt $i: captcha recognized as '$captcha'")
                 val freshUser = User(account = user.account, name = user.name)
                 val response = login(user.account, password, captcha, freshUser)
 

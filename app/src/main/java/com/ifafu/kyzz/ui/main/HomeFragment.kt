@@ -61,32 +61,42 @@ class HomeFragment : Fragment() {
 
     private val bubbleHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var bubbleRunnable: Runnable? = null
+    private var bubbleAnimator: ValueAnimator? = null
+    private val resumeRunnable = Runnable {
+        if (isAdded && _binding != null) {
+            val courses = viewModel.todayCourses.value ?: emptyList()
+            val exam = viewModel.nextExam.value
+            val examInfo = exam?.let { it.exam.name to it.daysLeft }
+            petViewModel.triggerRandomBubble(courses.size, examInfo, getCountdownPairs())
+        }
+    }
 
+    // 每节45分钟; 上午5min-20min-5min-5min, 下午5min-15min-5min, 晚上5min-5min
     private val sectionTimeMap = mapOf(
         1 to Pair("08:00", "08:45"),
-        2 to Pair("08:55", "09:40"),
-        3 to Pair("10:10", "10:55"),
-        4 to Pair("11:05", "11:50"),
-        5 to Pair("12:00", "12:45"),
+        2 to Pair("08:50", "09:35"),
+        3 to Pair("09:55", "10:40"),
+        4 to Pair("10:45", "11:30"),
+        5 to Pair("11:35", "12:20"),
         6 to Pair("14:00", "14:45"),
-        7 to Pair("14:55", "15:40"),
-        8 to Pair("16:00", "16:45"),
-        9 to Pair("16:55", "17:40"),
-        10 to Pair("19:00", "19:45"),
-        11 to Pair("19:55", "20:40"),
-        12 to Pair("20:50", "21:35")
+        7 to Pair("14:50", "15:35"),
+        8 to Pair("15:50", "16:35"),
+        9 to Pair("16:40", "17:25"),
+        10 to Pair("18:25", "19:10"),
+        11 to Pair("19:15", "20:00"),
+        12 to Pair("20:05", "20:50")
     )
 
     private val sectionStartMinutes = mapOf(
-        1 to 480, 2 to 535, 3 to 610, 4 to 665, 5 to 720,
-        6 to 840, 7 to 895, 8 to 960, 9 to 1015,
-        10 to 1140, 11 to 1195, 12 to 1250
+        1 to 480, 2 to 530, 3 to 595, 4 to 645, 5 to 695,
+        6 to 840, 7 to 890, 8 to 950, 9 to 1000,
+        10 to 1105, 11 to 1155, 12 to 1205
     )
 
     private val sectionEndMinutes = mapOf(
-        1 to 525, 2 to 580, 3 to 655, 4 to 710, 5 to 765,
-        6 to 885, 7 to 940, 8 to 1005, 9 to 1060,
-        10 to 1185, 11 to 1240, 12 to 1295
+        1 to 525, 2 to 575, 3 to 640, 4 to 690, 5 to 740,
+        6 to 885, 7 to 935, 8 to 995, 9 to 1045,
+        10 to 1150, 11 to 1200, 12 to 1250
     )
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
@@ -111,13 +121,8 @@ class HomeFragment : Fragment() {
         loadCountdownEvents()
         checkForUpdate()
         // Auto bubble on resume
-        val courses = viewModel.todayCourses.value ?: emptyList()
-        val exam = viewModel.nextExam.value
-        val examInfo = exam?.let { it.exam.name to it.daysLeft }
-        val countdowns = getCountdownPairs()
-        view?.postDelayed({
-            petViewModel.triggerRandomBubble(courses.size, examInfo, countdowns)
-        }, 2000)
+        view?.removeCallbacks(resumeRunnable)
+        view?.postDelayed(resumeRunnable, 2000)
     }
 
     private fun setupViews() {
@@ -151,7 +156,8 @@ class HomeFragment : Fragment() {
         binding.swipeRefresh.setOnRefreshListener {
             viewModel.refreshUser()
             petViewModel.onPetClicked() // pet reacts to refresh
-            binding.swipeRefresh.postDelayed({ binding.swipeRefresh.isRefreshing = false }, 800)
+            val refresh = binding.swipeRefresh
+            refresh.postDelayed({ refresh.isRefreshing = false }, 800)
         }
 
         // Entrance animation for chips
@@ -169,7 +175,7 @@ class HomeFragment : Fragment() {
                 val hot = comments.filter { it.likes.isNotEmpty() }
                     .sortedByDescending { it.likes.size }
                     .take(1)
-                if (hot.isNotEmpty() && isAdded) {
+                if (hot.isNotEmpty() && _binding != null) {
                     val card = binding.cardHotDiscussion
                     val container = binding.hotDiscussionContainer
                     container.removeAllViews()
@@ -197,6 +203,8 @@ class HomeFragment : Fragment() {
                         startActivity(Intent(requireContext(), com.ifafu.kyzz.ui.comment.DiscussionActivity::class.java))
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
     }
@@ -471,6 +479,7 @@ class HomeFragment : Fragment() {
                 petView.petBubble.translationY = 10f
                 petView.petBubble.animate().alpha(1f).translationY(0f).setDuration(200).start()
                 // Typewriter: reveal one char at a time
+                bubbleAnimator?.cancel()
                 val animator = ValueAnimator.ofInt(0, text.length)
                 animator.duration = (text.length * 40L).coerceAtMost(1200L)
                 animator.interpolator = AccelerateDecelerateInterpolator()
@@ -478,6 +487,7 @@ class HomeFragment : Fragment() {
                     val idx = a.animatedValue as Int
                     petView.tvBubbleText.text = text.substring(0, idx)
                 }
+                bubbleAnimator = animator
                 animator.start()
             } else {
                 petView.petBubble.animate().alpha(0f).setDuration(200).withEndAction {
@@ -598,8 +608,8 @@ class HomeFragment : Fragment() {
     private fun applyPetColorTier(pet: Pet) {
         val lottie = binding.petWidget.ivPet
         val color = when (pet.colorTier) {
-            2 -> android.graphics.Color.parseColor("#C75B39")
-            1 -> android.graphics.Color.parseColor("#D4A017")
+            2 -> resources.getColor(R.color.claude_terracotta, null)
+            1 -> resources.getColor(R.color.claude_warning, null)
             else -> null
         }
         if (color != null) {
@@ -1114,10 +1124,11 @@ class HomeFragment : Fragment() {
         binding.courseProgressContainer.visibility = View.VISIBLE
         binding.courseProgressBar.max = 100
         // Animate progress bar
+        val progressBar = binding.courseProgressBar
         val anim = ValueAnimator.ofInt(0, progressPercent)
         anim.duration = 600
         anim.interpolator = AccelerateDecelerateInterpolator()
-        anim.addUpdateListener { binding.courseProgressBar.progress = it.animatedValue as Int }
+        anim.addUpdateListener { progressBar.progress = it.animatedValue as Int }
         anim.start()
         binding.courseProgressText.text = "已完成 $finishedCount/$totalCourses 节课"
 
@@ -1265,7 +1276,9 @@ class HomeFragment : Fragment() {
                 }
                 .setNegativeButton("稍后再说") { dialog, _ ->
                     com.ifafu.kyzz.ui.settings.UpdateChecker.dismissVersion(ctx, release.versionName)
-                    binding.cardUpdate.visibility = View.GONE
+                    if (_binding != null) {
+                        binding.cardUpdate.visibility = View.GONE
+                    }
                     dialog.dismiss()
                 }
                 .show()
@@ -1276,6 +1289,9 @@ class HomeFragment : Fragment() {
         super.onDestroyView()
         bubbleRunnable?.let { bubbleHandler.removeCallbacks(it) }
         bubbleRunnable = null
+        bubbleHandler.removeCallbacks(resumeRunnable)
+        bubbleAnimator?.cancel()
+        bubbleAnimator = null
         _binding = null
     }
 }

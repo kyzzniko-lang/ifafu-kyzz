@@ -20,8 +20,8 @@ android {
         applicationId = "com.ifafu.kyzz"
         minSdk = 24
         targetSdk = 34
-        versionCode = 4
-        versionName = "2.0.1"
+        versionCode = 5
+        versionName = "2.0.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -36,8 +36,12 @@ android {
     }
 
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("debug")
+        }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -80,6 +84,7 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
     implementation("com.google.code.gson:gson:2.10.1")
     implementation("com.github.bumptech.glide:glide:4.16.0")
     implementation("org.jsoup:jsoup:1.17.2")

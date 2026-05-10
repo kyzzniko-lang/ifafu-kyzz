@@ -2,10 +2,10 @@ package com.ifafu.kyzz.ui.score
 
 import android.content.Context
 import android.graphics.Canvas
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.util.AttributeSet
+import android.util.TypedValue
 import android.view.View
 import com.ifafu.kyzz.R
 
@@ -17,26 +17,25 @@ class GpaTrendView @JvmOverloads constructor(
 
     private var points: List<Point> = emptyList()
 
+    private val terracotta by lazy { resources.getColor(R.color.claude_terracotta, null) }
+    private val textSecondary by lazy { resources.getColor(R.color.claude_text_secondary, null) }
+
     private val linePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFD4724A.toInt()
         strokeWidth = 4f
         style = Paint.Style.STROKE
     }
 
     private val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFD4724A.toInt()
         style = Paint.Style.FILL
     }
 
     private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF666666.toInt()
-        textSize = 32f
+        textSize = spToPx(12f)
         textAlign = Paint.Align.CENTER
     }
 
     private val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFD4724A.toInt()
-        textSize = 36f
+        textSize = spToPx(13f)
         textAlign = Paint.Align.CENTER
         isFakeBoldText = true
     }
@@ -46,6 +45,9 @@ class GpaTrendView @JvmOverloads constructor(
         strokeWidth = 1f
         style = Paint.Style.STROKE
     }
+
+    private fun spToPx(sp: Float): Float =
+        TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_SP, sp, resources.displayMetrics)
 
     fun setData(data: List<Point>) {
         points = data
@@ -59,9 +61,14 @@ class GpaTrendView @JvmOverloads constructor(
     }
 
     override fun onDraw(canvas: Canvas) {
+        linePaint.color = terracotta
+        dotPaint.color = terracotta
+        textPaint.color = textSecondary
+        valuePaint.color = terracotta
+
         super.onDraw(canvas)
         if (points.size < 2) {
-            textPaint.textSize = 36f
+            textPaint.textSize = spToPx(13f)
             canvas.drawText("至少需要两个学期的数据", width / 2f, height / 2f, textPaint)
             return
         }

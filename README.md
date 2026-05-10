@@ -49,6 +49,21 @@
 
 ## 更新日志
 
+### v2.0.2
+- 安全加固：移除 HTTP 日志拦截器（防止密码泄露到外部存储），token 迁移至 EncryptedSharedPreferences
+- 安全加固：WebView URL 白名单、第三方 Cookie 禁用、APK R8 混淆启用
+- 安全加固：精简 AndroidManifest 权限（移除电话/存储/定位/录音权限）
+- 修复密码修改功能（添加原密码输入、修正表单字段映射）
+- 修复 ViewState 并发竞态条件（多步 ASP.NET 表单操作改用显式状态传递）
+- 修复课表详情弹窗配置变更后数据丢失（改用 Bundle 保存参数）
+- 修复跨年考试完成状态误判（年份优先比较逻辑）
+- 修复更新下载后安装崩溃（FileProvider 路径配置补全）
+- 修复 6 处协程 CancellationException 吞异常问题
+- 修复 Fragment 生命周期安全（Handler 泄漏、ValueAnimator 泄漏、binding 空指针）
+- 修复课表解析正则（支持"上午/下午/晚上"时间段）
+- 修复 GitHub Issues 昵称查询分页、成绩查询重登录后文档过期
+- 优化 OkHttp Response 资源释放、Settings 页面上下文安全
+
 ### v2.0.0
 - 新增校园地图（三校区高德地图、教学楼标注、GPS定位）
 - 新增目标倒计时（自定义事件、首页展示、宠物联动提醒）

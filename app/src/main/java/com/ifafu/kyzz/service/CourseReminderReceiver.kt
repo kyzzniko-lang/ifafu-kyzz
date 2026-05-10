@@ -44,15 +44,14 @@ class CourseReminderReceiver : BroadcastReceiver() {
 
     private fun buildReminderText(context: Context): String {
         try {
-            val userPrefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
-            val account = userPrefs.getString("account", "") ?: ""
-            val firstDay = userPrefs.getString("termFirstDay", "") ?: ""
-            if (account.isEmpty() || firstDay.isEmpty()) return ""
+            val app = context.applicationContext
+            val userRepo = UserRepository(app)
+            val user = userRepo.getUser()
+            val firstDay = userRepo.termFirstDay
+            if (!user.isLogin || firstDay.isEmpty()) return ""
 
-            val cachePrefs = context.getSharedPreferences("ifafu_cache", Context.MODE_PRIVATE)
-            val json = cachePrefs.getString("syllabus_$account", null) ?: return ""
-            val gson = com.google.gson.Gson()
-            val syllabus = gson.fromJson(json, com.ifafu.kyzz.data.model.Syllabus::class.java)
+            val cacheManager = CacheManager(app)
+            val syllabus = cacheManager.loadSyllabus(user.account) ?: return ""
 
             val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             val parsed = sdf.parse(firstDay) ?: return ""

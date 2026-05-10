@@ -23,7 +23,7 @@ class PasswordModifyViewModel @Inject constructor(
         _state.value = State.Idle
     }
 
-    fun submitPassword(newPwd: String, confirmPwd: String, confirmPwd2: String) {
+    fun submitPassword(oldPwd: String, newPwd: String, confirmPwd: String) {
         val user = userRepository.getUser()
         if (!user.isLogin) {
             _state.value = State.Error("未登录")
@@ -39,12 +39,12 @@ class PasswordModifyViewModel @Inject constructor(
 
                 val pageUrl = "${host}/(${token})/mmxg.aspx?xh=${account}&gnmkdm=N121502"
 
-                htmlClient.getString(pageUrl)
+                val pageResult = htmlClient.getStringWithViewState(pageUrl)
 
-                val formBody = htmlClient.buildViewStateFormBody()
-                    .add("TextBox2", newPwd)
-                    .add("TextBox3", confirmPwd)
-                    .add("TextBox4", confirmPwd2)
+                val formBody = htmlClient.buildViewStateFormBody(pageResult.viewState)
+                    .add("TextBox2", oldPwd)
+                    .add("TextBox3", newPwd)
+                    .add("TextBox4", confirmPwd)
                     .add("Button1", "修 改")
                     .build()
 
@@ -57,6 +57,8 @@ class PasswordModifyViewModel @Inject constructor(
                 } else {
                     _state.value = State.Success
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = State.Error(e.message ?: "提交失败")
             }

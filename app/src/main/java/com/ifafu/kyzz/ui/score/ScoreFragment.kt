@@ -32,6 +32,7 @@ class ScoreFragment : Fragment() {
     private var selectedYear: String? = null
     private var selectedTerm: String? = null
     private var spinnerReady = false
+    private val activeAnimators = mutableListOf<ValueAnimator>()
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
@@ -171,6 +172,12 @@ class ScoreFragment : Fragment() {
         animator.duration = duration
         animator.interpolator = AccelerateDecelerateInterpolator()
         animator.addUpdateListener { textView.text = String.format(format, it.animatedValue as Float) }
+        activeAnimators.add(animator)
+        animator.addListener(object : android.animation.AnimatorListenerAdapter() {
+            override fun onAnimationEnd(animation: android.animation.Animator) {
+                activeAnimators.remove(animator)
+            }
+        })
         animator.start()
     }
 
@@ -286,6 +293,8 @@ class ScoreFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        activeAnimators.toList().forEach { it.cancel() }
+        activeAnimators.clear()
         _binding = null
     }
 }

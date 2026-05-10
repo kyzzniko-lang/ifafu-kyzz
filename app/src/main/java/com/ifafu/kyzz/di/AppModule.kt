@@ -2,7 +2,6 @@ package com.ifafu.kyzz.di
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.os.Environment
 import com.ifafu.kyzz.data.util.ZFVerify
 import dagger.Module
 import dagger.Provides
@@ -10,17 +9,13 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.CookieJar
-import okhttp3.Interceptor
 import okhttp3.OkHttpClient
+import okhttp3.logging.HttpLoggingInterceptor
 import org.json.JSONArray
-import java.io.File
-import java.io.FileWriter
 import java.net.CookieManager
 import java.net.CookiePolicy
 import java.net.HttpCookie
 import java.net.URI
-import java.text.SimpleDateFormat
-import java.util.*
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -43,62 +38,11 @@ object AppModule {
         @ApplicationContext context: Context,
         cookieJar: JavaNetCookieJar
     ): OkHttpClient {
-        val externalDir = context.getExternalFilesDir(null) ?: context.filesDir
-        val logFile = File(externalDir, "http_capture_log.txt")
-        logFile.writeText("=== iFAFU HTTP Capture Log ===\nStarted: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n\n")
-
-        val cookieJar1 = cookieJar
-        val loggingInterceptor = Interceptor { chain ->
-            val request = chain.request()
-            val timestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
-
-            val requestHeaders = request.headers.joinToString("\n") { (name, value) ->
-                val displayValue = if (name.equals("Authorization", ignoreCase = true)) "[REDACTED]" else value
-                "  $name: $displayValue"
-            }
-            val requestBody = try {
-                val buf = okio.Buffer()
-                request.body?.writeTo(buf)
-                buf.readUtf8()
-            } catch (_: Exception) { "(cannot read body)" }
-
-            val sb = StringBuilder()
-            sb.appendLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            sb.appendLine("[$timestamp] >>> ${request.method} ${request.url}")
-            sb.appendLine("REQUEST HEADERS:")
-            sb.appendLine(requestHeaders)
-            if (requestBody.isNotEmpty() && requestBody != "(cannot read body)") {
-                sb.appendLine("REQUEST BODY:")
-                sb.appendLine(requestBody.chunked(500).first())
-            }
-
-            val response = chain.proceed(request)
-
-            val responseTimestamp = SimpleDateFormat("HH:mm:ss.SSS", Locale.getDefault()).format(Date())
-            sb.appendLine("[$responseTimestamp] <<< ${response.code} ${response.message}")
-            sb.appendLine("FINAL URL: ${response.request.url}")
-            sb.appendLine("RESPONSE HEADERS:")
-            response.headers.forEach { (name, value) ->
-                sb.appendLine("  $name: $value")
-            }
-
-            val responseBody = response.peekBody(512 * 1024).string()
-            val preview = if (responseBody.length > 2000) responseBody.substring(0, 2000) + "\n... (truncated)" else responseBody
-            sb.appendLine("RESPONSE BODY (first 2000 chars):")
-            sb.appendLine(preview)
-            sb.appendLine("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━")
-            sb.appendLine()
-
-            synchronized(logFile) {
-                val writer = FileWriter(logFile, true)
-                writer.use { it.write(sb.toString()) }
-            }
-
-            response
+        val loggingInterceptor = HttpLoggingInterceptor().apply {
+            level = HttpLoggingInterceptor.Level.NONE
         }
-
         return OkHttpClient.Builder()
-            .cookieJar(cookieJar1)
+            .cookieJar(cookieJar)
             .addInterceptor(loggingInterceptor)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)

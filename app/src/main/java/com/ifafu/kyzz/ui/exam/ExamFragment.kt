@@ -139,8 +139,10 @@ class ExamFragment : Fragment() {
             if (parsed == null) return false
             val examCal = java.util.Calendar.getInstance().apply { time = parsed }
             val todayCal = java.util.Calendar.getInstance()
-            examCal.get(java.util.Calendar.DAY_OF_YEAR) < todayCal.get(java.util.Calendar.DAY_OF_YEAR) ||
-                examCal.get(java.util.Calendar.YEAR) < todayCal.get(java.util.Calendar.YEAR)
+            val examYear = examCal.get(java.util.Calendar.YEAR)
+            val todayYear = todayCal.get(java.util.Calendar.YEAR)
+            examYear < todayYear || (examYear == todayYear &&
+                examCal.get(java.util.Calendar.DAY_OF_YEAR) < todayCal.get(java.util.Calendar.DAY_OF_YEAR))
         } catch (_: Exception) { false }
     }
 
@@ -194,7 +196,7 @@ class ExamFragment : Fragment() {
             if (holder is WarningVH) {
                 val warning = items[position] as ConflictWarning
                 holder.content.removeAllViews()
-                holder.content.addView(TextView(requireContext()).apply {
+                holder.content.addView(TextView(holder.itemView.context).apply {
                     text = "⚠ 考试冲突提醒"
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(0xFFFF6D00.toInt())
@@ -204,7 +206,7 @@ class ExamFragment : Fragment() {
                 for (group in warning.groups) {
                     val dateStr = group.first().datetime.split(" ", "(", "（").first()
                     val names = group.joinToString("、") { it.name }
-                    holder.content.addView(TextView(requireContext()).apply {
+                    holder.content.addView(TextView(holder.itemView.context).apply {
                         text = "${dateStr}: $names"
                         setTextAppearance(R.style.ClaudeCaption)
                         setPadding(0, 6, 0, 0)
@@ -214,13 +216,14 @@ class ExamFragment : Fragment() {
             } else if (holder is ExamVH) {
                 val exam = items[position] as Exam
                 holder.content.removeAllViews()
+                val ctx = holder.itemView.context
 
                 // Title row with review status tag
-                val titleRow = LinearLayout(requireContext()).apply {
+                val titleRow = LinearLayout(ctx).apply {
                     orientation = LinearLayout.HORIZONTAL
                     gravity = android.view.Gravity.CENTER_VERTICAL
                 }
-                titleRow.addView(TextView(requireContext()).apply {
+                titleRow.addView(TextView(ctx).apply {
                     text = exam.name; setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                     typeface = resources.getFont(R.font.claude_serif)
@@ -228,7 +231,7 @@ class ExamFragment : Fragment() {
                 })
                 // 考试完成状态标签
                 val isFinished = isExamFinished(exam.datetime)
-                titleRow.addView(TextView(requireContext()).apply {
+                titleRow.addView(TextView(ctx).apply {
                     text = if (isFinished) "已完成" else "未完成"
                     textSize = 11f
                     typeface = resources.getFont(R.font.claude_serif)
@@ -243,7 +246,7 @@ class ExamFragment : Fragment() {
                     ))
                 })
                 val progress = progressMap[exam.id]
-                val statusTag = TextView(requireContext()).apply {
+                val statusTag = TextView(ctx).apply {
                     text = when (progress?.status) {
                         1 -> "复习中"
                         2 -> "已掌握"
@@ -299,19 +302,19 @@ class ExamFragment : Fragment() {
                 titleRow.addView(statusTag)
                 holder.content.addView(titleRow)
 
-                holder.content.addView(TextView(requireContext()).apply {
+                holder.content.addView(TextView(holder.itemView.context).apply {
                     text = "时间: ${exam.datetime}"; setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
                 })
-                holder.content.addView(TextView(requireContext()).apply {
+                holder.content.addView(TextView(holder.itemView.context).apply {
                     text = "地点: ${exam.address}"; setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
                 })
-                holder.content.addView(TextView(requireContext()).apply {
+                holder.content.addView(TextView(holder.itemView.context).apply {
                     text = "座位号: ${exam.seatNumber}"; setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
                 })
-                holder.content.addView(TextView(requireContext()).apply {
+                holder.content.addView(TextView(holder.itemView.context).apply {
                     text = "校区: ${exam.campus}"; setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
                 })

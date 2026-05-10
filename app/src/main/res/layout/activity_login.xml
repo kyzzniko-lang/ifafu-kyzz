@@ -136,4 +136,15 @@
         android:visibility="gone"
         app:layout_constraintTop_toBottomOf="@id/btnLogin" />
 
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="温馨提示：登录时小概率出现验证码识别出错，请重进程序再次尝试"
+        android:textSize="11sp"
+        android:textColor="@color/claude_text_hint"
+        android:gravity="center"
+        android:fontFamily="@font/claude_serif"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent" />
+
 </androidx.constraintlayout.widget.ConstraintLayout>

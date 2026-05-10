@@ -29,15 +29,14 @@ class iFAFUWidget : AppWidgetProvider() {
 
         private fun getTodayCoursesText(context: Context): String {
             try {
-                val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
-                val account = prefs.getString("account", "") ?: ""
-                val firstDay = prefs.getString("termFirstDay", "") ?: ""
-                if (account.isEmpty() || firstDay.isEmpty()) return "未登录"
+                val app = context.applicationContext
+                val userRepo = UserRepository(app)
+                val user = userRepo.getUser()
+                val firstDay = userRepo.termFirstDay
+                if (!user.isLogin || firstDay.isEmpty()) return "未登录"
 
-                val cachePrefs = context.getSharedPreferences("ifafu_cache", Context.MODE_PRIVATE)
-                val json = cachePrefs.getString("syllabus_$account", null) ?: return "暂无课表数据"
-                val gson = com.google.gson.Gson()
-                val syllabus = gson.fromJson(json, com.ifafu.kyzz.data.model.Syllabus::class.java)
+                val cacheManager = CacheManager(app)
+                val syllabus = cacheManager.loadSyllabus(user.account) ?: return "暂无课表数据"
 
                 val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 val parsed = sdf.parse(firstDay) ?: return "日期格式错误"

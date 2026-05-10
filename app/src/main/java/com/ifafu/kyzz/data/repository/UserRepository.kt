@@ -34,17 +34,32 @@ class UserRepository @Inject constructor(
 
     private val gson = Gson()
 
+    // 一次性迁移：将老版本 prefs 中的 token 移入 securePrefs
+    private fun migrateTokenIfNeeded() {
+        if (securePrefs.contains("token_migrated")) return
+        val oldToken = prefs.getString("token", null)
+        if (!oldToken.isNullOrEmpty()) {
+            securePrefs.edit().putString("token", oldToken).apply()
+            prefs.edit().remove("token").apply()
+        }
+        securePrefs.edit().putBoolean("token_migrated", true).apply()
+    }
+
+    init {
+        migrateTokenIfNeeded()
+    }
+
     fun saveUser(user: User) {
         prefs.edit().apply {
             putString("account", user.account)
             putString("name", user.name)
-            putString("token", user.token)
             putString("institute", user.institute)
             putString("clas", user.clas)
             putInt("enrollment", user.enrollment)
             putBoolean("isLogin", user.isLogin)
             apply()
         }
+        securePrefs.edit().putString("token", user.token).apply()
         saveAccountProfile(user.account)
     }
 
@@ -52,7 +67,7 @@ class UserRepository @Inject constructor(
         return User(
             account = prefs.getString("account", "") ?: "",
             name = prefs.getString("name", "") ?: "",
-            token = prefs.getString("token", "") ?: "",
+            token = securePrefs.getString("token", "") ?: "",
             institute = prefs.getString("institute", "") ?: "",
             clas = prefs.getString("clas", "") ?: "",
             enrollment = prefs.getInt("enrollment", 0),
@@ -69,7 +84,11 @@ class UserRepository @Inject constructor(
 
     fun clearUser() {
         prefs.edit().clear().apply()
-        securePrefs.edit().remove("password").apply()
+        securePrefs.edit().apply {
+            remove("password")
+            remove("token")
+            apply()
+        }
     }
 
     var host: String
@@ -114,12 +133,12 @@ class UserRepository @Inject constructor(
         prefs.edit().apply {
             putString("account", profile.account)
             putString("name", profile.name)
-            putString("token", "")
             putBoolean("isLogin", false)
             apply()
         }
         securePrefs.edit().apply {
             putString("password", profile.password)
+            remove("token")
             apply()
         }
     }

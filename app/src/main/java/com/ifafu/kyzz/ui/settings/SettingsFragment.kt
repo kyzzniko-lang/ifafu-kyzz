@@ -251,10 +251,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
             Toast.makeText(requireContext(), "正在检查更新...", Toast.LENGTH_SHORT).show()
             UpdateChecker.checkForUpdate(requireContext()) { release ->
                 activity?.runOnUiThread {
+                    val ctx = context ?: return@runOnUiThread
                     if (release != null) {
                         showUpdateDialog(release)
                     } else {
-                        Toast.makeText(requireContext(), "已是最新版本", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, "已是最新版本", Toast.LENGTH_SHORT).show()
                     }
                 }
             }

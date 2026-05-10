@@ -6,7 +6,6 @@ import com.ifafu.kyzz.BuildConfig
 import androidx.lifecycle.lifecycleScope
 import com.ifafu.kyzz.databinding.ActivityKyzzToolboxBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
-import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -17,8 +16,9 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 
-@AndroidEntryPoint
 class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
+
+    private val okHttpClient by lazy { OkHttpClient() }
 
     private val repoOwner = "kyzzniko-lang"
     private val repoName = "ifafu-kyzz"
@@ -66,8 +66,6 @@ class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
             Toast.makeText(this, "正在实现中，敬请期待", Toast.LENGTH_SHORT).show()
         }
     }
-
-    private val okHttpClient by lazy { OkHttpClient() }
 
     private fun submitToGitHub(title: String, body: String): Boolean {
         if (githubToken.isEmpty()) return false
