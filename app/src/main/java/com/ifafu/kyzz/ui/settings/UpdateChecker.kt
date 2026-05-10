@@ -212,6 +212,16 @@ object UpdateChecker {
         )
     }
 
+    fun clearCachedResult(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().apply {
+            remove(KEY_CACHED_TAG)
+            remove(KEY_CACHED_BODY)
+            remove(KEY_CACHED_SIZE)
+            remove(KEY_CACHED_URL)
+            apply()
+        }
+    }
+
     fun dismissVersion(context: Context, versionName: String) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .putString(KEY_DISMISSED_VERSION, versionName)

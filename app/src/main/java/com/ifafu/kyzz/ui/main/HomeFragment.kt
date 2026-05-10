@@ -1250,9 +1250,13 @@ class HomeFragment : Fragment() {
                     showUpdateCard(release)
                 }
             } else {
-                // No update — still save check timestamp to avoid repeated API calls
+                // No update — save timestamp and clear stale cached result
                 ctx.getSharedPreferences("update_prefs", android.content.Context.MODE_PRIVATE)
                     .edit().putLong("last_check_ts", System.currentTimeMillis()).apply()
+                com.ifafu.kyzz.ui.settings.UpdateChecker.clearCachedResult(ctx)
+                if (_binding != null) {
+                    binding.cardUpdate.visibility = View.GONE
+                }
             }
         }
     }
