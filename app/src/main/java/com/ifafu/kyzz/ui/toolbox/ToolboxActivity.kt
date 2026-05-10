@@ -165,9 +165,31 @@ class ToolboxActivity : BaseActivity<ActivityToolboxBinding>() {
                 val selected = Calendar.getInstance().apply {
                     set(year, month, dayOfMonth, 0, 0, 0)
                     set(Calendar.MILLISECOND, 0)
+                    // Normalize to Monday of that week
+                    val dow = get(Calendar.DAY_OF_WEEK)
+                    add(Calendar.DAY_OF_YEAR, -(if (dow == Calendar.SUNDAY) 6 else dow - Calendar.MONDAY))
                 }
                 val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                viewModel.saveTermFirstDay(sdf.format(selected.time))
+                val newDate = sdf.format(selected.time)
+                val oldDate = viewModel.termFirstDay
+                viewModel.saveTermFirstDay(newDate)
+                // Clear syllabus cache if term first day actually changed
+                if (oldDate.isNotEmpty() && newDate != oldDate) {
+                    val account = getSharedPreferences("ifafu_user", MODE_PRIVATE).getString("account", "") ?: ""
+                    if (account.isNotEmpty()) {
+                        val cachePrefs = getSharedPreferences("ifafu_cache", MODE_PRIVATE)
+                        cachePrefs.edit().apply {
+                            remove("syllabus_$account")
+                            remove("syllabus_${account}_ts")
+                            for ((key, _) in cachePrefs.all) {
+                                if (key.startsWith("syllabus_${account}_") && key != "syllabus_${account}_ts") {
+                                    remove(key)
+                                }
+                            }
+                            apply()
+                        }
+                    }
+                }
                 Toast.makeText(this, "学期首日已设置为 $year-${month + 1}-$dayOfMonth", Toast.LENGTH_SHORT).show()
             },
             cal.get(Calendar.YEAR),

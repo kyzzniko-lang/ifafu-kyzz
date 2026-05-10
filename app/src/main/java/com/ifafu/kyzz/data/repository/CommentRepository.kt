@@ -13,8 +13,8 @@ class CommentRepository @Inject constructor(
         return api.getComments(page, perPage)
     }
 
-    suspend fun postComment(content: String, nickname: String, authorId: String): Comment? {
-        return api.postComment(content, nickname, authorId)
+    suspend fun postComment(content: String, nickname: String, authorId: String, tag: String = ""): Comment? {
+        return api.postComment(content, nickname, authorId, tag)
     }
 
     suspend fun deleteComment(commentId: String): Boolean {
@@ -27,5 +27,9 @@ class CommentRepository @Inject constructor(
 
     suspend fun saveNickname(userId: String, nickname: String): Boolean {
         return api.saveNickname(userId, nickname)
+    }
+
+    suspend fun likeComment(commentId: String, userId: String): Comment? {
+        return api.likeComment(commentId, userId)
     }
 }

@@ -18,12 +18,33 @@
         app:title="校园讨论"
         app:titleTextAppearance="@style/ClaudeTitle" />
 
+    <HorizontalScrollView
+        android:id="@+id/tagScroll"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:scrollbars="none"
+        android:background="@color/claude_bg_elevated"
+        app:layout_constraintTop_toBottomOf="@id/toolbar">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/chipGroup"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            app:singleSelection="true"
+            app:selectionRequired="true" />
+
+    </HorizontalScrollView>
+
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipeRefresh"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         app:layout_constraintBottom_toTopOf="@id/inputLayout"
-        app:layout_constraintTop_toBottomOf="@id/toolbar">
+        app:layout_constraintTop_toBottomOf="@id/tagScroll">
 
         <FrameLayout
             android:layout_width="match_parent"
@@ -35,6 +56,18 @@
                 android:layout_height="match_parent"
                 android:clipToPadding="false"
                 android:padding="12dp" />
+
+            <TextView
+                android:id="@+id/tvWatermark"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="center"
+                android:fontFamily="@font/claude_serif"
+                android:text="此功能为校园匿名讨论功能\n可以自由畅言，其他人也能看到你的发言哦"
+                android:textAlignment="center"
+                android:textColor="@color/claude_text_tertiary"
+                android:textSize="13sp"
+                android:alpha="0.35" />
 
             <include
                 android:id="@+id/petLoading"

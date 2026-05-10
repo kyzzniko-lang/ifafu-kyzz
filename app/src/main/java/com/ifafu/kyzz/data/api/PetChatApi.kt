@@ -19,8 +19,10 @@ class PetChatApi @Inject constructor() {
 
     private val client by lazy {
         OkHttpClient.Builder()
-            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
             .build()
     }
 
@@ -35,7 +37,9 @@ class PetChatApi @Inject constructor() {
         val todayCourses: List<String> = emptyList(),
         val nextExam: String = "",
         val recentScores: List<String> = emptyList(),
-        val gpaSummary: String = ""
+        val gpaSummary: String = "",
+        val countdownEvents: List<String> = emptyList(),
+        val recentNotes: List<String> = emptyList()
     )
 
     suspend fun chat(
@@ -85,7 +89,7 @@ class PetChatApi @Inject constructor() {
             .build()
 
         try {
-            val response = client.newCall(request).execute()
+            val response = executeWithRetry(request)
             val responseBody = response.body?.string() ?: return@withContext "喵...信号不太好~"
             if (!response.isSuccessful) return@withContext "呜...说不出话来了~"
 
@@ -151,6 +155,12 @@ class PetChatApi @Inject constructor() {
             if (ctx.gpaSummary.isNotEmpty()) {
                 append("\n成绩概况：${ctx.gpaSummary}")
             }
+            if (ctx.countdownEvents.isNotEmpty()) {
+                append("\n主人的倒计时：${ctx.countdownEvents.joinToString("、")}")
+            }
+            if (ctx.recentNotes.isNotEmpty()) {
+                append("\n主人最近的笔记：${ctx.recentNotes.joinToString("、")}")
+            }
         }
 
         return """你是「${pet.name}」，一只住在IFAFU教务助手App里的${petSpecies}学习宠物，Lv.${pet.level} ${pet.levelTitle}。
@@ -164,5 +174,51 @@ class PetChatApi @Inject constructor() {
 - 120字以内"""
     }
 
+    private fun executeWithRetry(request: Request, retries: Int = 1): okhttp3.Response {
+        var lastException: Exception? = null
+        for (i in 0..retries) {
+            try {
+                return client.newCall(request).execute()
+            } catch (e: java.net.SocketTimeoutException) {
+                lastException = e
+            } catch (e: java.net.ConnectException) {
+                lastException = e
+            } catch (e: java.io.IOException) {
+                lastException = e
+            }
+        }
+        throw lastException ?: java.io.IOException("unknown error")
+    }
+
     data class ChatMessage(val content: String, val isUser: Boolean)
+
+    suspend fun classify(systemPrompt: String, userMessage: String): String = withContext(Dispatchers.IO) {
+        if (apiKey.isEmpty()) return@withContext "[err]API Key未配置"
+        val messagesJson = JSONArray()
+        messagesJson.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
+        messagesJson.put(JSONObject().apply { put("role", "user"); put("content", userMessage) })
+        val body = JSONObject().apply {
+            put("model", "GLM-4.5-Flash")
+            put("messages", messagesJson)
+            put("stream", false)
+            put("temperature", 0.3)
+            put("max_tokens", 64)
+        }
+        val request = Request.Builder()
+            .url("https://open.bigmodel.cn/api/paas/v4/chat/completions")
+            .header("Authorization", "Bearer $apiKey")
+            .header("Content-Type", "application/json")
+            .post(body.toString().toRequestBody("application/json".toMediaType()))
+            .build()
+        try {
+            val response = executeWithRetry(request)
+            val responseBody = response.body?.string()
+            if (!response.isSuccessful) return@withContext "[err]HTTP ${response.code}: ${responseBody?.take(100)}"
+            if (responseBody.isNullOrEmpty()) return@withContext "[err]空响应"
+            val json = JSONObject(responseBody)
+            val result = json.optJSONArray("choices")?.optJSONObject(0)
+                ?.optJSONObject("message")?.optString("content")?.trim() ?: ""
+            if (result.isEmpty()) "[err]AI返回空" else result
+        } catch (e: Exception) { "[err]${e.message?.take(50) ?: "网络异常"}" }
+    }
 }

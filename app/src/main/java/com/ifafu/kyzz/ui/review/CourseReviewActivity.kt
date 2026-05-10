@@ -39,6 +39,15 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
         setupFab()
         observeState()
 
+        // Toolbar delete button
+        binding.toolbar.inflateMenu(R.menu.menu_course_review)
+        binding.toolbar.setOnMenuItemClickListener { item ->
+            if (item.itemId == R.id.action_delete_review) {
+                showMyReviewsForDelete()
+                true
+            } else false
+        }
+
         viewModel.loadReviews()
     }
 
@@ -59,6 +68,124 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
 
     private fun setupFab() {
         binding.fabWrite.setOnClickListener { showWriteReviewDialog() }
+    }
+
+    private var deleteDialog: AlertDialog? = null
+
+    private fun showMyReviewsForDelete() {
+        val myReviews = (viewModel.reviews.value ?: emptyList()).filter { viewModel.isMyReview(it) }
+        if (myReviews.isEmpty()) {
+            com.google.android.material.snackbar.Snackbar.make(binding.root, "你还没有发布过评价", com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show()
+            return
+        }
+
+        val dp = resources.displayMetrics.density
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding((20 * dp).toInt(), (12 * dp).toInt(), (20 * dp).toInt(), (8 * dp).toInt())
+        }
+
+        for (review in myReviews) {
+            val card = com.google.android.material.card.MaterialCardView(this).apply {
+                radius = 12f
+                cardElevation = 0f
+                strokeWidth = 1
+                strokeColor = resources.getColor(R.color.claude_border, null)
+                setCardBackgroundColor(resources.getColor(R.color.claude_bg, null))
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = (8 * dp).toInt() }
+                isClickable = true
+                isFocusable = true
+            }
+
+            val content = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
+                setPadding((16 * dp).toInt(), (12 * dp).toInt(), (16 * dp).toInt(), (12 * dp).toInt())
+            }
+
+            content.addView(TextView(this@CourseReviewActivity).apply {
+                text = review.courseName
+                setTextAppearance(R.style.ClaudeBody)
+                setTextColor(resources.getColor(R.color.claude_terracotta, null))
+                typeface = resources.getFont(R.font.claude_serif)
+            })
+            if (review.teacher.isNotEmpty()) {
+                content.addView(TextView(this@CourseReviewActivity).apply {
+                    text = review.teacher
+                    textSize = 12f
+                    setTextColor(resources.getColor(R.color.claude_text_secondary, null))
+                    typeface = resources.getFont(R.font.claude_serif)
+                })
+            }
+
+            val tagRow = android.widget.LinearLayout(this@CourseReviewActivity).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+            }
+            val tags = listOf("难度${review.difficulty}", "给分${review.grading}", "点名${review.attendance}")
+            val tagColors = listOf(
+                resources.getColor(R.color.claude_terracotta, null),
+                resources.getColor(R.color.claude_success, null),
+                resources.getColor(R.color.claude_warning, null)
+            )
+            for (i in tags.indices) {
+                tagRow.addView(TextView(this@CourseReviewActivity).apply {
+                    text = tags[i]
+                    textSize = 9f
+                    setTextColor(tagColors[i])
+                    typeface = resources.getFont(R.font.claude_serif)
+                    setPadding((6 * dp).toInt(), (2 * dp).toInt(), (6 * dp).toInt(), (2 * dp).toInt())
+                    if (i < tags.size - 1) {
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { marginEnd = (6 * dp).toInt() }
+                    }
+                })
+            }
+            content.addView(tagRow)
+
+            if (review.comment.isNotEmpty()) {
+                content.addView(TextView(this@CourseReviewActivity).apply {
+                    text = review.comment.take(40) + if (review.comment.length > 40) "..." else ""
+                    textSize = 11f
+                    setTextColor(resources.getColor(R.color.claude_text_secondary, null))
+                    typeface = resources.getFont(R.font.claude_serif)
+                    setPadding(0, (4 * dp).toInt(), 0, 0)
+                    maxLines = 1
+                    ellipsize = android.text.TextUtils.TruncateAt.END
+                })
+            }
+
+            content.addView(TextView(this@CourseReviewActivity).apply {
+                text = review.createdAt.take(10)
+                textSize = 9f
+                setTextColor(resources.getColor(R.color.claude_text_hint, null))
+                typeface = resources.getFont(R.font.claude_serif)
+                setPadding(0, (4 * dp).toInt(), 0, 0)
+            })
+
+            card.addView(content)
+            card.setOnClickListener {
+                deleteDialog?.dismiss()
+                AlertDialog.Builder(this@CourseReviewActivity)
+                    .setTitle("确认删除")
+                    .setMessage("删除对「${review.courseName}」的评价？")
+                    .setPositiveButton("删除") { _, _ -> viewModel.deleteReview(review) }
+                    .setNegativeButton("取消", null)
+                    .show()
+            }
+            container.addView(card)
+        }
+
+        val scrollView = android.widget.ScrollView(this).apply { addView(container) }
+
+        deleteDialog = AlertDialog.Builder(this)
+            .setTitle("我的评价")
+            .setView(scrollView)
+            .setNegativeButton("关闭", null)
+            .show()
     }
 
     private fun observeState() {
@@ -95,6 +222,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
 
     private fun showWriteReviewDialog() {
         val dialogView = LayoutInflater.from(this).inflate(R.layout.dialog_write_review, null)
+        val etNickname = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etNickname)
         val etCourseName = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etCourseName)
         val etTeacher = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etTeacher)
         val seekDifficulty = dialogView.findViewById<android.widget.SeekBar>(R.id.seekDifficulty)
@@ -102,6 +230,10 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
         val seekAttendance = dialogView.findViewById<android.widget.SeekBar>(R.id.seekAttendance)
         val etComment = dialogView.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etComment)
         val btnSubmit = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnSubmit)
+
+        // Pre-fill nickname
+        val savedNickname = viewModel.getNickname()
+        if (savedNickname.isNotEmpty()) etNickname.setText(savedNickname)
 
         // Pre-fill course name from search
         val search = binding.etSearch.text?.toString()?.trim() ?: ""
@@ -125,12 +257,24 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                 difficulty = seekDifficulty.progress + 1,
                 grading = seekGrading.progress + 1,
                 attendance = seekAttendance.progress + 1,
-                comment = etComment.text?.toString()?.trim() ?: ""
+                comment = etComment.text?.toString()?.trim() ?: "",
+                nickname = etNickname.text?.toString()?.trim() ?: ""
             )
             dialog.dismiss()
         }
 
         dialog.show()
+    }
+
+    private fun showDeleteConfirmDialog(review: CourseReview) {
+        AlertDialog.Builder(this)
+            .setTitle("删除评价")
+            .setMessage("确定要删除你对「${review.courseName}」的评价吗？")
+            .setPositiveButton("删除") { _, _ ->
+                viewModel.deleteReview(review)
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     inner class ReviewAdapter(private var data: List<CourseReview>) :
@@ -172,7 +316,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                 typeface = resources.getFont(R.font.claude_serif)
             })
 
-            // Rating bars row
+            // Rating tags row
             val ratingRow = LinearLayout(this@CourseReviewActivity).apply {
                 orientation = LinearLayout.HORIZONTAL
                 layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
@@ -210,14 +354,41 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                 })
             }
 
-            // Footer: nickname + date
-            holder.content.addView(TextView(this@CourseReviewActivity).apply {
+            // Footer: nickname + date + my review tag
+            val footerRow = LinearLayout(this@CourseReviewActivity).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+            }
+            footerRow.addView(TextView(this@CourseReviewActivity).apply {
                 text = "${review.nickname} · ${review.createdAt.take(10)}"
                 textSize = 10f
                 setTextColor(resources.getColor(R.color.claude_text_hint, null))
                 typeface = resources.getFont(R.font.claude_serif)
-                setPadding(0, 4, 0, 0)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
+            if (viewModel.isMyReview(review)) {
+                footerRow.addView(TextView(this@CourseReviewActivity).apply {
+                    text = "我的评价"
+                    textSize = 9f
+                    setTextColor(resources.getColor(R.color.claude_terracotta, null))
+                    typeface = resources.getFont(R.font.claude_serif)
+                    setPadding(8, 2, 8, 2)
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                        cornerRadius = 6f
+                        setColor(0x1AD4724A.toInt())
+                    }
+                })
+            }
+            holder.content.addView(footerRow)
+
+            // Long press to delete own review
+            holder.itemView.setOnLongClickListener {
+                if (viewModel.isMyReview(review)) {
+                    showDeleteConfirmDialog(review)
+                }
+                true
+            }
         }
 
         override fun getItemCount() = data.size

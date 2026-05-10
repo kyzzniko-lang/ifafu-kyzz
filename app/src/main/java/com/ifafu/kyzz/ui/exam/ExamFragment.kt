@@ -119,6 +119,31 @@ class ExamFragment : Fragment() {
 
     data class ConflictWarning(val groups: List<List<Exam>>)
 
+    private fun isExamFinished(datetime: String): Boolean {
+        if (datetime.isEmpty()) return false
+        val datePatterns = listOf(
+            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()),
+            java.text.SimpleDateFormat("yyyy/M/d", java.util.Locale.getDefault()),
+            java.text.SimpleDateFormat("yyyy.MM.dd", java.util.Locale.getDefault()),
+            java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.getDefault()),
+            java.text.SimpleDateFormat("yyyy年MM月dd日", java.util.Locale.getDefault())
+        )
+        return try {
+            val raw = datetime.replace("（", "(").replace("）", ")")
+                .replace("～", "~").replace("至", "~")
+            val datePart = raw.split("(", "~", " ").first().trim()
+            var parsed: java.util.Date? = null
+            for (fmt in datePatterns) {
+                try { parsed = fmt.parse(datePart); break } catch (_: Exception) {}
+            }
+            if (parsed == null) return false
+            val examCal = java.util.Calendar.getInstance().apply { time = parsed }
+            val todayCal = java.util.Calendar.getInstance()
+            examCal.get(java.util.Calendar.DAY_OF_YEAR) < todayCal.get(java.util.Calendar.DAY_OF_YEAR) ||
+                examCal.get(java.util.Calendar.YEAR) < todayCal.get(java.util.Calendar.YEAR)
+        } catch (_: Exception) { false }
+    }
+
     inner class ExamAdapter(
         private val items: List<Any>,
         private val progressMap: MutableMap<String, ExamProgress>
@@ -200,6 +225,22 @@ class ExamFragment : Fragment() {
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                     typeface = resources.getFont(R.font.claude_serif)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+                })
+                // 考试完成状态标签
+                val isFinished = isExamFinished(exam.datetime)
+                titleRow.addView(TextView(requireContext()).apply {
+                    text = if (isFinished) "已完成" else "未完成"
+                    textSize = 11f
+                    typeface = resources.getFont(R.font.claude_serif)
+                    setPadding(12, 4, 12, 4)
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                        cornerRadius = 10f
+                        setColor(if (isFinished) 0x1A2D7A4F.toInt() else 0x1A9C958E.toInt())
+                    }
+                    setTextColor(resources.getColor(
+                        if (isFinished) R.color.claude_success else R.color.claude_text_tertiary, null
+                    ))
                 })
                 val progress = progressMap[exam.id]
                 val statusTag = TextView(requireContext()).apply {

@@ -417,24 +417,29 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     private fun estimateWeekByMonth(): Int {
         val calendar = Calendar.getInstance()
         val month = calendar.get(Calendar.MONTH)
-        val weekOfYear = calendar.get(Calendar.WEEK_OF_YEAR)
+        val year = calendar.get(Calendar.YEAR)
 
-        val week = if (month in Calendar.FEBRUARY..Calendar.JUNE) {
-            weekOfYear - 5
-        } else {
-            weekOfYear - 35
+        // Estimate term start date based on current month
+        val estimatedTermStart = when (month) {
+            in Calendar.FEBRUARY..Calendar.JULY ->
+                Calendar.getInstance().apply { set(year, Calendar.MARCH, 2, 0, 0, 0) }
+            Calendar.JANUARY ->
+                Calendar.getInstance().apply { set(year - 1, Calendar.SEPTEMBER, 1, 0, 0, 0) }
+            else ->
+                Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0) }
         }
+        estimatedTermStart.set(Calendar.MILLISECOND, 0)
+        termStartDate = estimatedTermStart
 
-        if (termStartDate == null) {
-            val estimatedStart = Calendar.getInstance()
-            estimatedStart.add(Calendar.DAY_OF_YEAR, -(week - 1) * 7)
-            estimatedStart.set(Calendar.HOUR_OF_DAY, 0)
-            estimatedStart.set(Calendar.MINUTE, 0)
-            estimatedStart.set(Calendar.SECOND, 0)
-            estimatedStart.set(Calendar.MILLISECOND, 0)
-            termStartDate = estimatedStart
-        }
+        val today = Calendar.getInstance()
+        today.set(Calendar.HOUR_OF_DAY, 0)
+        today.set(Calendar.MINUTE, 0)
+        today.set(Calendar.SECOND, 0)
+        today.set(Calendar.MILLISECOND, 0)
 
+        val diffDays = ((today.timeInMillis - estimatedTermStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
+        val week = (diffDays / 7) + 1
+        // Before term starts, show week 0 (will be coerced to minWeek=1)
         return week.coerceIn(minWeek, maxWeek)
     }
 
@@ -826,7 +831,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             if (term == "1") {
                 cal.set(startYear, Calendar.SEPTEMBER, 1, 0, 0, 0)
             } else {
-                cal.set(startYear + 1, Calendar.FEBRUARY, 24, 0, 0, 0)
+                cal.set(startYear + 1, Calendar.MARCH, 2, 0, 0, 0)
             }
             cal.set(Calendar.MILLISECOND, 0)
             termStartDate = cal
@@ -847,23 +852,62 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     private fun ensureTermFirstDay(onReady: () -> Unit) {
         val prefs = getSharedPreferences("ifafu_user", MODE_PRIVATE)
         val existing = prefs.getString("termFirstDay", "") ?: ""
-        if (existing.isNotEmpty() && isValidDateFormat(existing)) {
+        if (existing.isNotEmpty() && isValidDateFormat(existing) && isTermFirstDayReasonable(existing)) {
             onReady()
             return
         }
+        // Term first day is stale — reset to default and clear old cache
         setDefaultTermFirstDay(prefs)
+        // Clear syllabus cache so we don't show old semester data with new term start
+        val account = getSharedPreferences("ifafu_user", MODE_PRIVATE).getString("account", "") ?: ""
+        if (account.isNotEmpty()) {
+            val cachePrefs = getSharedPreferences("ifafu_cache", MODE_PRIVATE)
+            cachePrefs.edit().apply {
+                remove("syllabus_$account")
+                remove("syllabus_${account}_ts")
+                for ((key, _) in cachePrefs.all) {
+                    if (key.startsWith("syllabus_${account}_") && key != "syllabus_${account}_ts") {
+                        remove(key)
+                    }
+                }
+                apply()
+            }
+        }
         onReady()
+    }
+
+    private fun isTermFirstDayReasonable(dateStr: String): Boolean {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val parsed = sdf.parse(dateStr) ?: return false
+            val termStart = Calendar.getInstance().apply { time = parsed }
+            val now = Calendar.getInstance()
+            val diffWeeks = ((now.timeInMillis - termStart.timeInMillis) / (7 * 24 * 60 * 60 * 1000L)).toInt()
+            diffWeeks in 0..24
+        } catch (_: Exception) { false }
     }
 
     private fun setDefaultTermFirstDay(prefs: android.content.SharedPreferences) {
         val calendar = Calendar.getInstance()
         val month = calendar.get(Calendar.MONTH)
         val year = calendar.get(Calendar.YEAR)
-        val termStart = if (month in Calendar.FEBRUARY..Calendar.JUNE) {
-            Calendar.getInstance().apply { set(year, Calendar.MARCH, 2, 0, 0, 0) }
-        } else {
-            Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0) }
+        val termStart = when (month) {
+            in Calendar.FEBRUARY..Calendar.JULY ->
+                Calendar.getInstance().apply { set(year, Calendar.MARCH, 2, 0, 0, 0) }
+            Calendar.JANUARY ->
+                Calendar.getInstance().apply { set(year - 1, Calendar.SEPTEMBER, 1, 0, 0, 0) }
+            else ->
+                Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0) }
         }
+        termStart.set(Calendar.MILLISECOND, 0)
+        // Normalize to Monday of that week
+        val dayOfWeek = termStart.get(Calendar.DAY_OF_WEEK)
+        val daysToMonday = if (dayOfWeek == Calendar.SUNDAY) 6 else dayOfWeek - Calendar.MONDAY
+        termStart.add(Calendar.DAY_OF_YEAR, -daysToMonday)
+        termStart.set(Calendar.HOUR_OF_DAY, 0)
+        termStart.set(Calendar.MINUTE, 0)
+        termStart.set(Calendar.SECOND, 0)
+
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         prefs.edit().putString("termFirstDay", sdf.format(termStart.time)).apply()
     }

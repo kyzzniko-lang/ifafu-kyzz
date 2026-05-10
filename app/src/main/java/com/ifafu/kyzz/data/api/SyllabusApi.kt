@@ -87,6 +87,7 @@ class SyllabusApi @Inject constructor(
             }
             val syllabus = syllabusParser.parseSyllabus(doc, number)
             Log.d("SyllabusApi", "Parsed: courses=${syllabus.courses.size}")
+            saveTermFirstDayIfNeeded(syllabus)
             syllabus
         } catch (e: Exception) {
             Log.e("SyllabusApi", "Failed to fetch syllabus with term", e)

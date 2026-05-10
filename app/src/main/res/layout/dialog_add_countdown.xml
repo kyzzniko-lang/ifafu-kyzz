@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@color/claude_bg_elevated"
+    android:orientation="vertical"
+    android:padding="20dp">
+
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:fontFamily="@font/claude_serif"
+        android:text="添加倒计时"
+        android:textAppearance="@style/ClaudeTitle"
+        android:textColor="@color/claude_text_primary" />
+
+    <com.google.android.material.textfield.TextInputLayout
+        style="@style/ClaudeInput"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:hint="事件名称（如：四六级考试）">
+
+        <com.google.android.material.textfield.TextInputEditText
+            android:id="@+id/etEventName"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/claude_serif"
+            android:inputType="text"
+            android:maxLines="1"
+            android:maxLength="20"
+            android:padding="16dp"
+            android:textSize="15sp" />
+    </com.google.android.material.textfield.TextInputLayout>
+
+    <LinearLayout
+        android:id="@+id/rowDate"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:background="?attr/selectableItemBackground"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="16dp">
+
+        <TextView
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:fontFamily="@font/claude_serif"
+            android:text="目标日期"
+            android:textColor="@color/claude_text_primary"
+            android:textSize="15sp" />
+
+        <TextView
+            android:id="@+id/tvSelectedDate"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:fontFamily="@font/claude_serif"
+            android:text="点击选择"
+            android:textColor="@color/claude_terracotta"
+            android:textSize="15sp" />
+    </LinearLayout>
+
+</LinearLayout>

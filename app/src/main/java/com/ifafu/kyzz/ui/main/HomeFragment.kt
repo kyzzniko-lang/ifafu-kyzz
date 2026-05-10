@@ -25,13 +25,18 @@ import androidx.lifecycle.observe
 import androidx.lifecycle.lifecycleScope
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.airbnb.lottie.LottieAnimationView
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.cache.CacheManager
+import com.ifafu.kyzz.data.model.CountdownEvent
 import com.ifafu.kyzz.data.model.Pet
+import com.ifafu.kyzz.data.repository.CommentRepository
 import javax.inject.Inject
 import com.ifafu.kyzz.data.model.PetState
 import com.ifafu.kyzz.databinding.FragmentHomeBinding
 import com.ifafu.kyzz.ui.pet.PetViewModel
+import com.ifafu.kyzz.ui.countdown.CountdownActivity
 import com.ifafu.kyzz.ui.syllabus.GridSyllabusActivity
 import com.ifafu.kyzz.ui.toolbox.KyzzToolboxActivity
 import dagger.hilt.android.AndroidEntryPoint
@@ -50,6 +55,9 @@ class HomeFragment : Fragment() {
 
     @Inject
     lateinit var cacheManager: CacheManager
+
+    @Inject
+    lateinit var commentRepository: CommentRepository
 
     private val bubbleHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var bubbleRunnable: Runnable? = null
@@ -99,12 +107,16 @@ class HomeFragment : Fragment() {
         updateGreeting()
         petViewModel.reloadPet()
         petViewModel.updateState()
+        loadHotDiscussion()
+        loadCountdownEvents()
+        checkForUpdate()
         // Auto bubble on resume
         val courses = viewModel.todayCourses.value ?: emptyList()
         val exam = viewModel.nextExam.value
         val examInfo = exam?.let { it.exam.name to it.daysLeft }
+        val countdowns = getCountdownPairs()
         view?.postDelayed({
-            petViewModel.triggerRandomBubble(courses.size, examInfo)
+            petViewModel.triggerRandomBubble(courses.size, examInfo, countdowns)
         }, 2000)
     }
 
@@ -146,6 +158,142 @@ class HomeFragment : Fragment() {
         binding.chipsContainer.alpha = 0f
         binding.chipsContainer.translationY = 20f
         binding.chipsContainer.animate().alpha(1f).translationY(0f).setDuration(500).setStartDelay(200).start()
+    }
+
+    private fun loadHotDiscussion() {
+        lifecycleScope.launch {
+            try {
+                val comments = withContext(Dispatchers.IO) {
+                    commentRepository.getComments(page = 1, perPage = 50)
+                }
+                val hot = comments.filter { it.likes.isNotEmpty() }
+                    .sortedByDescending { it.likes.size }
+                    .take(1)
+                if (hot.isNotEmpty() && isAdded) {
+                    val card = binding.cardHotDiscussion
+                    val container = binding.hotDiscussionContainer
+                    container.removeAllViews()
+                    card.visibility = View.VISIBLE
+
+                    val comment = hot[0]
+                    val dp = resources.displayMetrics.density
+
+                    container.addView(TextView(requireContext()).apply {
+                        text = comment.content.take(80) + if (comment.content.length > 80) "..." else ""
+                        setTextAppearance(R.style.ClaudeBody)
+                        setTextColor(resources.getColor(R.color.claude_text_primary, null))
+                        typeface = resources.getFont(R.font.claude_serif)
+                        maxLines = 2
+                    })
+                    container.addView(TextView(requireContext()).apply {
+                        text = "${comment.nickname} · ♥${comment.likes.size}"
+                        textSize = 11f
+                        setTextColor(resources.getColor(R.color.claude_text_hint, null))
+                        typeface = resources.getFont(R.font.claude_serif)
+                        setPadding(0, (6 * dp).toInt(), 0, 0)
+                    })
+
+                    card.setOnClickListener {
+                        startActivity(Intent(requireContext(), com.ifafu.kyzz.ui.comment.DiscussionActivity::class.java))
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun loadCountdownEvents() {
+        val prefs = requireContext().getSharedPreferences("countdown_prefs", android.content.Context.MODE_PRIVATE)
+        val json = prefs.getString("events", null)
+        val events: List<CountdownEvent> = if (json != null) {
+            try {
+                Gson().fromJson(json, object : TypeToken<List<CountdownEvent>>() {}.type)
+            } catch (_: Exception) { emptyList() }
+        } else emptyList()
+
+        if (events.isEmpty()) {
+            binding.cardCountdown.visibility = View.GONE
+            return
+        }
+
+        val now = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+
+        val upcoming = events.mapNotNull { event ->
+            try {
+                val target = sdf.parse(event.date) ?: return@mapNotNull null
+                val days = ((target.time - now.time.time) / (24 * 60 * 60 * 1000)).toInt()
+                event to days
+            } catch (_: Exception) { null }
+        }.sortedBy { it.second }.take(3)
+
+        if (upcoming.isEmpty()) {
+            binding.cardCountdown.visibility = View.GONE
+            return
+        }
+
+        val container = binding.countdownContainer
+        container.removeAllViews()
+        binding.cardCountdown.visibility = View.VISIBLE
+
+        for ((event, days) in upcoming) {
+            val row = LinearLayout(requireContext()).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER_VERTICAL
+                setPadding(0, 6, 0, 6)
+            }
+            row.addView(TextView(requireContext()).apply {
+                text = event.name
+                setTextAppearance(R.style.ClaudeBody)
+                setTextColor(resources.getColor(R.color.claude_text_primary, null))
+                typeface = resources.getFont(R.font.claude_serif)
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            })
+            val daysText = when {
+                days < 0 -> "已过${-days}天"
+                days == 0 -> "就是今天！"
+                else -> "${days}天后"
+            }
+            row.addView(TextView(requireContext()).apply {
+                text = daysText
+                textSize = 14f
+                setTextColor(resources.getColor(
+                    if (days in 0..7) R.color.claude_terracotta else R.color.claude_text_hint, null
+                ))
+                typeface = resources.getFont(R.font.claude_serif)
+            })
+            container.addView(row)
+        }
+
+        binding.cardCountdown.setOnClickListener {
+            startActivity(Intent(requireContext(), CountdownActivity::class.java))
+        }
+    }
+
+    private fun getCountdownPairs(): List<Pair<String, Int>> {
+        val prefs = requireContext().getSharedPreferences("countdown_prefs", android.content.Context.MODE_PRIVATE)
+        val json = prefs.getString("events", null)
+        val events: List<CountdownEvent> = if (json != null) {
+            try {
+                Gson().fromJson(json, object : TypeToken<List<CountdownEvent>>() {}.type)
+            } catch (_: Exception) { emptyList() }
+        } else emptyList()
+
+        val now = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        }
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+
+        return events.mapNotNull { event ->
+            try {
+                val target = sdf.parse(event.date) ?: return@mapNotNull null
+                val days = ((target.time - now.time.time) / (24 * 60 * 60 * 1000)).toInt()
+                event.name to days
+            } catch (_: Exception) { null }
+        }
     }
 
     private fun setupPet() {
@@ -372,7 +520,7 @@ class HomeFragment : Fragment() {
                     val courses = viewModel.todayCourses.value ?: emptyList()
                     val exam = viewModel.nextExam.value
                     val examInfo = exam?.let { it.exam.name to it.daysLeft }
-                    petViewModel.triggerRandomBubble(courses.size, examInfo)
+                    petViewModel.triggerRandomBubble(courses.size, examInfo, getCountdownPairs())
                     bubbleHandler.postDelayed(this, (45_000 + (Math.random() * 45_000).toLong()).toLong())
                 }
             }
@@ -618,6 +766,24 @@ class HomeFragment : Fragment() {
             "平均分${"%.1f".format(avg)}，平均绩点${"%.2f".format(avgGpa)}，共${scores.size}门课"
         } else ""
 
+        val countdownDescs = getCountdownPairs()
+            .filter { it.second >= 0 }
+            .sortedBy { it.second }
+            .map { (name, days) -> "距离${name}还有${days}天" }
+
+        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+        val petSeeNotes = prefs.getBoolean("pet_see_notes", true)
+        val noteDescs = if (petSeeNotes) {
+            val noteRepo = com.ifafu.kyzz.data.repository.NoteRepository(requireContext())
+            noteRepo.getPetVisibleNotes()
+                .sortedByDescending { it.updatedAt }
+                .take(5)
+                .map { n ->
+                    val preview = n.content.take(50).replace('\n', ' ')
+                    "「${n.title}」$preview"
+                }
+        } else emptyList()
+
         return com.ifafu.kyzz.data.api.PetChatApi.UserContext(
             userName = user?.name ?: "",
             studentId = user?.account ?: "",
@@ -627,7 +793,9 @@ class HomeFragment : Fragment() {
             todayCourses = courseDescs,
             nextExam = examDesc,
             recentScores = recentScores,
-            gpaSummary = gpaSummary
+            gpaSummary = gpaSummary,
+            countdownEvents = countdownDescs,
+            recentNotes = noteDescs
         )
     }
 
@@ -1049,6 +1217,59 @@ class HomeFragment : Fragment() {
             )
             .setPositiveButton("确定", null)
             .show()
+    }
+
+    // --- Auto update check ---
+
+    private var cachedUpdateRelease: com.ifafu.kyzz.ui.settings.UpdateChecker.ReleaseInfo? = null
+
+    private fun checkForUpdate() {
+        val ctx = context ?: return
+        if (!com.ifafu.kyzz.ui.settings.UpdateChecker.shouldCheck(ctx)) {
+            val cached = com.ifafu.kyzz.ui.settings.UpdateChecker.loadCachedResult(ctx)
+            if (cached != null && !com.ifafu.kyzz.ui.settings.UpdateChecker.isDismissed(ctx, cached.versionName)) {
+                showUpdateCard(cached)
+            }
+            return
+        }
+        com.ifafu.kyzz.ui.settings.UpdateChecker.checkForUpdate(ctx) { release ->
+            if (release != null) {
+                com.ifafu.kyzz.ui.settings.UpdateChecker.saveCheckResult(ctx, release)
+                if (!com.ifafu.kyzz.ui.settings.UpdateChecker.isDismissed(ctx, release.versionName)) {
+                    showUpdateCard(release)
+                }
+            } else {
+                // No update — still save check timestamp to avoid repeated API calls
+                ctx.getSharedPreferences("update_prefs", android.content.Context.MODE_PRIVATE)
+                    .edit().putLong("last_check_ts", System.currentTimeMillis()).apply()
+            }
+        }
+    }
+
+    private fun showUpdateCard(release: com.ifafu.kyzz.ui.settings.UpdateChecker.ReleaseInfo) {
+        if (_binding == null) return
+        cachedUpdateRelease = release
+        binding.cardUpdate.visibility = View.VISIBLE
+        binding.tvUpdateVersion.text = "v${release.versionName}"
+        binding.tvUpdateBody.text = release.body?.take(200) ?: ""
+        val size = release.apkAsset?.size ?: 0L
+        binding.tvUpdateSize.text = com.ifafu.kyzz.ui.settings.UpdateChecker.formatSize(size)
+        binding.cardUpdate.setOnClickListener {
+            val ctx = context ?: return@setOnClickListener
+            val sizeText = release.apkAsset?.let { com.ifafu.kyzz.ui.settings.UpdateChecker.formatSize(it.size) } ?: ""
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
+                .setTitle("发现新版本 v${release.versionName}")
+                .setMessage("${release.body ?: "修复已知问题并优化体验"}\n\n大小: $sizeText")
+                .setPositiveButton("下载更新") { _, _ ->
+                    com.ifafu.kyzz.ui.settings.UpdateChecker.downloadAndInstall(ctx, release)
+                }
+                .setNegativeButton("稍后再说") { dialog, _ ->
+                    com.ifafu.kyzz.ui.settings.UpdateChecker.dismissVersion(ctx, release.versionName)
+                    binding.cardUpdate.visibility = View.GONE
+                    dialog.dismiss()
+                }
+                .show()
+        }
     }
 
     override fun onDestroyView() {

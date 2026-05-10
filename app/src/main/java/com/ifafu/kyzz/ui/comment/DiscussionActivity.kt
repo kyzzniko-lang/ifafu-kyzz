@@ -15,6 +15,7 @@ import androidx.lifecycle.observe
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
+import com.google.android.material.chip.Chip
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import com.ifafu.kyzz.R
@@ -55,10 +56,14 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 Toast.makeText(this, "请输入内容", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-            viewModel.postComment(content)
+            val tag = viewModel.selectedTag.value?.let {
+                if (it == DiscussionViewModel.Tag.ALL) "" else it.label
+            } ?: ""
+            viewModel.postComment(content, tag)
         }
 
         setupRecyclerView()
+        setupTagChips()
         observeViewModel()
 
         viewModel.checkNickname()
@@ -77,6 +82,24 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 }
             }
         })
+    }
+
+    private fun setupTagChips() {
+        val tags = DiscussionViewModel.Tag.values()
+        for (tag in tags) {
+            val chip = Chip(this).apply {
+                text = tag.label
+                isCheckable = true
+                isChecked = tag == DiscussionViewModel.Tag.ALL
+                setOnClickListener { viewModel.setTag(tag) }
+                setChipBackgroundColorResource(R.color.claude_bg_elevated)
+                setTextColor(resources.getColor(R.color.claude_text_primary, null))
+                typeface = resources.getFont(R.font.claude_serif)
+                chipStrokeWidth = 1f
+                setChipStrokeColorResource(R.color.claude_border)
+            }
+            binding.chipGroup.addView(chip)
+        }
     }
 
     private fun observeViewModel() {
@@ -263,6 +286,25 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
 
             holder.content.addView(header)
 
+            // 话题标签
+            if (comment.tag.isNotEmpty()) {
+                holder.content.addView(TextView(holder.itemView.context).apply {
+                    text = comment.tag
+                    textSize = 10f
+                    setTextColor(resources.getColor(R.color.claude_terracotta, null))
+                    typeface = resources.getFont(R.font.claude_serif)
+                    background = android.graphics.drawable.GradientDrawable().apply {
+                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                        cornerRadius = 8f
+                        setColor(0x1AD4724A.toInt())
+                    }
+                    setPadding(12, 4, 12, 4)
+                    val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    lp.topMargin = 8
+                    layoutParams = lp
+                })
+            }
+
             // 内容
             val tvContent = TextView(holder.itemView.context).apply {
                 text = comment.content
@@ -272,6 +314,25 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 setPadding(0, 12, 0, 0)
             }
             holder.content.addView(tvContent)
+
+            // 底部：点赞按钮
+            val likeRow = LinearLayout(holder.itemView.context).apply {
+                orientation = LinearLayout.HORIZONTAL
+                gravity = Gravity.CENTER_VERTICAL
+                setPadding(0, 12, 0, 0)
+            }
+            val isLiked = comment.likes.contains(currentUserId)
+            val likeBtn = TextView(holder.itemView.context).apply {
+                text = if (comment.likes.isNotEmpty()) "♥ ${comment.likes.size}" else "♡"
+                textSize = 13f
+                setTextColor(resources.getColor(
+                    if (isLiked) R.color.claude_terracotta else R.color.claude_text_hint, null
+                ))
+                typeface = resources.getFont(R.font.claude_serif)
+                setOnClickListener { viewModel.likeComment(comment) }
+            }
+            likeRow.addView(likeBtn)
+            holder.content.addView(likeRow)
         }
 
         override fun getItemCount() = items.size

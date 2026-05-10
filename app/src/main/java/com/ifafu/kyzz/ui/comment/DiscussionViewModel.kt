@@ -18,6 +18,11 @@ class DiscussionViewModel @Inject constructor(
     private val userRepository: UserRepository
 ) : ReloginViewModel() {
 
+    enum class Tag(val label: String) {
+        ALL("全部"), CHAT("闲聊"), HELP("求助"),
+        LOST("失物招领"), TRADE("二手交易"), RANT("吐槽")
+    }
+
     private val _state = MutableLiveData<DiscussionState>()
     val state: LiveData<DiscussionState> = _state
 
@@ -29,6 +34,9 @@ class DiscussionViewModel @Inject constructor(
 
     private val _deleteState = MutableLiveData<DeleteState>()
     val deleteState: LiveData<DeleteState> = _deleteState
+
+    private val _selectedTag = MutableLiveData(Tag.ALL)
+    val selectedTag: LiveData<Tag> = _selectedTag
 
     private val comments = mutableListOf<Comment>()
     private var currentPage = 1
@@ -131,7 +139,7 @@ class DiscussionViewModel @Inject constructor(
                     comments.addAll(newComments)
                     currentPage++
                 }
-                _state.value = DiscussionState.Success(comments.toList(), userId)
+                emitFiltered()
             } catch (e: Exception) {
                 _state.value = if (comments.isEmpty()) {
                     DiscussionState.Error("加载失败，请重试")
@@ -144,7 +152,7 @@ class DiscussionViewModel @Inject constructor(
         }
     }
 
-    fun postComment(content: String) {
+    fun postComment(content: String, tag: String = "") {
         // 内容过滤
         val filterResult = ContentFilter.check(content)
         if (!filterResult.passed) {
@@ -159,13 +167,13 @@ class DiscussionViewModel @Inject constructor(
         _postState.value = PostState.Loading
         viewModelScope.launch {
             try {
-                val comment = commentRepository.postComment(content, nickname, uid)
+                val comment = commentRepository.postComment(content, nickname, uid, tag)
                 if (comment != null) {
                     if (comments.none { it.objectId == comment.objectId }) {
                         comments.add(0, comment)
                     }
                     _postState.value = PostState.Success
-                    _state.value = DiscussionState.Success(comments.toList(), userId)
+                    emitFiltered()
                 } else {
                     _postState.value = PostState.Error("发送失败")
                 }
@@ -173,6 +181,37 @@ class DiscussionViewModel @Inject constructor(
                 _postState.value = PostState.Error("网络异常")
             }
         }
+    }
+
+    fun setTag(tag: Tag) {
+        _selectedTag.value = tag
+        emitFiltered()
+    }
+
+    fun likeComment(comment: Comment) {
+        val uid = userId
+        if (uid.isEmpty()) return
+        viewModelScope.launch {
+            try {
+                val updated = commentRepository.likeComment(comment.objectId, uid)
+                if (updated != null) {
+                    val idx = comments.indexOfFirst { it.objectId == comment.objectId }
+                    if (idx >= 0) comments[idx] = updated
+                    emitFiltered()
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    fun getHotComments(): List<Comment> {
+        return comments.filter { it.likes.isNotEmpty() }.sortedByDescending { it.likes.size }.take(3)
+    }
+
+    private fun emitFiltered() {
+        val tag = _selectedTag.value ?: Tag.ALL
+        val filtered = if (tag == Tag.ALL) comments.toList()
+            else comments.filter { it.tag == tag.label }
+        _state.value = DiscussionState.Success(filtered, userId)
     }
 
     fun deleteComment(objectId: String) {
@@ -189,7 +228,7 @@ class DiscussionViewModel @Inject constructor(
                 if (success) {
                     comments.removeAll { it.objectId == objectId }
                     _deleteState.value = DeleteState.Success
-                    _state.value = DiscussionState.Success(comments.toList(), userId)
+                    emitFiltered()
                 } else {
                     _deleteState.value = DeleteState.Error("删除失败")
                 }

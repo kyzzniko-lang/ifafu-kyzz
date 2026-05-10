@@ -17,14 +17,20 @@ import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.databinding.FragmentToolboxBinding
 import com.ifafu.kyzz.ui.about.AboutActivity
+import com.ifafu.kyzz.ui.calendar.CalendarExportActivity
 import com.ifafu.kyzz.ui.calculator.ScoreCalculatorActivity
 import com.ifafu.kyzz.ui.comment.CommentTeacherActivity
 import com.ifafu.kyzz.ui.review.CourseReviewActivity
 import com.ifafu.kyzz.ui.comment.DiscussionActivity
 import com.ifafu.kyzz.ui.query.CourseSelectionActivity
 import com.ifafu.kyzz.ui.query.MakeupExamActivity
+import com.ifafu.kyzz.ui.countdown.CountdownActivity
+import com.ifafu.kyzz.ui.map.CampusMapActivity
+import com.ifafu.kyzz.ui.note.NoteListActivity
 import com.ifafu.kyzz.ui.score.ElectiveScoreActivity
+import com.ifafu.kyzz.ui.scorecard.ScoreCardActivity
 import com.ifafu.kyzz.ui.settings.SettingsActivity
+import com.ifafu.kyzz.ui.timer.PomodoroTimerActivity
 import com.ifafu.kyzz.ui.studentinfo.StudentInfoActivity
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -48,6 +54,12 @@ class ToolboxFragment : Fragment() {
             ToolboxItem("课程评价", "查看课程评价，避坑选课", "", "") { startActivity(Intent(requireContext(), CourseReviewActivity::class.java)) },
             ToolboxItem("教师评价", "快速完成教师评价", "xsjxpj.aspx", "N121401") { startActivity(Intent(requireContext(), CommentTeacherActivity::class.java)) },
             ToolboxItem("成绩预测", "预测期末需要多少分及格", "", "") { startActivity(Intent(requireContext(), ScoreCalculatorActivity::class.java)) },
+            ToolboxItem("番茄钟", "专注计时，宠物获得经验", "", "") { startActivity(Intent(requireContext(), PomodoroTimerActivity::class.java)) },
+            ToolboxItem("目标倒计时", "四六级、考研、期末倒计时", "", "") { startActivity(Intent(requireContext(), CountdownActivity::class.java)) },
+            ToolboxItem("校园地图", "查看校园常用地点", "", "") { startActivity(Intent(requireContext(), CampusMapActivity::class.java)) },
+            ToolboxItem("成绩单截图", "生成精美成绩单图片", "", "") { startActivity(Intent(requireContext(), ScoreCardActivity::class.java)) },
+            ToolboxItem("课表导入日历", "一键导出课表到系统日历", "", "") { startActivity(Intent(requireContext(), CalendarExportActivity::class.java)) },
+            ToolboxItem("备忘录", "快捷笔记，录音，AI归类", "", "") { startActivity(Intent(requireContext(), NoteListActivity::class.java)) },
             ToolboxItem("选修学分查询", "查看选修学分完成情况", "", "") { startActivity(Intent(requireContext(), ElectiveScoreActivity::class.java)) },
             ToolboxItem("选课情况查询", "查看全部选课记录", "xsxkqk.aspx", "N121615") { startActivity(Intent(requireContext(), CourseSelectionActivity::class.java)) },
             ToolboxItem("补考考试查询", "查询补考考试安排", "xsbkkscx.aspx", "N121617") { startActivity(Intent(requireContext(), MakeupExamActivity::class.java)) },

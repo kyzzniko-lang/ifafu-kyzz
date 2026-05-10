@@ -58,8 +58,19 @@ class MainViewModel @Inject constructor(
         return try {
             val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
             val parsed = sdf.parse(firstDay) ?: return 0
-            val termStart = Calendar.getInstance().apply { time = parsed }
-            val today = Calendar.getInstance()
+            val termStart = Calendar.getInstance().apply {
+                time = parsed
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val today = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
             val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
             (diffDays / 7) + 1
         } catch (_: Exception) { 0 }
@@ -76,6 +87,13 @@ class MainViewModel @Inject constructor(
 
         val syllabus = cacheManager.loadSyllabus(user.account)
         if (syllabus == null) {
+            fetchSyllabusAndShow()
+            return
+        }
+        // If current week is far beyond course range, the cache is from a previous semester
+        val currentWeek = calculateCurrentWeek()
+        val maxCourseWeek = if (syllabus.courses.isNotEmpty()) syllabus.courses.maxOf { it.weekEnd } else 20
+        if (currentWeek > maxCourseWeek + 4) {
             fetchSyllabusAndShow()
             return
         }
@@ -112,8 +130,19 @@ class MainViewModel @Inject constructor(
                 _todayCourses.value = emptyList()
                 return
             }
-            val termStart = Calendar.getInstance().apply { time = parsed }
-            val today = Calendar.getInstance()
+            val termStart = Calendar.getInstance().apply {
+                time = parsed
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
+            val today = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+                set(Calendar.MILLISECOND, 0)
+            }
             val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
             val currentWeek = (diffDays / 7) + 1
             _currentWeek.postValue(currentWeek)
@@ -218,7 +247,8 @@ class MainViewModel @Inject constructor(
     )
 
     private fun fetchTermFirstDay() {
-        if (userRepository.termFirstDayManual) return
+        // Always fetch from GitHub (even if manual) to detect semester changes
+        // The manual flag is auto-reset when GitHub provides newer data
         fetchTermFirstDayFromGitHub()
     }
 
@@ -248,13 +278,31 @@ class MainViewModel @Inject constructor(
                     val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                     val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateStr)
                     if (parsed != null) {
-                        userRepository.termFirstDay = sdf.format(parsed)
+                        val newTermFirstDay = normalizeToMonday(sdf.format(parsed))
+                        val oldTermFirstDay = userRepository.termFirstDay
+                        val semesterChanged = oldTermFirstDay.isNotEmpty() && newTermFirstDay != oldTermFirstDay
+
+                        userRepository.termFirstDay = newTermFirstDay
+                        // Auto-reset manual flag when GitHub provides an update
+                        userRepository.termFirstDayManual = false
                         _currentWeek.postValue(calculateCurrentWeek())
-                        // 重新计算今日课程（用新的学期首日）
-                        val user = userRepository.getUser()
-                        val syllabus = if (user.isLogin) cacheManager.loadSyllabus(user.account) else null
-                        if (syllabus != null) {
-                            computeTodayCourses(syllabus)
+
+                        if (semesterChanged) {
+                            // Semester changed — clear old syllabus cache and force re-fetch
+                            val user = userRepository.getUser()
+                            if (user.isLogin) {
+                                cacheManager.clearCache(user.account)
+                                android.util.Log.i("MainViewModel", "Semester changed ($oldTermFirstDay -> $newTermFirstDay), cache cleared")
+                            }
+                            // Re-fetch syllabus for today's courses
+                            loadTodayCourses()
+                        } else {
+                            // Same semester — just recompute with existing cache
+                            val user = userRepository.getUser()
+                            val syllabus = if (user.isLogin) cacheManager.loadSyllabus(user.account) else null
+                            if (syllabus != null) {
+                                computeTodayCourses(syllabus)
+                            }
                         }
                         android.util.Log.i("MainViewModel", "Term first day synced from GitHub: $dateStr")
                         return@launch
@@ -269,9 +317,26 @@ class MainViewModel @Inject constructor(
 
     private fun fallbackTermFirstDay() {
         val existing = userRepository.termFirstDay
-        if (existing.isEmpty() || !isValidDateFormat(existing)) {
+        if (existing.isEmpty() || !isValidDateFormat(existing) || isTermFirstDayStale(existing)) {
             setDefaultTermFirstDay()
+            // Clear stale cache so old semester data isn't shown with new term dates
+            val user = userRepository.getUser()
+            if (user.isLogin) {
+                cacheManager.clearCache(user.account)
+            }
         }
+    }
+
+    private fun isTermFirstDayStale(dateStr: String): Boolean {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val parsed = sdf.parse(dateStr) ?: return true
+            val termStart = Calendar.getInstance().apply { time = parsed }
+            val now = Calendar.getInstance()
+            val diffWeeks = ((now.timeInMillis - termStart.timeInMillis) / (7 * 24 * 60 * 60 * 1000L)).toInt()
+            // A normal semester is ~20 weeks; anything beyond 24 weeks is definitely a new semester
+            diffWeeks > 24
+        } catch (_: Exception) { true }
     }
 
     private fun isValidDateFormat(date: String): Boolean {
@@ -283,17 +348,42 @@ class MainViewModel @Inject constructor(
         } catch (_: Exception) { false }
     }
 
+    /**
+     * Normalize any date to the Monday of its week.
+     * termFirstDay must always be a Monday for updateDateRow() to work correctly.
+     */
+    private fun normalizeToMonday(dateStr: String): String {
+        return try {
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val cal = Calendar.getInstance()
+            cal.time = sdf.parse(dateStr) ?: return dateStr
+            val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+            // Sunday=1, Monday=2, ..., Saturday=7
+            // Days to go back to Monday: Sunday->6, Monday->0, Tuesday->1, ..., Saturday->5
+            val daysToMonday = if (dayOfWeek == Calendar.SUNDAY) 6 else dayOfWeek - Calendar.MONDAY
+            cal.add(Calendar.DAY_OF_YEAR, -daysToMonday)
+            cal.set(Calendar.HOUR_OF_DAY, 0)
+            cal.set(Calendar.MINUTE, 0)
+            cal.set(Calendar.SECOND, 0)
+            cal.set(Calendar.MILLISECOND, 0)
+            sdf.format(cal.time)
+        } catch (_: Exception) { dateStr }
+    }
+
     private fun setDefaultTermFirstDay() {
         val cal = Calendar.getInstance()
         val month = cal.get(Calendar.MONTH)
         val year = cal.get(Calendar.YEAR)
-        val termStart = if (month in 1..6) {
-            Calendar.getInstance().apply { set(year, Calendar.MARCH, 2, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
-        } else {
-            Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
+        val termStart = when (month) {
+            in Calendar.FEBRUARY..Calendar.JULY ->
+                Calendar.getInstance().apply { set(year, Calendar.MARCH, 2, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
+            Calendar.JANUARY ->
+                Calendar.getInstance().apply { set(year - 1, Calendar.SEPTEMBER, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
+            else ->
+                Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
         }
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        userRepository.termFirstDay = sdf.format(termStart.time)
+        userRepository.termFirstDay = normalizeToMonday(sdf.format(termStart.time))
     }
 
     data class TodayCourse(

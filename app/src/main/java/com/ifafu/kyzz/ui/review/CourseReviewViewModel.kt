@@ -1,5 +1,6 @@
 package com.ifafu.kyzz.ui.review
 
+import android.app.Application
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.ViewModel
@@ -17,8 +18,11 @@ import javax.inject.Inject
 @HiltViewModel
 class CourseReviewViewModel @Inject constructor(
     private val reviewApi: CourseReviewApi,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val app: Application
 ) : ViewModel() {
+
+    private val prefs by lazy { app.getSharedPreferences("review_prefs", android.content.Context.MODE_PRIVATE) }
 
     private val _reviews = MutableLiveData<List<CourseReview>>()
     val reviews: LiveData<List<CourseReview>> = _reviews
@@ -28,6 +32,9 @@ class CourseReviewViewModel @Inject constructor(
 
     private val _postState = MutableLiveData<PostState>(PostState.Idle)
     val postState: LiveData<PostState> = _postState
+
+    private val _deleteState = MutableLiveData<DeleteState>(DeleteState.Idle)
+    val deleteState: LiveData<DeleteState> = _deleteState
 
     private var currentPage = 1
     private var hasMore = true
@@ -47,6 +54,28 @@ class CourseReviewViewModel @Inject constructor(
         object Success : PostState()
         data class Error(val message: String) : PostState()
     }
+
+    sealed class DeleteState {
+        object Idle : DeleteState()
+        object Loading : DeleteState()
+        object Success : DeleteState()
+        data class Error(val message: String) : DeleteState()
+    }
+
+    private val userId: String by lazy {
+        val account = userRepository.getUser().account
+        "u_" + hashSha256(account).take(8)
+    }
+
+    fun getNickname(): String {
+        return prefs.getString("nickname", "") ?: ""
+    }
+
+    fun saveNickname(nickname: String) {
+        prefs.edit().putString("nickname", nickname.trim()).apply()
+    }
+
+    fun isMyReview(review: CourseReview): Boolean = review.authorId == userId
 
     fun loadReviews(refresh: Boolean = true) {
         if (!refresh && !hasMore) return
@@ -93,10 +122,10 @@ class CourseReviewViewModel @Inject constructor(
     fun postReview(
         courseName: String, teacher: String,
         difficulty: Int, grading: Int, attendance: Int,
-        comment: String
+        comment: String, nickname: String
     ) {
-        val user = userRepository.getUser()
-        val userId = "u_" + hashSha256(user.account).take(8)
+        val savedNickname = nickname.ifBlank { getNickname().ifBlank { "匿名用户" } }
+        if (nickname.isNotBlank()) saveNickname(nickname)
 
         _postState.value = PostState.Loading
         viewModelScope.launch {
@@ -108,7 +137,7 @@ class CourseReviewViewModel @Inject constructor(
                     grading = grading,
                     attendance = attendance,
                     comment = comment,
-                    nickname = user.name.ifEmpty { "匿名用户" },
+                    nickname = savedNickname,
                     authorId = userId
                 )
                 val success = reviewApi.postReview(review)
@@ -123,6 +152,28 @@ class CourseReviewViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 _postState.value = PostState.Error(e.message ?: "发布失败")
+            }
+        }
+    }
+
+    fun deleteReview(review: CourseReview) {
+        if (review.commentId.isEmpty()) return
+        _deleteState.value = DeleteState.Loading
+        viewModelScope.launch {
+            try {
+                val success = reviewApi.deleteReview(review.commentId)
+                if (success) {
+                    _deleteState.value = DeleteState.Success
+                    delay(300)
+                    allReviews.removeAll { it.commentId == review.commentId }
+                    _reviews.value = allReviews.toList()
+                } else {
+                    _deleteState.value = DeleteState.Error("删除失败")
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _deleteState.value = DeleteState.Error(e.message ?: "删除失败")
             }
         }
     }

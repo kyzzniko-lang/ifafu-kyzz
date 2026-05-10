@@ -63,12 +63,16 @@ class GitHubIssuesApi @Inject constructor(
                         val createdAt = obj.get("created_at")?.asString ?: ""
 
                         val data = JsonParser.parseString(bodyStr).asJsonObject
+                        val likesArr = data.getAsJsonArray("likes")
+                        val likes = likesArr?.map { it.asString } ?: emptyList()
                         Comment(
                             objectId = commentId.toString(),
                             content = data.get("content")?.asString ?: "",
                             nickname = data.get("nickname")?.asString ?: "",
                             authorId = data.get("authorId")?.asString ?: "",
-                            createdAt = createdAt
+                            createdAt = createdAt,
+                            tag = data.get("tag")?.asString ?: "",
+                            likes = likes
                         )
                     } catch (e: Exception) {
                         null
@@ -81,15 +85,18 @@ class GitHubIssuesApi @Inject constructor(
         }
     }
 
-    suspend fun postComment(content: String, nickname: String, authorId: String): Comment? = withContext(Dispatchers.IO) {
+    suspend fun postComment(content: String, nickname: String, authorId: String, tag: String = ""): Comment? = withContext(Dispatchers.IO) {
         if (!isConfigured()) return@withContext null
         try {
             val url = "$BASE/issues/$COMMENTS_ISSUE/comments"
-            val bodyJson = gson.toJson(mapOf("body" to gson.toJson(mapOf(
-                "nickname" to nickname,
-                "content" to content,
-                "authorId" to authorId
-            ))))
+            val innerJson = com.google.gson.JsonObject().apply {
+                addProperty("nickname", nickname)
+                addProperty("content", content)
+                addProperty("authorId", authorId)
+                addProperty("tag", tag)
+                add("likes", com.google.gson.JsonArray())
+            }
+            val bodyJson = gson.toJson(mapOf("body" to innerJson.toString()))
             val request = Request.Builder().url(url).apply {
                 authHeaders().forEach { (k, v) -> header(k, v) }
             }.post(bodyJson.toRequestBody(JSON)).build()
@@ -106,7 +113,9 @@ class GitHubIssuesApi @Inject constructor(
                     content = content,
                     nickname = nickname,
                     authorId = authorId,
-                    createdAt = json.get("created_at")?.asString ?: ""
+                    createdAt = json.get("created_at")?.asString ?: "",
+                    tag = tag,
+                    likes = emptyList()
                 )
             }
         } catch (e: Exception) {
@@ -213,6 +222,58 @@ class GitHubIssuesApi @Inject constructor(
         } catch (e: Exception) {
             Log.e(TAG, "saveNickname error", e)
             false
+        }
+    }
+
+    // ========== 点赞 ==========
+
+    suspend fun likeComment(commentId: String, userId: String): Comment? = withContext(Dispatchers.IO) {
+        if (!isConfigured()) return@withContext null
+        try {
+            // 1. 读取当前 comment body
+            val getUrl = "$BASE/issues/comments/$commentId"
+            val getRequest = Request.Builder().url(getUrl).apply {
+                authHeaders().forEach { (k, v) -> header(k, v) }
+            }.get().build()
+
+            val currentBody = client.newCall(getRequest).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                val json = JsonParser.parseString(response.body?.string() ?: return@withContext null).asJsonObject
+                json.get("body")?.asString ?: return@withContext null
+            }
+
+            val data = JsonParser.parseString(currentBody).asJsonObject
+            val likesArr = data.getAsJsonArray("likes") ?: com.google.gson.JsonArray()
+            val likes = likesArr.map { it.asString }.toMutableList()
+
+            if (userId in likes) {
+                likes.remove(userId)
+            } else {
+                likes.add(userId)
+            }
+            data.add("likes", gson.toJsonTree(likes))
+
+            // 2. PATCH 更新
+            val patchBody = gson.toJson(mapOf("body" to data.toString()))
+            val patchRequest = Request.Builder().url(getUrl).apply {
+                authHeaders().forEach { (k, v) -> header(k, v) }
+            }.patch(patchBody.toRequestBody(JSON)).build()
+
+            client.newCall(patchRequest).execute().use { response ->
+                if (!response.isSuccessful) return@withContext null
+                Comment(
+                    objectId = commentId,
+                    content = data.get("content")?.asString ?: "",
+                    nickname = data.get("nickname")?.asString ?: "",
+                    authorId = data.get("authorId")?.asString ?: "",
+                    createdAt = "",
+                    tag = data.get("tag")?.asString ?: "",
+                    likes = likes
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "likeComment error", e)
+            null
         }
     }
 }

@@ -38,6 +38,12 @@
             android:summary="给你的宠物起个名字"
             android:defaultValue="小农" />
 
+        <SwitchPreferenceCompat
+            android:key="pet_see_notes"
+            android:title="宠物可看笔记"
+            android:summary="允许宠物在聊天中参考你的笔记内容给出建议"
+            android:defaultValue="true" />
+
     </PreferenceCategory>
 
     <PreferenceCategory

@@ -155,4 +155,57 @@ object UpdateChecker {
             else -> String.format("%.1fMB", bytes / 1024.0 / 1024.0)
         }
     }
+
+    // --- Cache & dismiss methods ---
+
+    private const val PREFS_NAME = "update_prefs"
+    private const val KEY_LAST_CHECK_TS = "last_check_ts"
+    private const val KEY_CACHED_TAG = "cached_tag"
+    private const val KEY_CACHED_BODY = "cached_body"
+    private const val KEY_CACHED_SIZE = "cached_size"
+    private const val KEY_CACHED_URL = "cached_url"
+    private const val KEY_DISMISSED_VERSION = "dismissed_version"
+    private const val CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000L // 24 hours
+
+    fun shouldCheck(context: Context): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val lastTs = prefs.getLong(KEY_LAST_CHECK_TS, 0L)
+        return System.currentTimeMillis() - lastTs > CHECK_INTERVAL_MS
+    }
+
+    fun saveCheckResult(context: Context, release: ReleaseInfo) {
+        val asset = release.apkAsset ?: return
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().apply {
+            putLong(KEY_LAST_CHECK_TS, System.currentTimeMillis())
+            putString(KEY_CACHED_TAG, release.tagName)
+            putString(KEY_CACHED_BODY, release.body ?: "")
+            putLong(KEY_CACHED_SIZE, asset.size)
+            putString(KEY_CACHED_URL, asset.downloadUrl)
+            apply()
+        }
+    }
+
+    fun loadCachedResult(context: Context): ReleaseInfo? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val tag = prefs.getString(KEY_CACHED_TAG, null) ?: return null
+        val body = prefs.getString(KEY_CACHED_BODY, "") ?: ""
+        val size = prefs.getLong(KEY_CACHED_SIZE, 0L)
+        val url = prefs.getString(KEY_CACHED_URL, "") ?: ""
+        return ReleaseInfo(
+            tagName = tag,
+            body = body,
+            assets = listOf(ReleaseInfo.Asset(name = "app-release.apk", downloadUrl = url, size = size))
+        )
+    }
+
+    fun dismissVersion(context: Context, versionName: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString(KEY_DISMISSED_VERSION, versionName)
+            .apply()
+    }
+
+    fun isDismissed(context: Context, versionName: String): Boolean {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        return prefs.getString(KEY_DISMISSED_VERSION, "") == versionName
+    }
 }

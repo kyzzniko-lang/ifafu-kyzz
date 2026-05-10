@@ -311,7 +311,7 @@ class PetViewModel @Inject constructor(
         _checkInResult.value = null
     }
 
-    fun triggerRandomBubble(todayCourseCount: Int, nextExam: Pair<String, Int>?) {
+    fun triggerRandomBubble(todayCourseCount: Int, nextExam: Pair<String, Int>?, countdownEvents: List<Pair<String, Int>> = emptyList()) {
         val pet = _pet.value ?: return
         val now = System.currentTimeMillis()
         if (now - lastBubbleTime < 30_000) return // 30秒内不重复冒泡
@@ -328,6 +328,11 @@ class PetViewModel @Inject constructor(
         }
         if (nextExam != null && nextExam.second in 0..7) {
             messages.add("${nextExam.first}${if (nextExam.second == 0) "今天考！" else "${nextExam.second}天后考"}，准备好了吗？")
+        }
+        for ((name, days) in countdownEvents) {
+            if (days in 0..7) {
+                messages.add("距离${name}还有${days}天了，加油！")
+            }
         }
         if (messages.isEmpty()) {
             messages.addAll(listOf("喵~", "摸摸我嘛~", "你在干什么呀？", "呼噜呼噜~"))

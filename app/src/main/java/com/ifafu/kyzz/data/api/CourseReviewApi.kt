@@ -92,4 +92,19 @@ class CourseReviewApi @Inject constructor(
             false
         }
     }
+
+    suspend fun deleteReview(commentId: String): Boolean = withContext(Dispatchers.IO) {
+        if (!isConfigured()) return@withContext false
+        try {
+            val url = "$BASE/issues/comments/$commentId"
+            val request = Request.Builder().url(url).apply {
+                authHeaders().forEach { (k, v) -> header(k, v) }
+            }.delete().build()
+
+            client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: Exception) {
+            Log.e(TAG, "deleteReview error", e)
+            false
+        }
+    }
 }

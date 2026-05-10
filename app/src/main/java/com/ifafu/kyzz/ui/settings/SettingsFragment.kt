@@ -187,10 +187,20 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 val selected = Calendar.getInstance().apply {
                     set(year, month, dayOfMonth, 0, 0, 0)
                     set(Calendar.MILLISECOND, 0)
+                    // Normalize to Monday of that week
+                    val dow = get(Calendar.DAY_OF_WEEK)
+                    add(Calendar.DAY_OF_YEAR, -(if (dow == Calendar.SUNDAY) 6 else dow - Calendar.MONDAY))
                 }
                 val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                userRepository.termFirstDay = sdf.format(selected.time)
+                val newDate = sdf.format(selected.time)
+                val oldDate = userRepository.termFirstDay
+                val changed = oldDate.isNotEmpty() && newDate != oldDate
+                userRepository.termFirstDay = newDate
                 userRepository.termFirstDayManual = true
+                // Clear syllabus cache if term first day actually changed
+                if (changed) {
+                    cacheManager.clearCache(userRepository.getUser().account)
+                }
                 updateTermFirstDaySummary(pref)
                 Toast.makeText(requireContext(), "学期首日已设置为 $year-${month + 1}-$dayOfMonth", Toast.LENGTH_SHORT).show()
             },

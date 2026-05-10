@@ -5,7 +5,10 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:name=".MainApplication"
@@ -50,6 +53,13 @@
         <activity android:name=".ui.query.MakeupExamActivity" />
         <activity android:name=".ui.calculator.ScoreCalculatorActivity" />
         <activity android:name=".ui.review.CourseReviewActivity" />
+        <activity android:name=".ui.timer.PomodoroTimerActivity" />
+        <activity android:name=".ui.countdown.CountdownActivity" />
+        <activity android:name=".ui.map.CampusMapActivity" />
+        <activity android:name=".ui.scorecard.ScoreCardActivity" />
+        <activity android:name=".ui.calendar.CalendarExportActivity" />
+        <activity android:name=".ui.note.NoteListActivity" />
+        <activity android:name=".ui.note.NoteEditActivity" />
 
         <receiver
             android:name=".widget.iFAFUWidget"

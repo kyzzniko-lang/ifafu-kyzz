@@ -3,5 +3,7 @@
     <domain-config cleartextTrafficPermitted="true">
         <domain includeSubdomains="true">jwgl.fafu.edu.cn</domain>
         <domain includeSubdomains="true">fafu.edu.cn</domain>
+        <domain includeSubdomains="true">autonavi.com</domain>
+        <domain includeSubdomains="true">cloudflare.com</domain>
     </domain-config>
 </network-security-config>

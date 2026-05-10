@@ -68,7 +68,7 @@ class SyllabusViewModel @Inject constructor(
 
         if (!forceRefresh) {
             val cached = cacheManager.loadSyllabus(user.account, yearTermKey)
-            if (cached != null && cached.courses.isNotEmpty()) {
+            if (cached != null && cached.courses.isNotEmpty() && !isCacheStale(cached)) {
                 updateAvailableOptions(cached)
                 _state.value = UiState.Success(cached)
                 return
@@ -130,5 +130,48 @@ class SyllabusViewModel @Inject constructor(
             && syllabus.selectedTermOption < syllabus.searchTermOptions.size) {
             initialLoadedTerm = syllabus.searchTermOptions[syllabus.selectedTermOption]
         }
+    }
+
+    /**
+     * Detect if cached syllabus belongs to a different semester.
+     * Two checks:
+     * 1. Cache age > 30 days → stale
+     * 2. Current week calculated from termFirstDay exceeds the course range (max week + 4 buffer) → stale
+     */
+    private fun isCacheStale(cached: Syllabus): Boolean {
+        val account = userRepository.getUser().account
+        // Check 1: time-based staleness
+        if (cacheManager.isCacheStale(account, "syllabus", 30L * 24 * 60 * 60 * 1000)) {
+            return true
+        }
+        // Check 2: semester boundary — if current week is far beyond course range, cache is from old semester
+        val firstDay = userRepository.termFirstDay
+        if (firstDay.isNotEmpty()) {
+            try {
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault())
+                val parsed = sdf.parse(firstDay) ?: return false
+                val termStart = java.util.Calendar.getInstance().apply {
+                    time = parsed
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }
+                val today = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                    set(java.util.Calendar.MILLISECOND, 0)
+                }
+                val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
+                val currentWeek = (diffDays / 7) + 1
+                val maxCourseWeek = if (cached.courses.isNotEmpty()) cached.courses.maxOf { it.weekEnd } else 20
+                // If current week is well beyond the course range, this cache is from a previous semester
+                if (currentWeek > maxCourseWeek + 4) {
+                    return true
+                }
+            } catch (_: Exception) {}
+        }
+        return false
     }
 }
