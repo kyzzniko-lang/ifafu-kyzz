@@ -185,7 +185,8 @@ class PetViewModel @Inject constructor(
     fun feed() {
         val pet = _pet.value ?: return
         if (!pet.canFeed()) {
-            _bubbleText.value = "今天已经吃了${Pet.MAX_DAILY_FEED}次了，明天再来喂我吧~"
+            val mins = (pet.nextFeedRecoverIn() / 60_000).toInt()
+            _bubbleText.value = "肚子还饱着呢~ ${mins}分钟后再喂我吧"
             viewModelScope.launch { delay(2000); _bubbleText.value = null }
             return
         }
@@ -216,7 +217,8 @@ class PetViewModel @Inject constructor(
     fun play() {
         val pet = _pet.value ?: return
         if (!pet.canPlay()) {
-            _bubbleText.value = "今天已经玩了${Pet.MAX_DAILY_PLAY}次了，明天再来陪我吧~"
+            val mins = (pet.nextPlayRecoverIn() / 60_000).toInt()
+            _bubbleText.value = "我有点累了~ ${mins}分钟后再陪我玩吧"
             viewModelScope.launch { delay(2000); _bubbleText.value = null }
             return
         }

@@ -1,6 +1,6 @@
 package com.ifafu.kyzz.data.model
 
-// 喂食/玩耍机制：每天各限3次，凌晨0点重置次数
+// 喂食/玩耍机制：每小时恢复1次，上限3次
 data class Pet(
     var name: String = "小农",
     var petType: String = "cat",  // cat / dog / dragon
@@ -14,9 +14,10 @@ data class Pet(
     var lastInteractTime: Long = 0L,
     var totalDays: Int = 1,
     var gradeAdviceShown: Boolean = false,
-    var feedCountToday: Int = 0,   // 今日喂食次数
-    var playCountToday: Int = 0,   // 今日玩耍次数
-    var countResetDate: String = "", // 次数重置日期标记（yyyy-MM-dd）
+    var feedCount: Int = 3,       // 当前可用喂食次数
+    var playCount: Int = 3,       // 当前可用玩耍次数
+    var lastFeedRecoverTime: Long = System.currentTimeMillis(), // 上次喂食恢复时间
+    var lastPlayRecoverTime: Long = System.currentTimeMillis(), // 上次玩耍恢复时间
     var points: Int = 0,            // 签到积分
     var lastCheckInDate: String = "", // 上次签到日期 yyyy-MM-dd
     var checkInStreak: Int = 0       // 连续签到天数
@@ -50,38 +51,58 @@ data class Pet(
     }
 
     companion object {
-        const val MAX_DAILY_FEED = 3
-        const val MAX_DAILY_PLAY = 3
+        const val MAX_CHARGE = 3
+        const val RECOVER_INTERVAL_MS = 60 * 60 * 1000L // 1小时
     }
 
-    private fun ensureDailyReset() {
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-            .format(java.util.Date())
-        if (countResetDate != today) {
-            feedCountToday = 0
-            playCountToday = 0
-            countResetDate = today
+    fun recoverCharges() {
+        val now = System.currentTimeMillis()
+        // 恢复喂食次数
+        val feedElapsed = now - lastFeedRecoverTime
+        val feedRecovered = (feedElapsed / RECOVER_INTERVAL_MS).toInt()
+        if (feedRecovered > 0 && feedCount < MAX_CHARGE) {
+            feedCount = (feedCount + feedRecovered).coerceAtMost(MAX_CHARGE)
+            lastFeedRecoverTime = now - (feedElapsed % RECOVER_INTERVAL_MS)
+        }
+        // 恢复玩耍次数
+        val playElapsed = now - lastPlayRecoverTime
+        val playRecovered = (playElapsed / RECOVER_INTERVAL_MS).toInt()
+        if (playRecovered > 0 && playCount < MAX_CHARGE) {
+            playCount = (playCount + playRecovered).coerceAtMost(MAX_CHARGE)
+            lastPlayRecoverTime = now - (playElapsed % RECOVER_INTERVAL_MS)
         }
     }
 
     fun canFeed(): Boolean {
-        ensureDailyReset()
-        return feedCountToday < MAX_DAILY_FEED
+        recoverCharges()
+        return feedCount > 0
     }
 
     fun canPlay(): Boolean {
-        ensureDailyReset()
-        return playCountToday < MAX_DAILY_PLAY
+        recoverCharges()
+        return playCount > 0
     }
 
     fun remainingFeeds(): Int {
-        ensureDailyReset()
-        return (MAX_DAILY_FEED - feedCountToday).coerceAtLeast(0)
+        recoverCharges()
+        return feedCount
     }
 
     fun remainingPlays(): Int {
-        ensureDailyReset()
-        return (MAX_DAILY_PLAY - playCountToday).coerceAtLeast(0)
+        recoverCharges()
+        return playCount
+    }
+
+    fun nextFeedRecoverIn(): Long {
+        recoverCharges()
+        if (feedCount >= MAX_CHARGE) return 0
+        return RECOVER_INTERVAL_MS - (System.currentTimeMillis() - lastFeedRecoverTime)
+    }
+
+    fun nextPlayRecoverIn(): Long {
+        recoverCharges()
+        if (playCount >= MAX_CHARGE) return 0
+        return RECOVER_INTERVAL_MS - (System.currentTimeMillis() - lastPlayRecoverTime)
     }
 
     fun addExp(amount: Int): Boolean {
@@ -96,20 +117,24 @@ data class Pet(
     }
 
     fun feed() {
-        ensureDailyReset()
+        recoverCharges()
+        if (feedCount <= 0) return
         hunger = (hunger + 30).coerceAtMost(100)
         mood = (mood + 10).coerceAtMost(100)
         lastFeedTime = System.currentTimeMillis()
-        feedCountToday++
+        feedCount--
+        lastFeedRecoverTime = System.currentTimeMillis()
         addExp(5)
     }
 
     fun play() {
-        ensureDailyReset()
+        recoverCharges()
+        if (playCount <= 0) return
         mood = (mood + 20).coerceAtMost(100)
         hunger = (hunger - 10).coerceAtLeast(0)
         lastPlayTime = System.currentTimeMillis()
-        playCountToday++
+        playCount--
+        lastPlayRecoverTime = System.currentTimeMillis()
         addExp(10)
     }
 

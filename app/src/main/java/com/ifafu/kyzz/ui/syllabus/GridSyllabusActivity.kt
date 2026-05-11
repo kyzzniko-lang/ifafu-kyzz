@@ -51,6 +51,13 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     private var termList: List<String> = emptyList()
     private var suppressSelection = false
 
+    private val timeMap = mapOf(
+        1 to Pair("08:00", "08:45"), 2 to Pair("08:50", "09:35"), 3 to Pair("09:55", "10:40"),
+        4 to Pair("10:45", "11:30"), 5 to Pair("11:35", "12:20"), 6 to Pair("14:00", "14:45"),
+        7 to Pair("14:50", "15:35"), 8 to Pair("15:50", "16:35"), 9 to Pair("16:40", "17:25"),
+        10 to Pair("18:25", "19:10"), 11 to Pair("19:15", "20:00"), 12 to Pair("20:05", "20:50")
+    )
+
     private val courseColors = listOf(
         "#D4724A", "#2D7A4F", "#B7791F", "#C53030", "#4A6FA5",
         "#6B4C9A", "#2B8A8A", "#8B5A2B", "#5B6BBF", "#CC5577",
@@ -498,6 +505,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
              (course.oddOrTwice == 2 && currentWeek % 2 == 0))
         }
 
+        // 按列组织课程：day -> section -> courses
         val courseMap = mutableMapOf<String, MutableList<Course>>()
         for (course in weekCourses) {
             for (section in course.begin..course.end) {
@@ -506,75 +514,67 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             }
         }
 
-        for (sectionNum in 1..5) {
-            binding.gridContent.addView(createRow(sectionNum, courseMap))
-        }
-        binding.gridContent.addView(createBreakRow())
-        for (sectionNum in 6..9) {
-            binding.gridContent.addView(createRow(sectionNum, courseMap))
-        }
-        for (sectionNum in 10..12) {
-            binding.gridContent.addView(createRow(sectionNum, courseMap))
+        // 第1列：节次标签
+        binding.gridContent.addView(createSectionColumn())
+
+        // 第2-8列：周一到周日
+        for (day in 1..7) {
+            binding.gridContent.addView(createDayColumn(day, courseMap))
         }
     }
 
-    private fun createBreakRow(): LinearLayout {
-        val row = LinearLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(28))
-            orientation = LinearLayout.HORIZONTAL
+    private fun createSectionColumn(): LinearLayout {
+        val rowHeight = 60
+        val breakHeight = 28
+        val col = LinearLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(dpToPx(28), LinearLayout.LayoutParams.WRAP_CONTENT)
+            orientation = LinearLayout.VERTICAL
         }
-        val label = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(28))
-            gravity = Gravity.CENTER
-            text = "午休"
-            setTextColor(resources.getColor(R.color.claude_text_hint, null))
-            textSize = 10f
-            setBackgroundColor(resources.getColor(R.color.claude_bg_subtle, null))
-        }
-        row.addView(label)
-        for (day in 1..7) {
-            row.addView(View(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, dpToPx(28), 1f).apply { marginStart = dpToPx(1) }
+        for (section in 1..12) {
+            col.addView(TextView(this).apply {
+                layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(rowHeight))
+                gravity = Gravity.CENTER
+                text = "$section"
+                setTextColor(resources.getColor(R.color.claude_text_secondary, null))
+                textSize = 11f
                 setBackgroundColor(resources.getColor(R.color.claude_bg_subtle, null))
             })
         }
-        return row
+        return col
     }
 
-    // Feature 4: Today column highlight in createRow
-    private fun createRow(sectionNum: Int, courseMap: Map<String, MutableList<Course>>): LinearLayout {
+    private fun createDayColumn(day: Int, courseMap: Map<String, MutableList<Course>>): LinearLayout {
         val rowHeight = 60
-        val row = LinearLayout(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(rowHeight))
-            orientation = LinearLayout.HORIZONTAL
-        }
-        val sectionLabel = TextView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(dpToPx(28), dpToPx(rowHeight))
-            gravity = Gravity.CENTER
-            text = "$sectionNum"
-            setTextColor(resources.getColor(R.color.claude_text_secondary, null))
-            textSize = 11f
-            setBackgroundColor(resources.getColor(R.color.claude_bg_subtle, null))
-        }
-        row.addView(sectionLabel)
-
+        val breakHeight = 28
         val todayBg = resources.getColor(R.color.claude_terracotta_100, null)
         val normalBg = resources.getColor(R.color.claude_bg_subtle, null)
+        val isToday = isTodayColumn(day)
 
-        for (day in 1..7) {
-            val key = "${day}_$sectionNum"
+        val col = LinearLayout(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+                marginStart = dpToPx(1)
+            }
+            orientation = LinearLayout.VERTICAL
+        }
+
+        var section = 1
+        while (section <= 12) {
+            val key = "${day}_$section"
             val courseList = courseMap[key]
             val course = courseList?.firstOrNull()
-            val cellContainer = FrameLayout(this).apply {
-                layoutParams = LinearLayout.LayoutParams(0, dpToPx(rowHeight), 1f).apply { marginStart = dpToPx(1) }
-            }
 
-            if (course != null && sectionNum == course.begin) {
+            if (course != null && course.begin == section) {
+                val span = course.end - course.begin + 1
+                val cellHeight = rowHeight * span
                 val color = getCourseColor(course.name)
+
                 val cellView = LayoutInflater.from(this).inflate(R.layout.grid_syllabus_cell, null)
-                cellView.layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
+                cellView.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(cellHeight))
                 cellView.findViewById<TextView>(R.id.tvCourseName).apply { text = course.name; visibility = View.VISIBLE }
                 val infoParts = mutableListOf<String>()
+                val startTime = timeMap[course.begin]?.first ?: ""
+                val endTime = timeMap[course.end]?.second ?: ""
+                if (startTime.isNotEmpty() && endTime.isNotEmpty()) infoParts.add("$startTime-$endTime")
                 if (course.teacher.isNotEmpty()) infoParts.add(course.teacher)
                 if (course.address.isNotEmpty()) infoParts.add(course.address)
                 cellView.findViewById<TextView>(R.id.tvCourseInfo).apply { text = infoParts.joinToString("\n"); visibility = View.VISIBLE }
@@ -582,26 +582,24 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 cellView.setOnClickListener {
                     showCourseDetailBottomSheet(courseList)
                 }
-                cellContainer.addView(cellView)
+                col.addView(cellView)
+                section += span
             } else if (course != null) {
-                val color = getCourseColor(course.name)
-                val v = View(this).apply {
-                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-                    setBackgroundColor(color)
-                }
-                v.setOnClickListener {
-                    showCourseDetailBottomSheet(courseList)
-                }
-                cellContainer.addView(v)
-            } else {
-                cellContainer.addView(View(this).apply {
-                    layoutParams = FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT)
-                    setBackgroundColor(if (isTodayColumn(day)) todayBg else normalBg)
+                // 不应该走到这里（被上面的span跳过），防御性处理
+                col.addView(View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(rowHeight))
+                    setBackgroundColor(getCourseColor(course.name))
                 })
+                section++
+            } else {
+                col.addView(View(this).apply {
+                    layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(rowHeight))
+                    setBackgroundColor(if (isToday) todayBg else normalBg)
+                })
+                section++
             }
-            row.addView(cellContainer)
         }
-        return row
+        return col
     }
 
     // Feature 5: BottomSheet course detail + Feature 9: Color customization
@@ -631,20 +629,17 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         sb.appendLine("VERSION:2.0")
         sb.appendLine("PRODID:-//iFAFU//KYZZ//CN")
 
-        val timeMap = mapOf(
-            1 to Pair("0800", "0845"), 2 to Pair("0855", "0940"), 3 to Pair("1010", "1055"),
-            4 to Pair("1105", "1150"), 5 to Pair("1200", "1245"), 6 to Pair("1400", "1445"), 7 to Pair("1455", "1540"),
-            8 to Pair("1600", "1645"), 9 to Pair("1655", "1740"),
-            10 to Pair("1900", "1945"), 11 to Pair("1955", "2040"), 12 to Pair("2050", "2135")
-        )
+        val exportTimeMap = timeMap.mapValues { (_, v) ->
+            Pair(v.first.replace(":", ""), v.second.replace(":", ""))
+        }
         val weekDays = arrayOf("", "MO", "TU", "WE", "TH", "FR", "SA", "SU")
 
         for (course in allCourses.distinctBy { "${it.name}_${it.weekDay}_${it.begin}" }) {
             val dayOffset = course.weekDay - 1
             val eventCal = start.clone() as Calendar
             eventCal.add(Calendar.DAY_OF_YEAR, (course.weekBegin - 1) * 7 + dayOffset)
-            val times = timeMap[course.begin] ?: timeMap[1]!!
-            val endTime = timeMap[course.end.coerceAtMost(12)]?.second ?: times.second
+            val times = exportTimeMap[course.begin] ?: exportTimeMap[1]!!
+            val endTime = exportTimeMap[course.end.coerceAtMost(12)]?.second ?: times.second
             val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
             val byDay = weekDays.getOrElse(course.weekDay) { "MO" }
             val totalWeeks = course.weekEnd - course.weekBegin + 1

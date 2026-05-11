@@ -20,7 +20,7 @@ import java.util.concurrent.TimeUnit
 object UpdateChecker {
 
     private const val REPO = "kyzzniko-lang/ifafu-kyzz"
-    private const val API_URL = "https://gh-proxy.com/https://api.github.com/repos/$REPO/releases/latest"
+    private const val API_URL = "https://api.github.com/repos/$REPO/releases/latest"
 
     data class ReleaseInfo(
         @SerializedName("tag_name") val tagName: String,
@@ -41,38 +41,50 @@ object UpdateChecker {
         Thread {
             try {
                 val client = OkHttpClient.Builder()
-                    .connectTimeout(10, TimeUnit.SECONDS)
-                    .readTimeout(10, TimeUnit.SECONDS)
+                    .connectTimeout(15, TimeUnit.SECONDS)
+                    .readTimeout(15, TimeUnit.SECONDS)
                     .build()
 
+                android.util.Log.i("UpdateChecker", "Checking: $API_URL")
                 val request = Request.Builder()
                     .url(API_URL)
                     .header("Accept", "application/vnd.github.v3+json")
+                    .apply {
+                        val token = com.ifafu.kyzz.data.util.KeyGuard.decode(com.ifafu.kyzz.BuildConfig.GITHUB_TOKEN_ENC)
+                        if (token.isNotEmpty()) {
+                            header("Authorization", "token $token")
+                        }
+                    }
                     .build()
 
                 client.newCall(request).execute().use { response ->
+                    android.util.Log.i("UpdateChecker", "Response code: ${response.code}")
                     if (!response.isSuccessful) {
+                        android.util.Log.w("UpdateChecker", "Non-success: ${response.code}")
                         android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
                         return@Thread
                     }
 
                     val body = response.body?.string() ?: run {
+                        android.util.Log.w("UpdateChecker", "Empty body")
                         android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
                         return@Thread
                     }
 
                     val release = Gson().fromJson(body, ReleaseInfo::class.java)
                     val currentVersion = getCurrentVersion(context)
-                    android.util.Log.i("UpdateChecker", "Remote: ${release.versionName}, Local: $currentVersion, APK: ${release.apkAsset?.name}")
+                    val isNewer = isNewerVersion(release.versionName, currentVersion)
+                    val hasApk = release.apkAsset != null
+                    android.util.Log.i("UpdateChecker", "Remote: ${release.versionName}, Local: $currentVersion, isNewer: $isNewer, hasApk: $hasApk, APK: ${release.apkAsset?.name}")
 
-                    if (isNewerVersion(release.versionName, currentVersion) && release.apkAsset != null) {
+                    if (isNewer && hasApk) {
                         android.os.Handler(android.os.Looper.getMainLooper()).post { callback(release) }
                     } else {
                         android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
                     }
                 }
             } catch (e: Exception) {
-                android.util.Log.e("UpdateChecker", "Check failed: ${e.message}", e)
+                android.util.Log.e("UpdateChecker", "Check failed: ${e.javaClass.simpleName}: ${e.message}")
                 android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
             }
         }.start()
@@ -100,12 +112,28 @@ object UpdateChecker {
         return false
     }
 
+    private val mirrors = listOf(
+        "https://gh-proxy.com",
+        "https://ghfast.top",
+        "https://mirror.ghproxy.com"
+    )
+
+    @Volatile
+    private var isDownloading = false
+
     fun downloadAndInstall(context: Context, release: ReleaseInfo) {
+        if (isDownloading) return
+        isDownloading = true
         val asset = release.apkAsset ?: return
-        val url = if (asset.downloadUrl.contains("github.com")) {
-            "https://gh-proxy.com/${asset.downloadUrl}"
+        val originalUrl = asset.downloadUrl
+        tryDownload(context, release, originalUrl, 0)
+    }
+
+    private fun tryDownload(context: Context, release: ReleaseInfo, originalUrl: String, mirrorIndex: Int) {
+        val url = if (mirrorIndex < mirrors.size) {
+            "${mirrors[mirrorIndex]}/$originalUrl"
         } else {
-            asset.downloadUrl
+            originalUrl
         }
 
         val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
@@ -125,6 +153,36 @@ object UpdateChecker {
                 if (id != downloadId) return
 
                 try { ctx.unregisterReceiver(receiver) } catch (_: Exception) {}
+
+                val query = DownloadManager.Query().setFilterById(downloadId)
+                val cursor = dm.query(query)
+                val status = if (cursor.moveToFirst()) {
+                    cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                } else {
+                    cursor.close()
+                    DownloadManager.STATUS_FAILED
+                }
+                cursor.close()
+
+                if (status == DownloadManager.STATUS_FAILED) {
+                    dm.remove(downloadId)
+                    if (mirrorIndex < mirrors.size) {
+                        android.util.Log.w("UpdateChecker", "Mirror $mirrorIndex failed, trying next")
+                        tryDownload(ctx, release, originalUrl, mirrorIndex + 1)
+                    } else if (mirrorIndex == mirrors.size) {
+                        // Direct GitHub also failed, open browser
+                        android.util.Log.w("UpdateChecker", "Direct download failed, opening browser")
+                        isDownloading = false
+                        android.widget.Toast.makeText(ctx, "下载失败，请在浏览器中下载", android.widget.Toast.LENGTH_SHORT).show()
+                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(originalUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    } else {
+                        isDownloading = false
+                    }
+                    return
+                }
+
+                isDownloading = false
+                if (status != DownloadManager.STATUS_SUCCESSFUL) return
 
                 val dir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
                 val file = File(dir, "ifafu-update.apk")
@@ -157,9 +215,9 @@ object UpdateChecker {
             )
         }
 
-        // Safety net: auto-unregister after 10 minutes to prevent leak
         android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
             try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
+            isDownloading = false
         }, 10 * 60 * 1000L)
     }
 
@@ -195,6 +253,7 @@ object UpdateChecker {
             putString(KEY_CACHED_BODY, release.body ?: "")
             putLong(KEY_CACHED_SIZE, asset.size)
             putString(KEY_CACHED_URL, asset.downloadUrl)
+            remove(KEY_DISMISSED_VERSION)
             apply()
         }
     }
@@ -230,6 +289,7 @@ object UpdateChecker {
 
     fun isDismissed(context: Context, versionName: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        return prefs.getString(KEY_DISMISSED_VERSION, "") == versionName
+        val dismissed = prefs.getString(KEY_DISMISSED_VERSION, "") ?: ""
+        return dismissed.isNotEmpty() && dismissed == versionName
     }
 }

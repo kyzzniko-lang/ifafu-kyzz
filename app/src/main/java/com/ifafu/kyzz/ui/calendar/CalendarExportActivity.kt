@@ -61,11 +61,12 @@ class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
         }
         val start = Calendar.getInstance().apply { time = parsed }
 
+        // 与 HomeFragment 保持一致的课程时间表
         val timeMap = mapOf(
-            1 to Pair("0800", "0845"), 2 to Pair("0855", "0940"), 3 to Pair("1010", "1055"),
-            4 to Pair("1105", "1150"), 5 to Pair("1200", "1245"), 6 to Pair("1400", "1445"), 7 to Pair("1455", "1540"),
-            8 to Pair("1600", "1645"), 9 to Pair("1655", "1740"),
-            10 to Pair("1900", "1945"), 11 to Pair("1955", "2040"), 12 to Pair("2050", "2135")
+            1 to Pair("0800", "0845"), 2 to Pair("0850", "0935"), 3 to Pair("0955", "1040"),
+            4 to Pair("1045", "1130"), 5 to Pair("1135", "1220"), 6 to Pair("1400", "1445"),
+            7 to Pair("1450", "1535"), 8 to Pair("1550", "1635"), 9 to Pair("1640", "1725"),
+            10 to Pair("1825", "1910"), 11 to Pair("1915", "2000"), 12 to Pair("2005", "2050")
         )
         val weekDays = arrayOf("", "MO", "TU", "WE", "TH", "FR", "SA", "SU")
 

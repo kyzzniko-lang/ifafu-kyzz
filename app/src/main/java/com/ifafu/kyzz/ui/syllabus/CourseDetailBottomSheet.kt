@@ -22,6 +22,13 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
     private var courseColor: Int = 0
     private var onColorChanged: ((String, String) -> Unit)? = null
 
+    private val timeMap = mapOf(
+        1 to "08:00-08:45", 2 to "08:50-09:35", 3 to "09:55-10:40",
+        4 to "10:45-11:30", 5 to "11:35-12:20", 6 to "14:00-14:45",
+        7 to "14:50-15:35", 8 to "15:50-16:35", 9 to "16:40-17:25",
+        10 to "18:25-19:10", 11 to "19:15-20:00", 12 to "20:05-20:50"
+    )
+
     private val colorPalette = listOf(
         "#D4724A", "#2D7A4F", "#B7791F", "#C53030", "#4A6FA5",
         "#6B4C9A", "#2B8A8A", "#8B5A2B", "#5B6BBF", "#CC5577",
@@ -64,12 +71,14 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
             courses.joinToString("\n") { c ->
                 val dayText = if (c.weekDay in 1..7) weekDays[c.weekDay] else ""
                 val oddText = when (c.oddOrTwice) { 1 -> " 单周"; 2 -> " 双周"; else -> "" }
-                "第${c.weekBegin}-${c.weekEnd}周 $dayText 第${c.begin}-${c.end}节$oddText"
+                val clockTime = buildClockTime(c.begin, c.end)
+                "第${c.weekBegin}-${c.weekEnd}周 $dayText 第${c.begin}-${c.end}节 $clockTime$oddText"
             }
         } else {
             val dayText = if (course.weekDay in 1..7) weekDays[course.weekDay] else ""
             val oddText = when (course.oddOrTwice) { 1 -> " 单周"; 2 -> " 双周"; else -> "" }
-            "第${course.weekBegin}-${course.weekEnd}周 $dayText 第${course.begin}-${course.end}节$oddText"
+            val clockTime = buildClockTime(course.begin, course.end)
+            "第${course.weekBegin}-${course.weekEnd}周 $dayText 第${course.begin}-${course.end}节 $clockTime$oddText"
         }
 
         if (!isConflict && course.examDate.isNotEmpty()) {
@@ -90,6 +99,12 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
         setupColorPicker(course.name)
 
         binding.btnDismiss.setOnClickListener { dismiss() }
+    }
+
+    private fun buildClockTime(begin: Int, end: Int): String {
+        val startTime = timeMap[begin]?.substringBefore("-") ?: ""
+        val endTime = timeMap[end]?.substringAfter("-") ?: ""
+        return if (startTime.isNotEmpty() && endTime.isNotEmpty()) "($startTime-$endTime)" else ""
     }
 
     private fun setupColorPicker(courseName: String) {

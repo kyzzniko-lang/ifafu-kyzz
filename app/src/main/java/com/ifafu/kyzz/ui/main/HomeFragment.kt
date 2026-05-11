@@ -109,20 +109,38 @@ class HomeFragment : Fragment() {
         setupViews()
         observeUser()
         setupPet()
+        loadData()
+    }
+
+    private var hasLoadedData = false
+
+    private fun loadData() {
+        if (hasLoadedData) return
+        hasLoadedData = true
+        viewModel.refreshUser()
+        loadHotDiscussion()
+        loadCountdownEvents()
+        checkForUpdate()
     }
 
     override fun onResume() {
         super.onResume()
-        viewModel.refreshUser()
         updateGreeting()
         petViewModel.reloadPet()
         petViewModel.updateState()
-        loadHotDiscussion()
-        loadCountdownEvents()
-        checkForUpdate()
+        // Show cached update result if available
+        showCachedUpdateIfNeeded()
         // Auto bubble on resume
-        view?.removeCallbacks(resumeRunnable)
-        view?.postDelayed(resumeRunnable, 2000)
+        bubbleHandler.removeCallbacks(resumeRunnable)
+        bubbleHandler.postDelayed(resumeRunnable, 2000)
+    }
+
+    private fun showCachedUpdateIfNeeded() {
+        val ctx = context ?: return
+        val cached = com.ifafu.kyzz.ui.settings.UpdateChecker.loadCachedResult(ctx)
+        if (cached != null && !com.ifafu.kyzz.ui.settings.UpdateChecker.isDismissed(ctx, cached.versionName)) {
+            showUpdateCard(cached)
+        }
     }
 
     private fun setupViews() {
@@ -154,8 +172,11 @@ class HomeFragment : Fragment() {
         // Pull-to-refresh
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
         binding.swipeRefresh.setOnRefreshListener {
-            viewModel.refreshUser()
-            petViewModel.onPetClicked() // pet reacts to refresh
+            viewModel.refreshUser(force = true)
+            loadHotDiscussion()
+            loadCountdownEvents()
+            checkForUpdate()
+            petViewModel.onPetClicked()
             val refresh = binding.swipeRefresh
             refresh.postDelayed({ refresh.isRefreshing = false }, 800)
         }
@@ -648,9 +669,15 @@ class HomeFragment : Fragment() {
 
     private fun bouncePet() {
         val pet = binding.petWidget.ivPet
+        val petRoot = binding.petWidget.root
+        val parent = petRoot.parent as View
+        val isOnRightSide = petRoot.x + petRoot.width / 2f > parent.width / 2f
+        val offsetX = if (isOnRightSide) 15f else -15f
+
         val bounce = AnimatorSet().apply {
             playTogether(
                 ObjectAnimator.ofFloat(pet, "translationY", 0f, -20f, 0f).setDuration(300),
+                ObjectAnimator.ofFloat(pet, "translationX", 0f, offsetX, 0f).setDuration(300),
                 ObjectAnimator.ofFloat(pet, "scaleX", 1f, 1.1f, 1f).setDuration(300),
                 ObjectAnimator.ofFloat(pet, "scaleY", 1f, 1.1f, 1f).setDuration(300)
             )
@@ -685,6 +712,7 @@ class HomeFragment : Fragment() {
         val userContext = buildUserContext(user, todayCourses, nextExam)
 
         val chatApi = com.ifafu.kyzz.data.api.PetChatApi()
+        val chipGroupModel = dialogView.findViewById<com.google.android.material.chip.ChipGroup>(R.id.chipGroupModel)
         val messages = mutableListOf<com.ifafu.kyzz.data.api.PetChatApi.ChatMessage>()
 
         // 加载历史聊天记录
@@ -728,9 +756,13 @@ class HomeFragment : Fragment() {
             btnSend.isEnabled = false
 
             val currentPet = petViewModel.pet.value ?: petData
+            val selectedModel = when (chipGroupModel.checkedChipId) {
+                R.id.chipQwen -> com.ifafu.kyzz.data.api.PetChatApi.AiModel.QWEN
+                else -> com.ifafu.kyzz.data.api.PetChatApi.AiModel.GLM
+            }
             lifecycleScope.launch {
                 val reply = withContext(Dispatchers.IO) {
-                    chatApi.chat(text, currentPet, messages, userContext)
+                    chatApi.chat(text, currentPet, messages, userContext, selectedModel)
                 }
                 tvTyping.visibility = View.GONE
                 btnSend.isEnabled = true
@@ -913,8 +945,8 @@ class HomeFragment : Fragment() {
             val newExpPercent = if (updated.expToNextLevel > 0) (updated.exp * 100 / updated.expToNextLevel) else 0
             progressExp.progress = newExpPercent
             tvExp.text = "${updated.exp}/${updated.expToNextLevel}"
-            btnFeed.text = "喂食 (${updated.remainingFeeds()}/${Pet.MAX_DAILY_FEED})"
-            btnPlay.text = "玩耍 (${updated.remainingPlays()}/${Pet.MAX_DAILY_PLAY})"
+            btnFeed.text = "喂食 (${updated.remainingFeeds()}/${Pet.MAX_CHARGE})"
+            btnPlay.text = "玩耍 (${updated.remainingPlays()}/${Pet.MAX_CHARGE})"
             btnFeed.isEnabled = updated.canFeed()
             btnPlay.isEnabled = updated.canPlay()
             com.ifafu.kyzz.ui.pet.PetLottieManager.applyAnimation(
@@ -1236,23 +1268,17 @@ class HomeFragment : Fragment() {
 
     private fun checkForUpdate() {
         val ctx = context ?: return
-        if (!com.ifafu.kyzz.ui.settings.UpdateChecker.shouldCheck(ctx)) {
-            val cached = com.ifafu.kyzz.ui.settings.UpdateChecker.loadCachedResult(ctx)
-            if (cached != null && !com.ifafu.kyzz.ui.settings.UpdateChecker.isDismissed(ctx, cached.versionName)) {
-                showUpdateCard(cached)
-            }
-            return
-        }
+        android.util.Log.i("HomeFragment", "checkForUpdate called")
         com.ifafu.kyzz.ui.settings.UpdateChecker.checkForUpdate(ctx) { release ->
+            android.util.Log.i("HomeFragment", "checkForUpdate callback: release=${release?.versionName}, binding=${_binding != null}")
             if (release != null) {
                 com.ifafu.kyzz.ui.settings.UpdateChecker.saveCheckResult(ctx, release)
-                if (!com.ifafu.kyzz.ui.settings.UpdateChecker.isDismissed(ctx, release.versionName)) {
+                val dismissed = com.ifafu.kyzz.ui.settings.UpdateChecker.isDismissed(ctx, release.versionName)
+                android.util.Log.i("HomeFragment", "isDismissed=$dismissed for ${release.versionName}")
+                if (!dismissed) {
                     showUpdateCard(release)
                 }
             } else {
-                // No update — save timestamp and clear stale cached result
-                ctx.getSharedPreferences("update_prefs", android.content.Context.MODE_PRIVATE)
-                    .edit().putLong("last_check_ts", System.currentTimeMillis()).apply()
                 com.ifafu.kyzz.ui.settings.UpdateChecker.clearCachedResult(ctx)
                 if (_binding != null) {
                     binding.cardUpdate.visibility = View.GONE

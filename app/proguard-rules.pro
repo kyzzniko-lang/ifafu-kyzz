@@ -8,6 +8,12 @@
 -keep class com.ifafu.kyzz.ui.settings.UpdateChecker$ReleaseInfo { *; }
 -keep class com.ifafu.kyzz.ui.settings.UpdateChecker$ReleaseInfo$Asset { *; }
 
+# Gson TypeToken
+-keep class com.google.gson.reflect.TypeToken { *; }
+-keep class * extends com.google.gson.reflect.TypeToken
+-keepattributes EnclosingMethod
+-keepattributes InnerClasses
+
 # Hilt
 -dontwarn dagger.hilt.**
 -keep class dagger.hilt.** { *; }
@@ -15,8 +21,6 @@
 -keep class * extends dagger.hilt.android.internal.managers.ViewComponentManager$FragmentContextWrapper { *; }
 
 # Gson
--keepattributes Signature
--keepattributes *Annotation*
 -dontwarn sun.misc.**
 -keep class com.google.gson.** { *; }
 -keep class * implements com.google.gson.TypeAdapterFactory

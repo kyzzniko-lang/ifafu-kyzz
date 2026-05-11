@@ -5,5 +5,8 @@
         <domain includeSubdomains="true">fafu.edu.cn</domain>
         <domain includeSubdomains="true">autonavi.com</domain>
         <domain includeSubdomains="true">cloudflare.com</domain>
+        <domain includeSubdomains="true">ghfast.top</domain>
+        <domain includeSubdomains="true">gh-proxy.com</domain>
+        <domain includeSubdomains="true">ghproxy.com</domain>
     </domain-config>
 </network-security-config>

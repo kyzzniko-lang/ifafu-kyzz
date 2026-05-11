@@ -17,6 +17,11 @@ import javax.inject.Singleton
 @Singleton
 class PetChatApi @Inject constructor() {
 
+    enum class AiModel(val displayName: String, val description: String) {
+        GLM("GLM (高质量)", "回复慢，质量高"),
+        QWEN("Qwen (快速)", "回复快，质量一般")
+    }
+
     private val client by lazy {
         OkHttpClient.Builder()
             .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
@@ -26,7 +31,8 @@ class PetChatApi @Inject constructor() {
             .build()
     }
 
-    private val apiKey: String get() = BuildConfig.ZHIPU_API_KEY
+    private val glmApiKey: String get() = com.ifafu.kyzz.data.util.KeyGuard.decode(BuildConfig.ZHIPU_API_KEY_ENC)
+    private val qwenApiKey: String get() = com.ifafu.kyzz.data.util.KeyGuard.decode(BuildConfig.QWEN_API_KEY_ENC)
 
     data class UserContext(
         val userName: String = "",
@@ -46,8 +52,13 @@ class PetChatApi @Inject constructor() {
         userMessage: String,
         pet: Pet,
         history: List<ChatMessage>,
-        userContext: UserContext = UserContext()
+        userContext: UserContext = UserContext(),
+        model: AiModel = AiModel.GLM
     ): String = withContext(Dispatchers.IO) {
+        val apiKey = when (model) {
+            AiModel.GLM -> glmApiKey
+            AiModel.QWEN -> qwenApiKey
+        }
         if (apiKey.isEmpty()) return@withContext "呜...我好像走神了，稍后再聊吧~"
 
         val systemPrompt = buildSystemPrompt(pet, userContext)
@@ -58,7 +69,6 @@ class PetChatApi @Inject constructor() {
             put("content", systemPrompt)
         })
 
-        // Only send prior history (exclude current message which we add separately)
         val priorHistory = history.dropLast(1).takeLast(8)
         for (msg in priorHistory) {
             messagesJson.put(JSONObject().apply {
@@ -67,14 +77,18 @@ class PetChatApi @Inject constructor() {
             })
         }
 
-        // Current user message (already the last item in history, but send explicitly)
         messagesJson.put(JSONObject().apply {
             put("role", "user")
             put("content", userMessage)
         })
 
+        val (modelName, url) = when (model) {
+            AiModel.GLM -> "GLM-4.5-Flash" to "https://open.bigmodel.cn/api/paas/v4/chat/completions"
+            AiModel.QWEN -> "Qwen/Qwen2.5-7B-Instruct" to "https://api.siliconflow.cn/v1/chat/completions"
+        }
+
         val body = JSONObject().apply {
-            put("model", "GLM-4.5-Flash")
+            put("model", modelName)
             put("messages", messagesJson)
             put("stream", false)
             put("temperature", 0.9)
@@ -82,7 +96,7 @@ class PetChatApi @Inject constructor() {
         }
 
         val request = Request.Builder()
-            .url("https://open.bigmodel.cn/api/paas/v4/chat/completions")
+            .url(url)
             .header("Authorization", "Bearer $apiKey")
             .header("Content-Type", "application/json")
             .post(body.toString().toRequestBody("application/json".toMediaType()))
@@ -166,7 +180,9 @@ class PetChatApi @Inject constructor() {
         return """你是「${pet.name}」，一只住在IFAFU教务助手App里的${petSpecies}学习宠物，Lv.${pet.level} ${pet.levelTitle}。
 当前：${stateDesc}，心情$moodDesc(${pet.mood}/100)，饱食度$hungerDesc(${pet.hunger}/100)。$userBlock
 
-核心要求：先认真回答用户的问题，然后再融入宠物语气。用户问什么就答什么，不要跑题。
+重要：和你聊天的用户是你的「主人」，你称呼对方为「主人」。「${pet.name}」是你自己的名字，绝对不要用这个名字称呼主人。
+
+核心要求：先认真回答主人的问题，然后再融入宠物语气。主人问什么就答什么，不要跑题。
 - 基于主人的实际学业数据回答（课程、考试、成绩等），主动给出建议
 - 回复用1-3句简短口语，偶尔加「喵/汪/吼」
 - 根据状态调整情绪（饿了撒娇，开心活泼，困了迷糊）
@@ -193,7 +209,7 @@ class PetChatApi @Inject constructor() {
     data class ChatMessage(val content: String, val isUser: Boolean)
 
     suspend fun classify(systemPrompt: String, userMessage: String): String = withContext(Dispatchers.IO) {
-        if (apiKey.isEmpty()) return@withContext "[err]API Key未配置"
+        if (glmApiKey.isEmpty()) return@withContext "[err]API Key未配置"
         val messagesJson = JSONArray()
         messagesJson.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
         messagesJson.put(JSONObject().apply { put("role", "user"); put("content", userMessage) })
@@ -206,7 +222,7 @@ class PetChatApi @Inject constructor() {
         }
         val request = Request.Builder()
             .url("https://open.bigmodel.cn/api/paas/v4/chat/completions")
-            .header("Authorization", "Bearer $apiKey")
+            .header("Authorization", "Bearer $glmApiKey")
             .header("Content-Type", "application/json")
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()

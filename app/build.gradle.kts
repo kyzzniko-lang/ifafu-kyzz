@@ -21,12 +21,13 @@ android {
         minSdk = 24
         targetSdk = 34
         versionCode = 9
-        versionName = "2.0.6"
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "GITHUB_TOKEN", "\"${localProperties.getProperty("github.token", "")}\"")
-        buildConfigField("String", "ZHIPU_API_KEY", "\"${localProperties.getProperty("zhipu.api_key", "")}\"")
+        buildConfigField("String", "GITHUB_TOKEN_ENC", "\"${localProperties.getProperty("github.token.enc", "")}\"")
+        buildConfigField("String", "ZHIPU_API_KEY_ENC", "\"${localProperties.getProperty("zhipu.api_key.enc", "")}\"")
+        buildConfigField("String", "QWEN_API_KEY_ENC", "\"${localProperties.getProperty("qwen.api_key.enc", "")}\"")
     }
 
     signingConfigs {

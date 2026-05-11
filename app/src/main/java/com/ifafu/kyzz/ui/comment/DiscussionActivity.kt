@@ -29,6 +29,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
 
     private val viewModel: DiscussionViewModel by viewModels()
     private var nicknameDialog: AlertDialog? = null
+    private var hasTriggeredInitialLoad = false
 
     override fun createBinding(): ActivityCommentBinding = ActivityCommentBinding.inflate(layoutInflater)
 
@@ -108,7 +109,10 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 is DiscussionViewModel.NicknameState.NotSet -> showNicknameDialog()
                 is DiscussionViewModel.NicknameState.Ready -> {
                     nicknameDialog?.dismiss()
-                    viewModel.loadComments()
+                    if (!hasTriggeredInitialLoad) {
+                        hasTriggeredInitialLoad = true
+                        viewModel.loadComments()
+                    }
                 }
                 is DiscussionViewModel.NicknameState.Error -> {
                     Toast.makeText(this, state.message, Toast.LENGTH_SHORT).show()
@@ -266,7 +270,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
             header.addView(tvNickname)
             header.addView(tvTime)
 
-            if (comment.authorId == currentUserId) {
+            if (comment.authorId == currentUserId && DiscussionViewModel.isWithinDeleteWindow(comment.createdAt)) {
                 val ivDelete = ImageView(holder.itemView.context).apply {
                     setImageResource(android.R.drawable.ic_menu_delete)
                     setColorFilter(resources.getColor(R.color.claude_text_tertiary, null))

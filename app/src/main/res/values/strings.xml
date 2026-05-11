@@ -66,7 +66,7 @@
     <string name="sunday">周日</string>
 
     <string name="about_version">版本 %s</string>
-    <string name="about_desc">iFAFU 是一款为福建农林大学学生打造的教务系统辅助工具，提供课表查询、成绩查询、考试安排、选课等功能。</string>
+    <string name="about_desc">iFAFU KYZZ 是一款为福建农林大学学生打造的教务系统辅助工具，提供课表查询、成绩查询、考试安排、校园讨论等功能。\n\n感谢开源社区的18届学长打造的 iFAFU 软件，本应用借鉴了其设计思路。鉴于老接口和老模块的适配性问题，本软件的大多数模块均由作者 kyzz 自定义重写。\n\n秉承开源社区精神，本软件已在 GitHub 开源，愿后来的学弟学妹们能够继续传承开源精神。\n\nGitHub: github.com/kyzzniko-lang/ifafu-kyzz\n喜欢的话给个 Star 吧~</string>
     <string name="about_github">GitHub</string>
 
     <string name="course_detail_teacher">教师: %s</string>

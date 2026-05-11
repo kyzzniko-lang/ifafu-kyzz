@@ -327,13 +327,19 @@ function switchCampus(lat,lng,markersJson){
             if (mode == 0) {
                 holder.tv.text = campusItems[position]
                 holder.itemView.setOnClickListener {
-                    switchCampus(position)
+                    val pos = holder.bindingAdapterPosition
+                    if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
+                    switchCampus(pos)
                     mode = 1
                     notifyDataSetChanged()
                 }
             } else {
                 holder.tv.text = currentPlaces[position].name
-                holder.itemView.setOnClickListener { selectPlace(position) }
+                holder.itemView.setOnClickListener {
+                    val pos = holder.bindingAdapterPosition
+                    if (pos == RecyclerView.NO_POSITION) return@setOnClickListener
+                    selectPlace(pos)
+                }
             }
         }
 

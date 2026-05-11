@@ -40,6 +40,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
             .build()
 
         binding.bottomNav.setOnItemSelectedListener { item ->
+            if (item.itemId == R.id.syllabusFragment) {
+                startActivity(Intent(this, com.ifafu.kyzz.ui.syllabus.GridSyllabusActivity::class.java))
+                return@setOnItemSelectedListener true
+            }
             if (navController.currentDestination?.id != item.itemId) {
                 navController.navigate(item.itemId, null, fadeOptions)
             }
@@ -99,10 +103,14 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
 
     override fun onResume() {
         super.onResume()
-        viewModel.refreshUser()
         if (!viewModel.isLoggedIn) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
+            return
+        }
+        // Restore bottom nav highlight to current nav destination
+        navController.currentDestination?.id?.let { destId ->
+            binding.bottomNav.menu.findItem(destId)?.isChecked = true
         }
     }
 

@@ -78,13 +78,44 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:fontFamily="@font/claude_serif"
-        android:text="聊天功能调用GLM的API，可能会出现繁忙情况，请耐心等待"
+        android:text="AI模型切换：GLM回复慢质量高，Qwen回复快质量一般"
         android:textColor="@color/claude_text_hint"
         android:textSize="10sp"
         android:paddingStart="16dp"
         android:paddingEnd="16dp"
         android:paddingTop="6dp"
         android:paddingBottom="2dp" />
+
+    <com.google.android.material.chip.ChipGroup
+        android:id="@+id/chipGroupModel"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingBottom="4dp"
+        app:singleSelection="true"
+        app:selectionRequired="true"
+        app:checkedChip="@+id/chipGlm">
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipGlm"
+            style="@style/Widget.MaterialComponents.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="GLM (高质量)"
+            android:textSize="11sp"
+            android:fontFamily="@font/claude_serif" />
+
+        <com.google.android.material.chip.Chip
+            android:id="@+id/chipQwen"
+            style="@style/Widget.MaterialComponents.Chip.Choice"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Qwen (快速)"
+            android:textSize="11sp"
+            android:fontFamily="@font/claude_serif" />
+
+    </com.google.android.material.chip.ChipGroup>
 
     <!-- Chat messages -->
     <androidx.recyclerview.widget.RecyclerView

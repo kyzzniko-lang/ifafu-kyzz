@@ -232,6 +232,10 @@ class DiscussionViewModel @Inject constructor(
             _deleteState.value = DeleteState.Error("只能删除自己的评论")
             return
         }
+        if (!isWithinDeleteWindow(comment.createdAt)) {
+            _deleteState.value = DeleteState.Error("发表超过10分钟，无法删除")
+            return
+        }
         _deleteState.value = DeleteState.Loading
         viewModelScope.launch {
             try {
@@ -274,5 +278,19 @@ class DiscussionViewModel @Inject constructor(
         object Loading : DeleteState()
         object Success : DeleteState()
         data class Error(val message: String) : DeleteState()
+    }
+
+    companion object {
+        private const val DELETE_WINDOW_MS = 10 * 60 * 1000L // 10 minutes
+
+        fun isWithinDeleteWindow(createdAt: String): Boolean {
+            if (createdAt.isEmpty()) return false
+            return try {
+                val sdf = java.text.SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", java.util.Locale.getDefault())
+                sdf.timeZone = java.util.TimeZone.getTimeZone("UTC")
+                val time = sdf.parse(createdAt.substring(0, 19))?.time ?: return false
+                System.currentTimeMillis() - time <= DELETE_WINDOW_MS
+            } catch (_: Exception) { false }
+        }
     }
 }

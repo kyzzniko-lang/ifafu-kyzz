@@ -44,11 +44,14 @@ class MainViewModel @Inject constructor(
 
     val isLoggedIn: Boolean get() = _user.value?.isLogin == true
 
-    fun refreshUser() {
+    fun refreshUser(force: Boolean = false) {
         _user.value = userRepository.getUser()
         _currentWeek.value = calculateCurrentWeek()
+        if (!force && _todayCourses.value != null && _nextExam.value != null) {
+            return
+        }
+        hasFetchedTermFirstDay = false
         fetchTermFirstDay()
-        loadTodayCourses()
         loadNextExam()
     }
 
@@ -246,9 +249,11 @@ class MainViewModel @Inject constructor(
         val daysLeft: Int
     )
 
+    private var hasFetchedTermFirstDay = false
+
     private fun fetchTermFirstDay() {
-        // Always fetch from GitHub (even if manual) to detect semester changes
-        // The manual flag is auto-reset when GitHub provides newer data
+        if (hasFetchedTermFirstDay) return
+        hasFetchedTermFirstDay = true
         fetchTermFirstDayFromGitHub()
     }
 
@@ -327,6 +332,7 @@ class MainViewModel @Inject constructor(
                 cacheManager.clearCache(user.account)
             }
         }
+        loadTodayCourses()
     }
 
     private fun isTermFirstDayStale(dateStr: String): Boolean {

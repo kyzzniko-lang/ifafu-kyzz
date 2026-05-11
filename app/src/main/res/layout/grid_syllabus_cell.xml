@@ -8,8 +8,8 @@
     android:orientation="vertical"
     android:paddingTop="4dp"
     android:paddingBottom="4dp"
-    android:paddingStart="2dp"
-    android:paddingEnd="2dp">
+    android:paddingStart="3dp"
+    android:paddingEnd="3dp">
 
     <TextView
         android:id="@+id/tvCourseName"
@@ -26,22 +26,24 @@
 
     <View
         android:id="@+id/divider"
-        android:layout_width="16dp"
+        android:layout_width="24dp"
         android:layout_height="0.5dp"
         android:layout_gravity="center_horizontal"
-        android:background="#55FFFFFF" />
+        android:background="#88FFFFFF"
+        android:layout_marginTop="2dp"
+        android:layout_marginBottom="2dp" />
 
     <TextView
         android:id="@+id/tvCourseInfo"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
+        android:layout_weight="1.2"
         android:ellipsize="end"
         android:fontFamily="@font/claude_serif"
         android:gravity="center"
-        android:lineSpacingMultiplier="0.9"
+        android:lineSpacingMultiplier="1.0"
         android:maxLines="3"
-        android:textColor="#CCFFFFFF"
-        android:textSize="7sp" />
+        android:textColor="#E6FFFFFF"
+        android:textSize="8sp" />
 
 </LinearLayout>

@@ -22,7 +22,7 @@ class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
 
     private val repoOwner = "kyzzniko-lang"
     private val repoName = "ifafu-kyzz"
-    private val githubToken = com.ifafu.kyzz.BuildConfig.GITHUB_TOKEN.orEmpty()
+    private val githubToken = com.ifafu.kyzz.data.util.KeyGuard.decode(com.ifafu.kyzz.BuildConfig.GITHUB_TOKEN_ENC)
 
     override fun createBinding(): ActivityKyzzToolboxBinding = ActivityKyzzToolboxBinding.inflate(layoutInflater)
 

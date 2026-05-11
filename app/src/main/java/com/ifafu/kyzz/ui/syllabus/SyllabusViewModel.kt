@@ -61,10 +61,12 @@ class SyllabusViewModel @Inject constructor(
         // 判断是否与初始 GET 加载的学期相同
         val isInitialTerm = year != null && term != null &&
                 year == initialLoadedYear && term == initialLoadedTerm
-        isCurrentTerm = (year == null && term == null) || isInitialTerm
+        // 通过日期推断是否为当前学期（第一学期=9-1月，第二学期=2-7月）
+        val isInferredCurrentTerm = year != null && term != null && isInferredCurrentTerm(year, term)
+        isCurrentTerm = (year == null && term == null) || isInitialTerm || isInferredCurrentTerm
 
-        // 与初始学期相同时使用空 key（初始 GET 的缓存），否则用复合 key
-        val yearTermKey = if (year != null && term != null && !isInitialTerm) "${year}_$term" else ""
+        // 当前学期使用空 key（初始 GET 的缓存），其他学期用复合 key
+        val yearTermKey = if (year != null && term != null && !isCurrentTerm) "${year}_$term" else ""
 
         if (!forceRefresh) {
             val cached = cacheManager.loadSyllabus(user.account, yearTermKey)
@@ -79,7 +81,7 @@ class SyllabusViewModel @Inject constructor(
             _state.value = UiState.Loading
             try {
                 val freshUser = userRepository.getUser()
-                val syllabus = if (year != null && term != null && !isInitialTerm) {
+                val syllabus = if (year != null && term != null && !isCurrentTerm) {
                     syllabusApi.getSyllabusWithTerm(
                         userRepository.host, freshUser.token, freshUser.account, freshUser.name,
                         year, term
@@ -111,6 +113,32 @@ class SyllabusViewModel @Inject constructor(
                     _state.value = UiState.Error("网络异常，请稍后重试")
                 }
             }
+        }
+    }
+
+    /**
+     * 通过当前日期推断 year/term 是否为当前学期。
+     * 第一学期：9月~次年1月 → 学年以秋季年份开头
+     * 第二学期：2月~7月 → 学年以去年秋季年份开头
+     */
+    private fun isInferredCurrentTerm(year: String, term: String): Boolean {
+        val parts = year.split("-")
+        if (parts.size != 2) return false
+        val startYear = parts[0].toIntOrNull() ?: return false
+        val now = java.util.Calendar.getInstance()
+        val month = now.get(java.util.Calendar.MONTH)
+        val currentYear = now.get(java.util.Calendar.YEAR)
+        return when (term) {
+            "1" -> {
+                // 第一学期：9-12月属于 startYear 年秋季，1月属于 startYear+1 年冬季
+                (month >= java.util.Calendar.SEPTEMBER && currentYear == startYear) ||
+                (month == java.util.Calendar.JANUARY && currentYear == startYear + 1)
+            }
+            "2" -> {
+                // 第二学期：2-7月，当前年份应为 startYear+1
+                month in java.util.Calendar.FEBRUARY..java.util.Calendar.JULY && currentYear == startYear + 1
+            }
+            else -> false
         }
     }
 

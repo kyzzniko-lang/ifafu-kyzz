@@ -24,7 +24,7 @@ class GitHubIssuesApi @Inject constructor(
         private const val REPO = "ifafu-kyzz-comment"
         private const val COMMENTS_ISSUE = 1
         private const val NICKNAMES_ISSUE = 2
-        private val TOKEN = BuildConfig.GITHUB_TOKEN
+        private val TOKEN = com.ifafu.kyzz.data.util.KeyGuard.decode(BuildConfig.GITHUB_TOKEN_ENC)
         private const val BASE = "https://api.github.com/repos/$OWNER/$REPO"
     }
 

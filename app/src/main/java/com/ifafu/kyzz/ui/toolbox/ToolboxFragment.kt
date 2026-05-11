@@ -50,6 +50,7 @@ class ToolboxFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         val items = listOf(
+            ToolboxItem("一维课表", "列表形式查看课表", "", "") { startActivity(Intent(requireContext(), com.ifafu.kyzz.ui.syllabus.SyllabusActivity::class.java)) },
             ToolboxItem("校园讨论", "匿名讨论，畅所欲言", "", "") { startActivity(Intent(requireContext(), DiscussionActivity::class.java)) },
             ToolboxItem("课程评价", "查看课程评价，避坑选课", "", "") { startActivity(Intent(requireContext(), CourseReviewActivity::class.java)) },
             ToolboxItem("教师评价", "快速完成教师评价", "xsjxpj.aspx", "N121401") { startActivity(Intent(requireContext(), CommentTeacherActivity::class.java)) },

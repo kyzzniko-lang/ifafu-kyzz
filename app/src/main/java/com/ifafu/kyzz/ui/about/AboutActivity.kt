@@ -1,6 +1,9 @@
 package com.ifafu.kyzz.ui.about
 
+import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
+import android.text.method.LinkMovementMethod
 import androidx.activity.viewModels
 import androidx.lifecycle.observe
 import com.ifafu.kyzz.R
@@ -23,6 +26,10 @@ class AboutActivity : BaseActivity<ActivityAboutBinding>() {
         viewModel.loadVersion(this)
         viewModel.versionName.observe(this) { version ->
             binding.tvVersion.text = getString(R.string.about_version, version)
+        }
+
+        binding.tvAboutDesc.setOnClickListener {
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/kyzzniko-lang/ifafu-kyzz")))
         }
     }
 }

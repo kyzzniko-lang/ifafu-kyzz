@@ -23,7 +23,7 @@ class CourseReviewApi @Inject constructor(
         private const val OWNER = "kyzzniko-lang"
         private const val REPO = "ifafu-kyzz-course-review"
         private const val ISSUE_NUMBER = 1
-        private val TOKEN = BuildConfig.GITHUB_TOKEN
+        private val TOKEN = com.ifafu.kyzz.data.util.KeyGuard.decode(BuildConfig.GITHUB_TOKEN_ENC)
         private const val BASE = "https://api.github.com/repos/$OWNER/$REPO"
     }
 
