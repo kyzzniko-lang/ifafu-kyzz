@@ -97,14 +97,14 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         binding.btnPrevWeek.setOnClickListener {
             if (currentWeek > minWeek) {
                 currentWeek--
-                navigateToWeek()
+                navigateToWeek(-1)
             }
         }
 
         binding.btnNextWeek.setOnClickListener {
             if (currentWeek < maxWeek) {
                 currentWeek++
-                navigateToWeek()
+                navigateToWeek(1)
             }
         }
 
@@ -117,11 +117,11 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 100 && Math.abs(velocityX) > 200) {
                     if (dx < 0 && currentWeek < maxWeek) {
                         currentWeek++
-                        navigateToWeek()
+                        navigateToWeek(1)
                         return true
                     } else if (dx > 0 && currentWeek > minWeek) {
                         currentWeek--
-                        navigateToWeek()
+                        navigateToWeek(-1)
                         return true
                     }
                 }
@@ -213,10 +213,43 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         }
     }
 
-    private fun navigateToWeek() {
-        updateWeekDisplay()
-        updateDateRow()
-        displayCoursesForWeek()
+    private fun navigateToWeek(direction: Int = 0) {
+        val gridContent = binding.gridContent
+
+        if (direction == 0) {
+            updateWeekDisplay()
+            updateDateRow()
+            displayCoursesForWeek()
+            return
+        }
+
+        val exitX = if (direction < 0) 80f else -80f
+
+        gridContent.animate()
+            .translationX(exitX)
+            .alpha(0f)
+            .scaleX(0.95f)
+            .scaleY(0.95f)
+            .setDuration(100)
+            .setInterpolator(android.view.animation.AccelerateInterpolator())
+            .withEndAction {
+                updateWeekDisplay()
+                updateDateRow()
+                displayCoursesForWeek()
+                gridContent.translationX = -exitX * 0.5f
+                gridContent.scaleX = 0.95f
+                gridContent.scaleY = 0.95f
+                gridContent.alpha = 0f
+                gridContent.animate()
+                    .translationX(0f)
+                    .alpha(1f)
+                    .scaleX(1f)
+                    .scaleY(1f)
+                    .setDuration(180)
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
+                    .start()
+            }
+            .start()
     }
 
     // Feature 2: Auto-scroll to current time period
@@ -271,7 +304,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 }
                 setOnClickListener {
                     currentWeek = w
-                    navigateToWeek()
+                    navigateToWeek(0)
                 }
             }
             chipGroup.addView(chip)
@@ -281,15 +314,14 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         dialog.setContentView(view)
         chipGroup.getChildAt(0)?.setOnClickListener {
             currentWeek = minWeek + chipGroup.indexOfChild(it as View)
-            navigateToWeek()
+            navigateToWeek(0)
             dialog.dismiss()
         }
-        // Fix: use per-chip click listeners already set above, dismiss dialog on any click
         for (i in 0 until chipGroup.childCount) {
             val chip = chipGroup.getChildAt(i)
             chip.setOnClickListener {
                 currentWeek = minWeek + i
-                navigateToWeek()
+                navigateToWeek(0)
                 dialog.dismiss()
             }
         }
