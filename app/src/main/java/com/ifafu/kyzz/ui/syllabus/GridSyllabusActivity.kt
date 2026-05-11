@@ -224,11 +224,10 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         if (currentWeek != realCurrentWeek || realCurrentWeek <= 0) return
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         val rowHeight = dpToPx(60)
-        val breakHeight = dpToPx(28)
         val targetY = when {
             hour < 12 -> 0
-            hour < 17 -> rowHeight * 5 + breakHeight
-            else -> rowHeight * 9 + breakHeight
+            hour < 17 -> rowHeight * 5
+            else -> rowHeight * 9
         }
         binding.scrollView.post { binding.scrollView.smoothScrollTo(0, targetY) }
     }
@@ -525,7 +524,6 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
     private fun createSectionColumn(): LinearLayout {
         val rowHeight = 60
-        val breakHeight = 28
         val col = LinearLayout(this).apply {
             layoutParams = LinearLayout.LayoutParams(dpToPx(28), LinearLayout.LayoutParams.WRAP_CONTENT)
             orientation = LinearLayout.VERTICAL
@@ -545,7 +543,6 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
     private fun createDayColumn(day: Int, courseMap: Map<String, MutableList<Course>>): LinearLayout {
         val rowHeight = 60
-        val breakHeight = 28
         val todayBg = resources.getColor(R.color.claude_terracotta_100, null)
         val normalBg = resources.getColor(R.color.claude_bg_subtle, null)
         val isToday = isTodayColumn(day)
