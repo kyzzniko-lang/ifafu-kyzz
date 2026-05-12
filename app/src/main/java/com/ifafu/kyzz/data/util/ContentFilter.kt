@@ -9,7 +9,7 @@ object ContentFilter {
         "色情", "裸聊", "约炮", "援交", "卖淫", "嫖娼", "淫秽", "黄片",
         "成人视频", "一夜情", "性交", "口交", "肛交", "自慰", "情趣用品",
         "sm调教", "淫荡", "骚货", "荡妇", "鸡巴", "操你", "日你",
-        "草你", "干你", "肏", "屌", "骚逼", "贱逼", "婊子", "鸡巴",
+        "草你", "干你", "肏", "屌", "骚逼", "贱逼", "婊子",
 
         // 违法犯罪
         "代考", "替考", "枪手", "答案出售", "考试答案", "四六级答案",
@@ -73,14 +73,14 @@ object ContentFilter {
             }
         }
 
-        // 可疑模式检测（仅当内容很短且纯数字/联系方式时拦截）
-        if (content.length < 50) {
-            for (pattern in suspiciousPatterns) {
-                if (pattern.containsMatchIn(text)) {
-                    return FilterResult(false, "评论疑似包含联系方式或敏感信息")
-                }
+        // 可疑模式检测（手机号/银行卡在所有内容中检测）
+        for (pattern in suspiciousPatterns) {
+            if (pattern.containsMatchIn(text)) {
+                return FilterResult(false, "评论疑似包含联系方式或敏感信息")
             }
-            // URL 拦截仅对短内容生效（长内容可能包含正常链接）
+        }
+        // URL 拦截仅对短内容生效（长内容可能包含正常链接）
+        if (content.length < 50) {
             if (Regex("""(http|https)://[^\s]+""").containsMatchIn(text)) {
                 return FilterResult(false, "评论疑似垃圾信息")
             }

@@ -85,6 +85,8 @@ class HtmlClient @Inject constructor(
         mutex.withLock {
             val request = buildRequest(url).get().build()
             client.newCall(request).execute().use { response ->
+                lastUrl = response.request.url.toString()
+                referer = lastUrl
                 response.body?.bytes() ?: ByteArray(0)
             }
         }

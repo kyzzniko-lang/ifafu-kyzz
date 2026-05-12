@@ -39,7 +39,7 @@ class ScoreCheckReceiver : BroadcastReceiver() {
             val type = object : TypeToken<List<Score>>() {}.type
             val scores: List<Score> = Gson().fromJson<List<Score>>(json, type) ?: return
 
-            val lastCount = userPrefs.getInt("last_score_count", 0)
+            val lastCount = cachePrefs.getInt("last_score_count_$account", 0)
             val currentCount = scores.size
 
             if (lastCount > 0 && currentCount > lastCount) {
@@ -49,7 +49,7 @@ class ScoreCheckReceiver : BroadcastReceiver() {
                 showNotification(context, "有${newCount}门新成绩", names)
             }
 
-            userPrefs.edit().putInt("last_score_count", currentCount).apply()
+            cachePrefs.edit().putInt("last_score_count_$account", currentCount).apply()
         } catch (_: Exception) {}
     }
 

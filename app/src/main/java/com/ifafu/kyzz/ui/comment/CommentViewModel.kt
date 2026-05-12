@@ -7,6 +7,7 @@ import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -41,6 +42,8 @@ class CommentViewModel @Inject constructor(
                 } else {
                     _state.value = CommentState.Error(response.message)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = CommentState.Error(e.message ?: "评教失败")
             }

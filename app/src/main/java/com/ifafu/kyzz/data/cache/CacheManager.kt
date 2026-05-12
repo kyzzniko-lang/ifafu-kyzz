@@ -56,6 +56,12 @@ class CacheManager @Inject constructor(
             .putString("scores_$account", gson.toJson(scores))
             .putLong("scores_${account}_ts", System.currentTimeMillis())
             .apply()
+        // 同时记录数量到 user prefs，供 ScoreCheckReceiver 对比
+        saveLastScoreCount(account, scores.size)
+    }
+
+    private fun saveLastScoreCount(account: String, count: Int) {
+        prefs.edit().putInt("last_score_count_$account", count).apply()
     }
 
     fun loadScores(account: String): List<Score>? {
@@ -152,6 +158,28 @@ class CacheManager @Inject constructor(
     fun isCacheStale(account: String, key: String, maxAgeMs: Long = 24 * 60 * 60 * 1000L): Boolean {
         val ts = prefs.getLong("${key}_${account}_ts", 0L)
         return ts == 0L || System.currentTimeMillis() - ts > maxAgeMs
+    }
+
+    fun saveWeather(campus: String, json: String) {
+        prefs.edit()
+            .putString("weather_${campus}", json)
+            .putLong("weather_${campus}_ts", System.currentTimeMillis())
+            .apply()
+    }
+
+    fun loadWeather(campus: String): String? {
+        val json = prefs.getString("weather_$campus", null) ?: return null
+        val ts = prefs.getLong("weather_${campus}_ts", 0L)
+        if (System.currentTimeMillis() - ts >= 30 * 60 * 1000L) return null
+        // 检查日期是否跨天：缓存日期不等于今天则视为过期
+        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+        if (!json.contains("\"date\":\"$today\"")) return null
+        return json
+    }
+
+    /** 返回过期缓存，供网络失败时降级使用 */
+    fun loadWeatherFallback(campus: String): String? {
+        return prefs.getString("weather_$campus", null)
     }
 
     fun clearAll() {

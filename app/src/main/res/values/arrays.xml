@@ -23,4 +23,15 @@
         <item>dog</item>
         <item>dragon</item>
     </string-array>
+
+    <string-array name="campus_weather_entries">
+        <item>金山校区（福州）</item>
+        <item>安溪校区（泉州）</item>
+        <item>南平校区</item>
+    </string-array>
+    <string-array name="campus_weather_values">
+        <item>jinshan</item>
+        <item>anxi</item>
+        <item>nanping</item>
+    </string-array>
 </resources>

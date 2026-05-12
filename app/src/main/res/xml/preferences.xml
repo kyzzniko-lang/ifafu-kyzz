@@ -74,6 +74,21 @@
     </PreferenceCategory>
 
     <PreferenceCategory
+        android:title="天气"
+        app:iconSpaceReserved="false">
+
+        <ListPreference
+            android:key="campus_weather"
+            android:title="校区天气"
+            android:summary="选择显示哪个校区的天气"
+            android:entries="@array/campus_weather_entries"
+            android:entryValues="@array/campus_weather_values"
+            android:defaultValue="jinshan"
+            app:useSimpleSummaryProvider="true" />
+
+    </PreferenceCategory>
+
+    <PreferenceCategory
         android:title="数据"
         app:iconSpaceReserved="false">
 

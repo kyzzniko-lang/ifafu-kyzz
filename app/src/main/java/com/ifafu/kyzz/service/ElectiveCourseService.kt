@@ -34,7 +34,7 @@ class ElectiveCourseService : Service() {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // TODO: implement actual elective course monitoring work
+        // 选课监控暂未实现，当前服务作为占位注册
         return START_NOT_STICKY
     }
 }

@@ -81,6 +81,9 @@ class LoginViewModel @Inject constructor(
                     userRepository.savePassword(password)
                     _loginState.value = LoginState.Success(user)
                 } else {
+                    // 登录失败时清空识别结果并重新加载验证码，确保下次点击时重新识别
+                    autoCaptcha = ""
+                    loadCaptcha()
                     _loginState.value = LoginState.Error(response.message)
                 }
             } catch (e: Exception) {

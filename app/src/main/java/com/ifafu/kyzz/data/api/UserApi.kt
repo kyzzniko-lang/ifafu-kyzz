@@ -147,6 +147,10 @@ class UserApi @Inject constructor(
                 }
 
                 val captcha = zfVerify.recognize(captchaBitmap)
+                if (captcha.isEmpty()) {
+                    Log.w(TAG, "Relogin attempt $i: captcha recognition returned empty")
+                    continue
+                }
                 val freshUser = User(account = user.account, name = user.name)
                 val response = login(user.account, password, captcha, freshUser)
 
@@ -173,8 +177,8 @@ class UserApi @Inject constructor(
     fun isSessionExpired(html: String): Boolean {
         if (html.contains("账号或密码") || html.contains("请登录")) return true
         // Check for redirect to login page (URL-like pattern, not just any mention)
-        if (Regex("""location\s*[=.]\s*["'].*default[2]?\.aspx""").containsMatchIn(html)) return true
-        if (Regex("""window\.location\s*=\s*["'].*default[2]?\.aspx""").containsMatchIn(html)) return true
+        if (Regex("""location\s*[=.]\s*["'][^"']{0,30}default[2]?\.aspx""").containsMatchIn(html)) return true
+        if (Regex("""window\.location\s*=\s*["'][^"']{0,30}default[2]?\.aspx""").containsMatchIn(html)) return true
         return false
     }
 }

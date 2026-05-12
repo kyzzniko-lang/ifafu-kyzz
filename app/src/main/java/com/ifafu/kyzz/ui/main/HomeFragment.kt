@@ -59,6 +59,11 @@ class HomeFragment : Fragment() {
     @Inject
     lateinit var commentRepository: CommentRepository
 
+    @Inject
+    lateinit var weatherApi: com.ifafu.kyzz.data.api.WeatherApi
+
+    private var dailyWeather: com.ifafu.kyzz.data.model.DailyWeather? = null
+
     private val bubbleHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var bubbleRunnable: Runnable? = null
     private var bubbleAnimator: ValueAnimator? = null
@@ -121,6 +126,7 @@ class HomeFragment : Fragment() {
         loadHotDiscussion()
         loadCountdownEvents()
         checkForUpdate()
+        loadWeather()
     }
 
     override fun onResume() {
@@ -130,6 +136,7 @@ class HomeFragment : Fragment() {
         petViewModel.updateState()
         // Show cached update result if available
         showCachedUpdateIfNeeded()
+        loadWeather()
         // Auto bubble on resume
         bubbleHandler.removeCallbacks(resumeRunnable)
         bubbleHandler.postDelayed(resumeRunnable, 2000)
@@ -176,6 +183,7 @@ class HomeFragment : Fragment() {
             loadHotDiscussion()
             loadCountdownEvents()
             checkForUpdate()
+            loadWeather()
             petViewModel.onPetClicked()
             val refresh = binding.swipeRefresh
             refresh.postDelayed({ refresh.isRefreshing = false }, 800)
@@ -228,6 +236,95 @@ class HomeFragment : Fragment() {
                 throw e
             } catch (_: Exception) {}
         }
+    }
+
+    private fun loadWeather() {
+        lifecycleScope.launch {
+            try {
+                val weather = withContext(Dispatchers.IO) {
+                    val prefs = requireContext().getSharedPreferences("ifafu_settings", android.content.Context.MODE_PRIVATE)
+                    val campusKey = prefs.getString("campus_weather", "jinshan") ?: "jinshan"
+                    val campus = com.ifafu.kyzz.data.model.CampusWeather.fromKey(campusKey)
+
+                    // 30-min cache per campus
+                    val gson = com.google.gson.Gson()
+                    val cached = cacheManager.loadWeather(campusKey)
+                    if (cached != null) {
+                        gson.fromJson(cached, com.ifafu.kyzz.data.model.DailyWeather::class.java)
+                    } else {
+                        val fresh = weatherApi.fetchWeather(campus.lat, campus.lng)
+                        if (fresh != null) {
+                            cacheManager.saveWeather(campusKey, gson.toJson(fresh))
+                            fresh
+                        } else {
+                            // 网络失败时降级到过期缓存
+                            val fallback = cacheManager.loadWeatherFallback(campusKey)
+                            if (fallback != null) {
+                                gson.fromJson(fallback, com.ifafu.kyzz.data.model.DailyWeather::class.java)
+                            } else null
+                        }
+                    }
+                }
+                if (weather != null && _binding != null) {
+                    dailyWeather = weather
+                    showWeather(weather)
+                    // 刷新课程卡片上的天气信息
+                    val courses = viewModel.todayCourses.value
+                    if (courses != null) showTodayCourses(courses)
+                }
+            } catch (_: Exception) {}
+        }
+    }
+
+    private fun showWeather(weather: com.ifafu.kyzz.data.model.DailyWeather) {
+        val card = binding.cardWeather
+        val container = binding.weatherPeriodContainer
+        container.removeAllViews()
+
+        binding.tvWeatherSummary.text = weather.summary
+        card.visibility = View.VISIBLE
+
+        // Build per-period weather chips: group by class periods
+        // Period → approx hour mapping
+        data class PeriodWeather(val label: String, val weather: com.ifafu.kyzz.data.model.HourlyWeather?)
+        val periods = listOf(
+            "1-2节" to 8, "3-4节" to 10, "5节" to 11,
+            "6-7节" to 14, "8-9节" to 16, "10-12节" to 19
+        ).map { (label, hour) ->
+            PeriodWeather(label, weather.getWeatherForHour(hour))
+        }
+
+        val ctx = requireContext()
+        for (pw in periods) {
+            val chip = TextView(ctx).apply {
+                text = buildString {
+                    append(pw.label)
+                    if (pw.weather != null) {
+                        val w = pw.weather
+                        append(" ")
+                        append(com.ifafu.kyzz.data.model.DailyWeather.weatherEmoji(w.weatherCode))
+                        append("${w.temp}°")
+                    }
+                }
+                setTextAppearance(com.ifafu.kyzz.R.style.ClaudeCaption)
+                setTextColor(ctx.resources.getColor(com.ifafu.kyzz.R.color.claude_text_secondary, null))
+                typeface = ctx.resources.getFont(com.ifafu.kyzz.R.font.claude_serif)
+                background = ctx.resources.getDrawable(com.ifafu.kyzz.R.drawable.bg_info_chip, null)
+                gravity = android.view.Gravity.CENTER
+                setPadding(24, 10, 24, 10)
+                val lp = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.WRAP_CONTENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+                lp.marginEnd = 10
+                layoutParams = lp
+            }
+            container.addView(chip)
+        }
+
+        // Fade in
+        card.alpha = 0f
+        card.animate().alpha(1f).setDuration(400).start()
     }
 
     private fun loadCountdownEvents() {
@@ -1192,6 +1289,17 @@ class HomeFragment : Fragment() {
             tvCourseName.text = course.name
             tvCourseLocation.text = course.address.ifEmpty { "-" }
             tvCourseTeacher.text = course.teacher.ifEmpty { "-" }
+
+            // 天气信息
+            val tvWeather = itemView.findViewById<TextView>(R.id.tvCourseWeather)
+            val courseStartHour = (sectionStartMinutes[course.begin] ?: 480) / 60
+            val weather = dailyWeather?.getWeatherForHour(courseStartHour)
+            if (weather != null) {
+                tvWeather.text = "${com.ifafu.kyzz.data.model.DailyWeather.weatherEmoji(weather.weatherCode)} ${weather.temp}°C"
+                tvWeather.visibility = View.VISIBLE
+            } else {
+                tvWeather.visibility = View.GONE
+            }
 
             val courseStartMin = sectionStartMinutes[course.begin] ?: 0
             val courseEndMin = sectionEndMinutes[course.end] ?: 0
