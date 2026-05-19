@@ -123,8 +123,8 @@ object UpdateChecker {
 
     fun downloadAndInstall(context: Context, release: ReleaseInfo) {
         if (isDownloading) return
-        isDownloading = true
         val asset = release.apkAsset ?: return
+        isDownloading = true
         val originalUrl = asset.downloadUrl
         tryDownload(context, release, originalUrl, 0)
     }
@@ -191,6 +191,15 @@ object UpdateChecker {
                     FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
                 } else {
                     Uri.fromFile(file)
+                }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !ctx.packageManager.canRequestPackageInstalls()) {
+                    android.widget.Toast.makeText(ctx, "请允许安装未知来源应用", android.widget.Toast.LENGTH_LONG).show()
+                    val intent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                        Uri.parse("package:${ctx.packageName}"))
+                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    ctx.startActivity(intent)
+                    return
                 }
 
                 val install = Intent(Intent.ACTION_VIEW).apply {

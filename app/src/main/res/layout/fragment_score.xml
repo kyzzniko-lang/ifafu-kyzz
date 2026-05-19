@@ -6,47 +6,71 @@
     android:background="@color/claude_bg"
     android:orientation="vertical">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:layout_marginTop="16dp"
-        style="@style/ClaudeTitle"
-        android:text="@string/score_title" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
+        android:paddingTop="14dp"
+        android:paddingBottom="6dp">
+
+        <TextView
+            style="@style/ClaudeTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/score_title" />
+
+        <TextView
+            android:id="@+id/tvSemesterLabel"
+            style="@style/ClaudeCaption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/claude_text_tertiary"
+            android:visibility="gone" />
+
+    </LinearLayout>
 
     <include layout="@layout/layout_offline_banner"
         android:id="@+id/offlineBanner" />
 
+    <!-- Term selector -->
     <LinearLayout
         android:id="@+id/termSelector"
         android:layout_width="match_parent"
-        android:layout_height="48dp"
+        android:layout_height="44dp"
         android:background="@color/claude_bg_elevated"
         android:gravity="center_vertical"
         android:orientation="horizontal"
-        android:layout_marginTop="8dp"
         android:paddingStart="16dp"
         android:paddingEnd="16dp">
 
         <androidx.appcompat.widget.AppCompatSpinner
             android:id="@+id/spinnerYear"
             android:layout_width="wrap_content"
-            android:layout_height="36dp"
+            android:layout_height="34dp"
             android:backgroundTint="@color/claude_terracotta" />
 
         <com.google.android.material.button.MaterialButtonToggleGroup
             android:id="@+id/toggleTerm"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
+            android:layout_marginStart="10dp"
             app:singleSelection="true">
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnTerm1"
                 style="@style/ClaudeButton.Outlined"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:minWidth="72dp"
+                android:layout_height="32dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingHorizontal="14dp"
+                android:letterSpacing="0"
                 android:text="第一学期"
                 android:textSize="12sp" />
 
@@ -54,8 +78,13 @@
                 android:id="@+id/btnTerm2"
                 style="@style/ClaudeButton.Outlined"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
-                android:minWidth="72dp"
+                android:layout_height="32dp"
+                android:minWidth="0dp"
+                android:minHeight="0dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"
+                android:paddingHorizontal="14dp"
+                android:letterSpacing="0"
                 android:text="第二学期"
                 android:textSize="12sp" />
 
@@ -63,16 +92,16 @@
 
     </LinearLayout>
 
+    <!-- Stats card: ring left + two numbers right -->
     <com.google.android.material.card.MaterialCardView
         android:id="@+id/statsCard"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:layout_marginEnd="20dp"
+        android:layout_marginHorizontal="16dp"
         android:layout_marginTop="8dp"
         android:layout_marginBottom="4dp"
         android:visibility="gone"
-        app:cardCornerRadius="14dp"
+        app:cardCornerRadius="16dp"
         app:cardElevation="0dp"
         app:strokeColor="@color/claude_border"
         app:strokeWidth="1dp"
@@ -82,96 +111,90 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
-            android:padding="16dp">
+            android:gravity="center_vertical"
+            android:paddingStart="12dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="12dp"
+            android:paddingBottom="12dp">
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical">
+            <!-- GPA Ring -->
+            <com.ifafu.kyzz.ui.score.GpaRingView
+                android:id="@+id/gpaRingView"
+                android:layout_width="64dp"
+                android:layout_height="64dp" />
 
-                <TextView
-                    android:id="@+id/tvGPA"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="@font/claude_serif"
-                    android:text="—"
-                    android:textColor="@color/claude_terracotta"
-                    android:textSize="22sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="GPA"
-                    android:textColor="@color/claude_text_hint"
-                    android:textSize="11sp" />
-
-            </LinearLayout>
-
+            <!-- Divider -->
             <View
                 android:layout_width="1dp"
-                android:layout_height="match_parent"
+                android:layout_height="48dp"
+                android:layout_marginHorizontal="12dp"
                 android:background="@color/claude_border" />
 
+            <!-- Weighted avg + Total credits stacked -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:gravity="center"
                 android:orientation="vertical">
 
-                <TextView
-                    android:id="@+id/tvWeightedAvg"
-                    android:layout_width="wrap_content"
+                <!-- Weighted avg row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="@font/claude_serif"
-                    android:text="—"
-                    android:textColor="@color/claude_text_primary"
-                    android:textSize="22sp"
-                    android:textStyle="bold" />
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-                <TextView
-                    android:layout_width="wrap_content"
+                    <TextView
+                        android:id="@+id/tvWeightedAvg"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/claude_serif"
+                        android:text="—"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="加权均分"
+                        android:textColor="@color/claude_text_hint"
+                        android:textSize="11sp" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp" />
+
+                <!-- Total credits row -->
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="加权均分"
-                    android:textColor="@color/claude_text_hint"
-                    android:textSize="11sp" />
+                    android:layout_marginTop="6dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
 
-            </LinearLayout>
+                    <TextView
+                        android:id="@+id/tvTotalCredits"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/claude_serif"
+                        android:text="—"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
 
-            <View
-                android:layout_width="1dp"
-                android:layout_height="match_parent"
-                android:background="@color/claude_border" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="总学分"
+                        android:textColor="@color/claude_text_hint"
+                        android:textSize="11sp" />
 
-            <LinearLayout
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
-                android:layout_weight="1"
-                android:gravity="center"
-                android:orientation="vertical">
-
-                <TextView
-                    android:id="@+id/tvTotalCredits"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:fontFamily="@font/claude_serif"
-                    android:text="—"
-                    android:textColor="@color/claude_text_primary"
-                    android:textSize="22sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="2dp"
-                    android:text="总学分"
-                    android:textColor="@color/claude_text_hint"
-                    android:textSize="11sp" />
+                </LinearLayout>
 
             </LinearLayout>
 
@@ -179,6 +202,7 @@
 
     </com.google.android.material.card.MaterialCardView>
 
+    <!-- Score list -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="match_parent">
@@ -193,7 +217,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="match_parent"
                 android:clipToPadding="false"
-                android:padding="20dp" />
+                android:paddingHorizontal="16dp"
+                android:paddingTop="4dp"
+                android:paddingBottom="16dp" />
 
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 

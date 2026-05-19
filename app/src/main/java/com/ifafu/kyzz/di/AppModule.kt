@@ -103,24 +103,32 @@ class JavaNetCookieJar private constructor(context: Context) : CookieJar {
             val arr = JSONArray()
             val now = System.currentTimeMillis()
             for ((uri, cookies) in savedCookies) {
-                for (cookie in cookies) {
-                    val expiresAt = cookie.second
-                    if (expiresAt in 1..<now) continue
-                    val obj = org.json.JSONObject()
-                    obj.put("uri", uri)
-                    obj.put("name", cookie.first.name)
-                    obj.put("value", cookie.first.value)
-                    obj.put("domain", cookie.first.domain)
-                    obj.put("path", cookie.first.path)
-                    obj.put("expiresAt", expiresAt)
-                    arr.put(obj)
+                synchronized(cookies) {
+                    for (cookie in cookies) {
+                        val expiresAt = cookie.second
+                        if (expiresAt in 1..<now) continue
+                        val obj = org.json.JSONObject()
+                        obj.put("uri", uri)
+                        obj.put("name", cookie.first.name)
+                        obj.put("value", cookie.first.value)
+                        obj.put("domain", cookie.first.domain)
+                        obj.put("path", cookie.first.path)
+                        obj.put("expiresAt", expiresAt)
+                        arr.put(obj)
+                    }
                 }
             }
             prefs.edit().putString(KEY_COOKIES, arr.toString()).apply()
         } catch (_: Exception) {}
     }
 
-    private val savedCookies = mutableMapOf<String, MutableList<Pair<HttpCookie, Long>>>()
+    private val savedCookies = java.util.concurrent.ConcurrentHashMap<String, MutableList<Pair<HttpCookie, Long>>>()
+
+    fun clear() {
+        store.cookieStore.removeAll()
+        savedCookies.clear()
+        prefs.edit().remove(KEY_COOKIES).apply()
+    }
 
     fun getCookieStore() = store.cookieStore
 
@@ -132,28 +140,47 @@ class JavaNetCookieJar private constructor(context: Context) : CookieJar {
     override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
         val uri = url.toUri()
         val uriStr = uri.toString()
-        val cookieList = savedCookies.getOrPut(uriStr) { mutableListOf() }
-        for (cookie in cookies) {
-            val httpCookie = HttpCookie(cookie.name, cookie.value)
-            httpCookie.domain = cookie.domain
-            httpCookie.path = cookie.path
-            httpCookie.secure = cookie.secure
-            val expiresAt = if (cookie.expiresAt != Long.MAX_VALUE) cookie.expiresAt else 0L
-            store.cookieStore.add(uri, httpCookie)
-            cookieList.removeAll { it.first.name == cookie.name }
-            cookieList.add(httpCookie to expiresAt)
+        val cookieList = savedCookies.getOrPut(uriStr) { java.util.Collections.synchronizedList(mutableListOf()) }
+        synchronized(cookieList) {
+            for (cookie in cookies) {
+                val httpCookie = HttpCookie(cookie.name, cookie.value)
+                httpCookie.domain = cookie.domain
+                httpCookie.path = cookie.path
+                httpCookie.secure = cookie.secure
+                val expiresAt = if (cookie.expiresAt != Long.MAX_VALUE) cookie.expiresAt else 0L
+                store.cookieStore.add(uri, httpCookie)
+                cookieList.removeAll { it.first.name == cookie.name }
+                cookieList.add(httpCookie to expiresAt)
+            }
         }
         persistCookies()
     }
 
     override fun loadForRequest(url: okhttp3.HttpUrl): List<okhttp3.Cookie> {
         val uri = url.toUri()
-        return store.cookieStore.get(uri).map { cookie ->
+        val now = System.currentTimeMillis()
+
+        // Build lookup: name+domain+path -> expiresAt
+        val expiresMap = mutableMapOf<String, Long>()
+        for ((_, cookies) in savedCookies) {
+            synchronized(cookies) {
+                for ((cookie, expiresAt) in cookies) {
+                    if (expiresAt in 1..now) continue
+                    expiresMap["${cookie.name}|${cookie.domain}|${cookie.path ?: "/"}"] = expiresAt
+                }
+            }
+        }
+
+        return store.cookieStore.get(uri).mapNotNull { cookie ->
+            val key = "${cookie.name}|${cookie.domain}|${cookie.path ?: "/"}"
+            val expiresAt = expiresMap[key] ?: 0L
+            if (expiresAt in 1..now) return@mapNotNull null
             okhttp3.Cookie.Builder()
                 .name(cookie.name)
                 .value(cookie.value)
                 .domain(cookie.domain)
                 .path(cookie.path ?: "/")
+                .expiresAt(if (expiresAt > 0) expiresAt else Long.MAX_VALUE)
                 .build()
         }
     }

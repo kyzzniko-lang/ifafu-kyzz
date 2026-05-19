@@ -6,6 +6,7 @@ import com.ifafu.kyzz.data.model.MakeupExam
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.HtmlParser
 import com.ifafu.kyzz.data.repository.UserRepository
+import kotlinx.coroutines.CancellationException
 import org.jsoup.Jsoup
 import java.net.URLEncoder
 import javax.inject.Inject
@@ -35,7 +36,7 @@ class StudentQueryApi @Inject constructor(
                 val reloginResp = reloginHelper.relogin()
                 if (!reloginResp.success) return QueryResult(false, reloginResp.message)
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xsxkqk.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121615"
+                val retryUrl = "${host}/(${user.token})/xsxkqk.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121615"
                 val retryHtml = htmlClient.getString(retryUrl)
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return QueryResult(false, "会话已过期，请重新登录")
@@ -44,7 +45,8 @@ class StudentQueryApi @Inject constructor(
             }
 
             parseCourseSelections(html)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e(TAG, "Failed to get course selections", e)
             QueryResult(false, "网络异常")
         }
@@ -126,7 +128,7 @@ class StudentQueryApi @Inject constructor(
                 val reloginResp = reloginHelper.relogin()
                 if (!reloginResp.success) return QueryResult(false, reloginResp.message)
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xsbkkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121617"
+                val retryUrl = "${host}/(${user.token})/xsbkkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121617"
                 val retryHtml = htmlClient.getString(retryUrl)
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return QueryResult(false, "会话已过期，请重新登录")
@@ -135,7 +137,8 @@ class StudentQueryApi @Inject constructor(
             }
 
             parseMakeupExams(html)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e(TAG, "Failed to get makeup exams", e)
             QueryResult(false, "网络异常")
         }

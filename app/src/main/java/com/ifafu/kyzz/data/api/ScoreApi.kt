@@ -5,6 +5,7 @@ import com.ifafu.kyzz.data.model.Score
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.ScoreParser
 import com.ifafu.kyzz.data.repository.UserRepository
+import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -37,7 +38,7 @@ class ScoreApi @Inject constructor(
                     return null
                 }
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xscjcx_dq_fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121605"
+                val retryUrl = "${host}/(${user.token})/xscjcx_dq_fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return null
@@ -45,7 +46,8 @@ class ScoreApi @Inject constructor(
             }
 
             fetchAllScores(accessUrl, doc)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e(TAG, "Failed to fetch scores", e)
             null
         }
@@ -87,14 +89,15 @@ class ScoreApi @Inject constructor(
                 val response = reloginHelper.relogin()
                 if (!response.success) return emptyMap()
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/pyjh.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121607"
+                val retryUrl = "${host}/(${user.token})/pyjh.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121607"
                 doc = htmlClient.get(retryUrl)
                 val retryHtml = doc.html()
                 if (userApi.isSessionExpired(retryHtml)) return emptyMap()
             }
 
             scoreParser.parseElectiveTargetScore(doc)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e(TAG, "Failed to fetch elective target score", e)
             emptyMap()
         }

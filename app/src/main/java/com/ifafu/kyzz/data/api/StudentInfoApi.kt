@@ -5,6 +5,7 @@ import com.ifafu.kyzz.data.model.StudentInfo
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.StudentInfoParser
 import com.ifafu.kyzz.data.repository.UserRepository
+import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,7 +29,7 @@ class StudentInfoApi @Inject constructor(
                 val response = reloginHelper.relogin()
                 if (!response.success) return null
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xsgrxx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121501"
+                val retryUrl = "${host}/(${user.token})/xsgrxx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121501"
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return null
@@ -36,7 +37,8 @@ class StudentInfoApi @Inject constructor(
             }
 
             studentInfoParser.parseStudentInfo(doc, number)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e("StudentInfoApi", "Failed to fetch student info", e)
             null
         }

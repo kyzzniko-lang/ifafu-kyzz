@@ -119,9 +119,13 @@ class ScoreParser @Inject constructor(
             "优秀", "优" -> 95f
             "良好", "良" -> 85f
             "中等", "中" -> 75f
-            "及格" -> 65f
-            "不及格", "差" -> 50f
-            else -> 0f
+            "及格", "合格" -> 65f
+            "不及格", "差", "不合格" -> 50f
+            "免修", "免考" -> -1f
+            else -> {
+                android.util.Log.w("ScoreParser", "Unknown grade: '$grade', defaulting to 0")
+                0f
+            }
         }
     }
 

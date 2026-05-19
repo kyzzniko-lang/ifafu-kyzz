@@ -41,12 +41,13 @@ class ScoreViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            if (allScores.isNotEmpty()) {
+            val isStale = cacheManager.isCacheStale(user.account, "scores", 6 * 60 * 60 * 1000L) // 6 hours
+            if (!isStale && allScores.isNotEmpty()) {
                 _state.value = UiState.Success(filterScores())
                 return
             }
             val cached = cacheManager.loadScores(user.account)
-            if (cached != null && cached.isNotEmpty()) {
+            if (!isStale && cached != null && cached.isNotEmpty()) {
                 allScores = cached
                 _state.value = UiState.Success(filterScores())
                 return

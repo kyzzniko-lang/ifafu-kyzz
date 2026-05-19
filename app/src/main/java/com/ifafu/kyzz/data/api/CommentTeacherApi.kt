@@ -28,12 +28,12 @@ class CommentTeacherApi @Inject constructor(
             if (!reloginResp.success) return Response(false, -1, reloginResp.message)
             val user = userRepository.getUser()
             val newToken = user.token
-            val retryUrl = "${host}/(${newToken})/xsjxpj.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121401"
+            val retryUrl = "${host}/(${newToken})/xsjxpj.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121401"
             html = htmlClient.getString(retryUrl)
             if (html.isBlank() || userApi.isSessionExpired(html)) {
                 return Response(false, -1, "会话已过期，请重新登录")
             }
-            return commentAllTeachersInternal(host, newToken, user.account, user.name, html)
+            return commentAllTeachersInternal(host, newToken, user.account, name, html)
         }
 
         val alert = htmlClient.checkAlert(html)

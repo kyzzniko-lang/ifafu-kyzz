@@ -29,7 +29,11 @@ class ElectiveScoreActivity : BaseActivity<ActivityElectiveScoreBinding>() {
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = getString(R.string.elective_score_title)
 
+        binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
+
         viewModel.state.observe(this) { state ->
+            binding.swipeRefresh.isRefreshing = false
             when (state) {
                 is ElectiveScoreViewModel.State.Loading -> showLoading()
                 is ElectiveScoreViewModel.State.Success -> showScores(state.scores, state.totalCredits)

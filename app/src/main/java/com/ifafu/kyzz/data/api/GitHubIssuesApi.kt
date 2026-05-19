@@ -147,8 +147,9 @@ class GitHubIssuesApi @Inject constructor(
         if (!isConfigured()) return@withContext null
         try {
             var page = 1
+            val maxPages = 20
             var result: String? = null
-            while (result == null) {
+            while (result == null && page <= maxPages) {
                 val url = "$BASE/issues/$NICKNAMES_ISSUE/comments?per_page=100&page=$page"
                 val request = Request.Builder().url(url).apply {
                     authHeaders().forEach { (k, v) -> header(k, v) }
@@ -187,7 +188,8 @@ class GitHubIssuesApi @Inject constructor(
         try {
             var existingCommentId: Long? = null
             var page = 1
-            while (existingCommentId == null) {
+            val maxPages = 20
+            while (existingCommentId == null && page <= maxPages) {
                 val listUrl = "$BASE/issues/$NICKNAMES_ISSUE/comments?per_page=100&page=$page"
                 val listRequest = Request.Builder().url(listUrl).apply {
                     authHeaders().forEach { (k, v) -> header(k, v) }

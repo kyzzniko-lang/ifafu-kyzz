@@ -4,12 +4,12 @@ import com.ifafu.kyzz.data.model.DailyWeather
 import com.ifafu.kyzz.data.model.HourlyWeather
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -24,7 +24,7 @@ class WeatherApi @Inject constructor() {
             .build()
     }
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+    private val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
     suspend fun fetchWeather(lat: Double, lng: Double): DailyWeather? = withContext(Dispatchers.IO) {
         try {
@@ -45,7 +45,7 @@ class WeatherApi @Inject constructor() {
             val codes = hourly.getJSONArray("weather_code")
             val precip = hourly.getJSONArray("precipitation_probability")
 
-            val today = dateFormat.format(Date())
+            val today = LocalDate.now().format(dateFormatter)
             val list = mutableListOf<HourlyWeather>()
             for (i in 0 until times.length()) {
                 val timeStr = times.getString(i)
@@ -60,6 +60,8 @@ class WeatherApi @Inject constructor() {
             }
 
             if (list.isEmpty()) null else DailyWeather(date = today, hourly = list)
+        } catch (e: CancellationException) {
+            throw e
         } catch (_: Exception) {
             null
         }

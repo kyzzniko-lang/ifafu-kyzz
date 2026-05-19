@@ -39,7 +39,7 @@ class MainViewModel @Inject constructor(
 
     init {
         _user.value = userRepository.getUser()
-        fetchTermFirstDay()
+        _currentWeek.value = calculateCurrentWeek()
     }
 
     val isLoggedIn: Boolean get() = _user.value?.isLogin == true
@@ -50,9 +50,15 @@ class MainViewModel @Inject constructor(
         if (!force && _todayCourses.value != null && _nextExam.value != null) {
             return
         }
-        hasFetchedTermFirstDay = false
-        fetchTermFirstDay()
+        // 立即从缓存加载今日课程和考试（不等待网络）
+        loadTodayCourses()
         loadNextExam()
+        // 并行后台同步学期日期（force时重新检查）
+        if (force) hasFetchedTermFirstDay = false
+        if (!hasFetchedTermFirstDay) {
+            hasFetchedTermFirstDay = true
+            fetchTermFirstDayFromGitHub()
+        }
     }
 
     private fun calculateCurrentWeek(): Int {
@@ -303,14 +309,8 @@ class MainViewModel @Inject constructor(
                             }
                             // Re-fetch syllabus for today's courses
                             loadTodayCourses()
-                        } else {
-                            // Same semester — just recompute with existing cache
-                            val user = userRepository.getUser()
-                            val syllabus = if (user.isLogin) cacheManager.loadSyllabus(user.account) else null
-                            if (syllabus != null) {
-                                computeTodayCourses(syllabus)
-                            }
                         }
+                        // Same semester — courses already loaded from cache in refreshUser(), no need to recompute
                         android.util.Log.i("MainViewModel", "Term first day synced from GitHub: $dateStr")
                         return@launch
                     }

@@ -63,6 +63,7 @@ class HomeFragment : Fragment() {
     lateinit var weatherApi: com.ifafu.kyzz.data.api.WeatherApi
 
     private var dailyWeather: com.ifafu.kyzz.data.model.DailyWeather? = null
+    private var weatherJob: kotlinx.coroutines.Job? = null
 
     private val bubbleHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var bubbleRunnable: Runnable? = null
@@ -176,6 +177,22 @@ class HomeFragment : Fragment() {
             }
         }
 
+        // Card press feedback: scale on touch
+        listOf(binding.cardCountdown, binding.cardExamCountdown, binding.cardHotDiscussion).forEach { card ->
+            card.setOnTouchListener { v, event ->
+                when (event.action) {
+                    MotionEvent.ACTION_DOWN -> {
+                        v.animate().scaleX(0.97f).scaleY(0.97f).setDuration(100).start()
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        v.animate().scaleX(1f).scaleY(1f).setDuration(150)
+                            .setInterpolator(OvershootInterpolator(2f)).start()
+                    }
+                }
+                false
+            }
+        }
+
         // Pull-to-refresh
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
         binding.swipeRefresh.setOnRefreshListener {
@@ -239,7 +256,8 @@ class HomeFragment : Fragment() {
     }
 
     private fun loadWeather() {
-        lifecycleScope.launch {
+        weatherJob?.cancel()
+        weatherJob = lifecycleScope.launch {
             try {
                 val weather = withContext(Dispatchers.IO) {
                     val prefs = requireContext().getSharedPreferences("ifafu_settings", android.content.Context.MODE_PRIVATE)
@@ -272,6 +290,8 @@ class HomeFragment : Fragment() {
                     val courses = viewModel.todayCourses.value
                     if (courses != null) showTodayCourses(courses)
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {}
         }
     }

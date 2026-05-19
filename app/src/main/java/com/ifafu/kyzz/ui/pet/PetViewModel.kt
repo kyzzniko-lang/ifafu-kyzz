@@ -64,6 +64,12 @@ class PetViewModel @Inject constructor(
     }
 
     private fun updatePetState(pet: Pet) {
+        // Don't overwrite interactive states (EATING/HAPPY from play) if recent
+        val timeSinceInteract = System.currentTimeMillis() - pet.lastInteractTime
+        if (timeSinceInteract < 15_000 && (pet.state == PetState.EATING || pet.state == PetState.HAPPY || pet.state == PetState.EXCITED)) {
+            return
+        }
+
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
         val minute = Calendar.getInstance().get(Calendar.MINUTE)
         val nowMinutes = hour * 60 + minute
@@ -191,6 +197,7 @@ class PetViewModel @Inject constructor(
             return
         }
         pet.feed()
+        pet.lastInteractTime = System.currentTimeMillis()
         pet.state = PetState.EATING
         _bubbleText.value = getFeedResponse()
         _pet.value = pet
@@ -223,6 +230,7 @@ class PetViewModel @Inject constructor(
             return
         }
         pet.play()
+        pet.lastInteractTime = System.currentTimeMillis()
         pet.state = PetState.HAPPY
         _bubbleText.value = getPlayResponse()
         _pet.value = pet

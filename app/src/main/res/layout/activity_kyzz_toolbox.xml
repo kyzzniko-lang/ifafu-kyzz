@@ -55,7 +55,7 @@
                         android:layout_marginTop="16dp"
                         android:fontFamily="@font/claude_serif"
                         android:lineSpacingExtra="4dp"
-                        android:text="此工具箱用于帮抢选修课或者抢体育课等作用而创建，请勿魔改为非法用途。\n\n24网络工程 KYZZ"
+                        android:text="此工具箱用于帮抢选修课或者抢体育课等作用而创建，因为学校的缘故，学校还未开放选课接口，本功能还未实现，教师评价功能也存在上述的问题，请耐心等待软件更新。需要增加什么功能可以在意见箱里面反馈，会尽力更新创建。"
                         android:textColor="@color/claude_text_secondary"
                         android:textSize="14sp" />
 

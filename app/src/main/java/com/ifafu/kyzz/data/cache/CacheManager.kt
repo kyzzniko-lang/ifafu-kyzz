@@ -171,9 +171,12 @@ class CacheManager @Inject constructor(
         val json = prefs.getString("weather_$campus", null) ?: return null
         val ts = prefs.getLong("weather_${campus}_ts", 0L)
         if (System.currentTimeMillis() - ts >= 30 * 60 * 1000L) return null
-        // 检查日期是否跨天：缓存日期不等于今天则视为过期
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-        if (!json.contains("\"date\":\"$today\"")) return null
+        // 检查日期是否跨天：解析缓存的date字段与今天比较
+        val today = java.time.LocalDate.now().toString()
+        val cachedDate = try {
+            com.google.gson.JsonParser.parseString(json).asJsonObject?.get("date")?.asString
+        } catch (_: Exception) { null }
+        if (cachedDate != today) return null
         return json
     }
 

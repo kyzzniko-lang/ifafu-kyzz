@@ -5,6 +5,7 @@ import com.ifafu.kyzz.data.model.SimpleCourse
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.SimpleElectiveParser
 import com.ifafu.kyzz.data.repository.UserRepository
+import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -38,7 +39,8 @@ class SimpleElectiveApi @Inject constructor(
         val (page, gnmkdm) = URL_MAP[type] ?: return Result(false, "未知选课类型")
         return try {
             getCoursesInternal(page, gnmkdm, host, token, number, name)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e(TAG, "Failed to get courses for type=$type", e)
             Result(false, "网络异常")
         }

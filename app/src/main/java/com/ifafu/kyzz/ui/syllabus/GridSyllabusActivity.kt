@@ -256,11 +256,12 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     private fun autoScrollToCurrentPeriod() {
         if (currentWeek != realCurrentWeek || realCurrentWeek <= 0) return
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
+        if (hour >= 21) return // 晚上9点后课程已结束，不自动滚动
         val rowHeight = dpToPx(60)
         val targetY = when {
             hour < 12 -> 0
             hour < 17 -> rowHeight * 5
-            else -> rowHeight * 9
+            else -> rowHeight * 8
         }
         binding.scrollView.post { binding.scrollView.smoothScrollTo(0, targetY) }
     }

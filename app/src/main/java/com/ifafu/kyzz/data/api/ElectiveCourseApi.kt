@@ -6,6 +6,7 @@ import com.ifafu.kyzz.data.model.Response
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.ElectiveParser
 import com.ifafu.kyzz.data.repository.UserRepository
+import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -36,7 +37,7 @@ class ElectiveCourseApi @Inject constructor(
                 val reloginResp = reloginHelper.relogin()
                 if (!reloginResp.success) return Response(false, -1, reloginResp.message)
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xf_xsqxxxk.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121400"
+                val retryUrl = "${host}/(${user.token})/xf_xsqxxxk.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121400"
                 val retryHtml = htmlClient.getString(retryUrl)
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return Response(false, -1, "会话已过期，请重新登录")
@@ -45,7 +46,8 @@ class ElectiveCourseApi @Inject constructor(
             }
 
             parseElectiveCourseIndex(html, courseList)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e(TAG, "Failed to get elective course index", e)
             Response(false, -1, "网络异常")
         }
@@ -70,7 +72,8 @@ class ElectiveCourseApi @Inject constructor(
     ): Response {
         return try {
             searchElectiveCourseInternal(host, token, number, name, courseList)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e(TAG, "Failed to search elective course", e)
             Response(false, -1, "网络异常")
         }
@@ -125,7 +128,8 @@ class ElectiveCourseApi @Inject constructor(
     ): Response {
         return try {
             electiveCourseInternal(host, token, number, name, courseList, courseIndex)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e(TAG, "Failed to select elective course", e)
             Response(false, -1, "网络异常")
         }

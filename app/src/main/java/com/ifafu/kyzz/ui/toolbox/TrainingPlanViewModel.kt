@@ -36,10 +36,13 @@ class TrainingPlanViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            val cached = cacheManager.loadTrainingPlan(user.account)
-            if (cached != null && cached.courses.isNotEmpty()) {
-                _state.value = UiState.Success(cached)
-                return
+            val isStale = cacheManager.isCacheStale(user.account, "training_plan", 24 * 60 * 60 * 1000L) // 24 hours
+            if (!isStale) {
+                val cached = cacheManager.loadTrainingPlan(user.account)
+                if (cached != null && cached.courses.isNotEmpty()) {
+                    _state.value = UiState.Success(cached)
+                    return
+                }
             }
         }
 

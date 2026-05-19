@@ -20,7 +20,8 @@ data class Pet(
     var lastPlayRecoverTime: Long = System.currentTimeMillis(), // 上次玩耍恢复时间
     var points: Int = 0,            // 签到积分
     var lastCheckInDate: String = "", // 上次签到日期 yyyy-MM-dd
-    var checkInStreak: Int = 0       // 连续签到天数
+    var checkInStreak: Int = 0,      // 连续签到天数
+    var lastTickTime: Long = System.currentTimeMillis() // 上次 tick 时间
 ) {
     val expToNextLevel: Int get() = level * 50 + 100
     val levelTitle: String get() = when (petType) {
@@ -140,17 +141,23 @@ data class Pet(
 
     fun tick() {
         val now = System.currentTimeMillis()
-        val hoursSinceLastFeed = (now - lastFeedTime) / (1000 * 60 * 60)
-        val hoursSinceLastInteract = (now - lastInteractTime) / (1000 * 60 * 60)
+        val hoursSinceLastTick = ((now - lastTickTime) / (1000 * 60 * 60)).toInt()
+        if (hoursSinceLastTick < 1) return // 最多每小时衰减一次
+
+        val hoursSinceLastFeed = ((now - lastFeedTime) / (1000 * 60 * 60)).toInt()
         if (hoursSinceLastFeed > 4) {
-            hunger = (hunger - 5).coerceAtLeast(0)
+            val periods = ((hoursSinceLastFeed - 4) / 4).coerceIn(1, 30) // 最多衰减30次
+            hunger = (hunger - 5 * periods).coerceAtLeast(0)
         }
+        val hoursSinceLastInteract = ((now - lastInteractTime) / (1000 * 60 * 60)).toInt()
         if (hoursSinceLastInteract > 8) {
-            mood = (mood - 2).coerceAtLeast(0)
+            val periods = ((hoursSinceLastInteract - 8) / 8).coerceIn(1, 30)
+            mood = (mood - 2 * periods).coerceAtLeast(0)
         }
         if (hunger < 30) {
             mood = (mood - 3).coerceAtLeast(0)
         }
+        lastTickTime = now
     }
 
     fun checkIn(): Boolean {

@@ -6,6 +6,7 @@ import com.ifafu.kyzz.data.model.TrainingPlan
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.TrainingPlanParser
 import com.ifafu.kyzz.data.repository.UserRepository
+import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -28,14 +29,15 @@ class TrainingPlanApi @Inject constructor(
                 val response = reloginHelper.relogin()
                 if (!response.success) return null
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/pyjh.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121607"
+                val retryUrl = "${host}/(${user.token})/pyjh.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121607"
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return null
                 return parser.parse(retryDoc)
             }
             parser.parse(doc)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e("TrainingPlanApi", "Failed to fetch training plan", e)
             null
         }
@@ -50,14 +52,15 @@ class TrainingPlanApi @Inject constructor(
                 val response = reloginHelper.relogin()
                 if (!response.success) return emptyList()
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xsdjkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121606"
+                val retryUrl = "${host}/(${user.token})/xsdjkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121606"
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return emptyList()
                 return parser.parseGradeExams(retryDoc)
             }
             parser.parseGradeExams(doc)
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e("TrainingPlanApi", "Failed to fetch grade exams", e)
             emptyList()
         }

@@ -43,10 +43,13 @@ class ExamViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            val cached = cacheManager.loadExamTable(user.account)
-            if (cached != null && cached.exams.isNotEmpty()) {
-                _state.value = UiState.Success(cached)
-                return
+            val isStale = cacheManager.isCacheStale(user.account, "exams", 12 * 60 * 60 * 1000L) // 12 hours
+            if (!isStale) {
+                val cached = cacheManager.loadExamTable(user.account)
+                if (cached != null && cached.exams.isNotEmpty()) {
+                    _state.value = UiState.Success(cached)
+                    return
+                }
             }
         }
 

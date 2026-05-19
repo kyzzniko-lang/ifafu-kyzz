@@ -27,6 +27,10 @@ class HtmlClient @Inject constructor(
 
     @Volatile private var referer: String = ""
 
+    fun clearCookies() {
+        (client.cookieJar as? com.ifafu.kyzz.di.JavaNetCookieJar)?.clear()
+    }
+
     private val mutex = Mutex()
 
     private val gbkCharset: Charset = Charset.forName("GBK")
@@ -144,8 +148,8 @@ class HtmlClient @Inject constructor(
         val doc = Jsoup.parse(html)
         val vs = doc.select("input[name=__VIEWSTATE]").first()
         val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").first()
-        viewState = vs?.attr("value")?.replace(" ", "")?.replace("\n", "") ?: ""
-        viewStateGenerator = vsg?.attr("value") ?: ""
+        viewState = vs?.attr("value")?.trim() ?: ""
+        viewStateGenerator = vsg?.attr("value")?.trim() ?: ""
     }
 
     fun parseViewState(html: String): ViewStateData {
@@ -153,8 +157,8 @@ class HtmlClient @Inject constructor(
         val vs = doc.select("input[name=__VIEWSTATE]").first()
         val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").first()
         return ViewStateData(
-            viewState = vs?.attr("value")?.replace(" ", "")?.replace("\n", "") ?: "",
-            viewStateGenerator = vsg?.attr("value") ?: ""
+            viewState = vs?.attr("value")?.trim() ?: "",
+            viewStateGenerator = vsg?.attr("value")?.trim() ?: ""
         )
     }
 

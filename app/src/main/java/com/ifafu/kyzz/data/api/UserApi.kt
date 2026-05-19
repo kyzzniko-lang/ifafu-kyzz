@@ -7,6 +7,7 @@ import com.ifafu.kyzz.data.model.User
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.data.util.ZFVerify
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -30,15 +31,21 @@ class UserApi @Inject constructor(
 
             htmlClient.get(host)
             loginUrl = htmlClient.lastUrl
+            Log.d(TAG, "prepareLogin: host=$host, loginUrl=$loginUrl")
 
             val tokenMatch = Regex("\\((.*?)\\)/").find(loginUrl)
-            if (tokenMatch == null) return null
+            if (tokenMatch == null) {
+                Log.w(TAG, "prepareLogin: token not found in URL: $loginUrl")
+                return null
+            }
             sessionToken = tokenMatch.groupValues[1]
+            Log.d(TAG, "prepareLogin: sessionToken=$sessionToken")
 
             val captchaUrl = "${host}/(${sessionToken})/CheckCode.aspx"
             val bytes = htmlClient.getBytes(captchaUrl)
             if (bytes.isNotEmpty()) BitmapFactory.decodeByteArray(bytes, 0, bytes.size) else null
-        } catch (e: Exception) {
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) {
             Log.e(TAG, "prepareLogin failed", e)
             null
         }
@@ -73,6 +80,10 @@ class UserApi @Inject constructor(
             return alertResponse
         }
 
+        if (postHtml.contains("出错啦") || postHtml.contains("系统正忙")) {
+            return Response(false, -1, "教务系统繁忙，请稍后再试")
+        }
+
         if (postHtml.contains("输入新密码")) {
             user.token = sessionToken
             user.account = account
@@ -87,9 +98,12 @@ class UserApi @Inject constructor(
             user.token = tokenFromUrl?.groupValues?.get(1) ?: sessionToken
         }
 
-        val nameMatch = Regex("xhxm\">(.+?)同学").find(postHtml)
+        val nameMatch = Regex("""xhxm["']?>?\s*(.+?)\s*同学""").find(postHtml)
+            ?: Regex("""xhxm["']?>?\s*(.+?)\s*</""").find(postHtml)
         if (nameMatch != null) {
-            user.name = nameMatch.groupValues[1]
+            user.name = nameMatch.groupValues[1].trim()
+        } else {
+            Log.w(TAG, "Name extraction failed, html snippet: ${postHtml.take(1000)}")
         }
 
         if (user.token.isEmpty()) {
@@ -104,15 +118,14 @@ class UserApi @Inject constructor(
     suspend fun modifyPassword(host: String, token: String, account: String, oldPwd: String, newPwd: String): Response {
         val accessUrl = "${host}/(${token})/mmxg.aspx?xh=${account}&rmm=true"
 
-        htmlClient.getString(accessUrl)
+        val getResult = htmlClient.getStringWithViewState(accessUrl)
 
-        val formBody = htmlClient.buildFormBody(
-            "__VIEWSTATE" to htmlClient.viewState,
-            "__VIEWSTATEGENERATOR" to htmlClient.viewStateGenerator,
+        val formBody = htmlClient.buildFormBodyWithViewState(
             "TextBox2" to oldPwd,
             "TextBox3" to newPwd,
             "TextBox4" to newPwd,
-            "Button1" to "修  改"
+            "Button1" to "修  改",
+            state = getResult.viewState
         )
 
         val postHtml = htmlClient.postString(accessUrl, formBody)
@@ -126,6 +139,7 @@ class UserApi @Inject constructor(
     suspend fun relogin(): Response {
         val user = userRepository.getUser()
         val password = userRepository.getPassword()
+        Log.d(TAG, "Relogin: account=${user.account}, hasPassword=${password.isNotBlank()}, token=${user.token.take(10)}...")
         if (user.account.isBlank() || password.isBlank()) {
             Log.w(TAG, "Relogin failed: account or password is blank")
             return Response(false, -1, "未保存登录信息")
@@ -142,7 +156,7 @@ class UserApi @Inject constructor(
                 Log.d(TAG, "Relogin attempt $i/$maxRetry")
                 val captchaBitmap = prepareLogin(userRepository.host)
                 if (captchaBitmap == null) {
-                    Log.w(TAG, "Relogin attempt $i: prepareLogin returned null")
+                    Log.w(TAG, "Relogin attempt $i: prepareLogin returned null, sessionToken=$sessionToken, loginUrl=$loginUrl")
                     continue
                 }
 
@@ -160,12 +174,14 @@ class UserApi @Inject constructor(
                     freshUser.enrollment = user.enrollment
                     userRepository.saveUser(freshUser)
                     userRepository.savePassword(password)
-                    Log.d(TAG, "Relogin succeeded on attempt $i")
+                    val savedUser = userRepository.getUser()
+                    Log.d(TAG, "Relogin succeeded on attempt $i, savedToken=${savedUser.token.take(10)}...")
                     return response
                 } else {
                     Log.w(TAG, "Relogin attempt $i: login failed - ${response.message}")
                 }
-            } catch (e: Exception) {
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
                 Log.e(TAG, "Relogin attempt $i: exception", e)
             }
         }
@@ -175,8 +191,9 @@ class UserApi @Inject constructor(
     }
 
     fun isSessionExpired(html: String): Boolean {
-        if (html.contains("账号或密码") || html.contains("请登录")) return true
-        // Check for redirect to login page (URL-like pattern, not just any mention)
+        // Check for actual login form elements (not just text mentions)
+        if (html.contains("id=\"txtUserName\"") && html.contains("id=\"TextBox2\"")) return true
+        // Check for JS redirect to login page
         if (Regex("""location\s*[=.]\s*["'][^"']{0,30}default[2]?\.aspx""").containsMatchIn(html)) return true
         if (Regex("""window\.location\s*=\s*["'][^"']{0,30}default[2]?\.aspx""").containsMatchIn(html)) return true
         return false

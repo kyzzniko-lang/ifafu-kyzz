@@ -1,0 +1,28 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Clipboard with checkmark -->
+    <path
+        android:pathData="M9,3H15C15.55,3 16,3.45 16,4V5H8V4C8,3.45 8.45,3 9,3Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1A1715"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M6,5H18C18.55,5 19,5.45 19,6V20C19,20.55 18.55,21 18,21H6C5.45,21 5,20.55 5,20V6C5,5.45 5.45,5 6,5Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1A1715"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M9,14L11,16L15,12"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1A1715"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+</vector>

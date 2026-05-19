@@ -36,10 +36,13 @@ class GradeExamViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            val cached = cacheManager.loadGradeExams(user.account)
-            if (cached != null && cached.isNotEmpty()) {
-                _state.value = UiState.Success(cached)
-                return
+            val isStale = cacheManager.isCacheStale(user.account, "grade_exams", 24 * 60 * 60 * 1000L) // 24 hours
+            if (!isStale) {
+                val cached = cacheManager.loadGradeExams(user.account)
+                if (cached != null && cached.isNotEmpty()) {
+                    _state.value = UiState.Success(cached)
+                    return
+                }
             }
         }
 
@@ -50,8 +53,18 @@ class GradeExamViewModel @Inject constructor(
                 val exams = trainingPlanApi.getGradeExams(
                     userRepository.host, freshUser.token, freshUser.account, freshUser.name
                 )
-                cacheManager.saveGradeExams(freshUser.account, exams)
-                _state.value = UiState.Success(exams)
+                if (exams.isNotEmpty()) {
+                    cacheManager.saveGradeExams(freshUser.account, exams)
+                    _state.value = UiState.Success(exams)
+                } else {
+                    // API returned empty (likely error fallback) — try cache
+                    val cached = cacheManager.loadGradeExams(freshUser.account)
+                    if (cached != null && cached.isNotEmpty()) {
+                        _state.value = UiState.Cached(cached, "离线模式 · 显示缓存数据")
+                    } else {
+                        _state.value = UiState.Success(emptyList())
+                    }
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

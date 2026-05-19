@@ -1,0 +1,36 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Document with bar chart -->
+    <path
+        android:pathData="M6,3C5.45,3 5,3.45 5,4V20C5,20.55 5.45,21 6,21H18C18.55,21 19,20.55 19,20V7L15,3H6Z"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1A1715"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M15,3V7H19"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1A1715"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+    <path
+        android:pathData="M9,14V17"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1A1715"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M12,11V17"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1A1715"
+        android:strokeLineCap="round" />
+    <path
+        android:pathData="M15,13V17"
+        android:strokeWidth="1.5"
+        android:strokeColor="#1A1715"
+        android:strokeLineCap="round" />
+</vector>

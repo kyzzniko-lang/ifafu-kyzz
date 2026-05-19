@@ -32,10 +32,13 @@ class StudentInfoViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            val cached = cacheManager.loadStudentInfo(user.account)
-            if (cached != null) {
-                _state.value = UiState.Success(cached)
-                return
+            val isStale = cacheManager.isCacheStale(user.account, "student_info", 7 * 24 * 60 * 60 * 1000L) // 7 days
+            if (!isStale) {
+                val cached = cacheManager.loadStudentInfo(user.account)
+                if (cached != null) {
+                    _state.value = UiState.Success(cached)
+                    return
+                }
             }
         }
 

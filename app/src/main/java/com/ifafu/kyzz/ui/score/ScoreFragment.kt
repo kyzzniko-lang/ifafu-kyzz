@@ -91,7 +91,8 @@ class ScoreFragment : Fragment() {
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerYear.adapter = adapter
-        binding.spinnerYear.setSelection(0)
+        val restoreIndex = if (selectedYear != null) options.indexOf(selectedYear).coerceAtLeast(0) else 0
+        binding.spinnerYear.setSelection(restoreIndex)
 
         binding.spinnerYear.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -162,7 +163,7 @@ class ScoreFragment : Fragment() {
         }
 
         // Animated counter for stats
-        animateCounter(binding.tvGPA, 0f, gpa, "%.2f", 800)
+        binding.gpaRingView.setGpa(gpa)
         animateCounter(binding.tvWeightedAvg, 0f, weightedAvg, "%.1f", 800)
         animateCounter(binding.tvTotalCredits, 0f, totalCredits, "%.1f", 800)
     }
