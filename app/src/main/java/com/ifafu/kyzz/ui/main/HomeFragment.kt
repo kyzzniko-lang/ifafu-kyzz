@@ -112,6 +112,8 @@ class HomeFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
+        simpleMode = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+            .getBoolean("simple_mode", false)
         setupViews()
         observeUser()
         setupPet()
@@ -119,28 +121,35 @@ class HomeFragment : Fragment() {
     }
 
     private var hasLoadedData = false
+    private var simpleMode = false
 
     private fun loadData() {
         if (hasLoadedData) return
         hasLoadedData = true
         viewModel.refreshUser()
-        loadHotDiscussion()
-        loadCountdownEvents()
+        if (!simpleMode) {
+            loadHotDiscussion()
+            loadCountdownEvents()
+            loadWeather()
+        }
         checkForUpdate()
-        loadWeather()
     }
 
     override fun onResume() {
         super.onResume()
         updateGreeting()
-        petViewModel.reloadPet()
-        petViewModel.updateState()
+        if (!simpleMode) {
+            petViewModel.reloadPet()
+            petViewModel.updateState()
+        }
         // Show cached update result if available
         showCachedUpdateIfNeeded()
-        loadWeather()
+        if (!simpleMode) loadWeather()
         // Auto bubble on resume
-        bubbleHandler.removeCallbacks(resumeRunnable)
-        bubbleHandler.postDelayed(resumeRunnable, 2000)
+        if (!simpleMode) {
+            bubbleHandler.removeCallbacks(resumeRunnable)
+            bubbleHandler.postDelayed(resumeRunnable, 2000)
+        }
     }
 
     private fun showCachedUpdateIfNeeded() {
@@ -152,44 +161,58 @@ class HomeFragment : Fragment() {
     }
 
     private fun setupViews() {
-        binding.gridSyllabus.setOnClickListener {
-            startActivity(Intent(requireContext(), GridSyllabusActivity::class.java))
-        }
-        binding.gridElective.setOnClickListener {
-            startActivity(Intent(requireContext(), com.ifafu.kyzz.ui.elective.SimpleElectiveActivity::class.java))
-        }
-        binding.gridToolbox.setOnClickListener {
-            startActivity(Intent(requireContext(), KyzzToolboxActivity::class.java))
-        }
-        // Grid entry press feedback: scale on touch
-        listOf(binding.gridSyllabus, binding.gridElective, binding.gridToolbox).forEach { entry ->
-            entry.setOnTouchListener { v, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        v.animate().scaleX(0.93f).scaleY(0.93f).setDuration(100).start()
-                    }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        v.animate().scaleX(1f).scaleY(1f).setDuration(150)
-                            .setInterpolator(OvershootInterpolator(2f)).start()
-                    }
-                }
-                false
+        if (simpleMode) {
+            binding.btnSettings.setOnClickListener {
+                startActivity(Intent(requireContext(), com.ifafu.kyzz.ui.settings.SettingsActivity::class.java))
             }
-        }
+            binding.tvQuickEntry.visibility = View.GONE
+            binding.gridContainer.visibility = View.GONE
+            binding.cardCountdown.visibility = View.GONE
+            binding.cardHotDiscussion.visibility = View.GONE
+            binding.cardWeather.visibility = View.GONE
+            binding.courseProgressContainer.visibility = View.GONE
+        } else {
+            binding.btnSettings.visibility = View.GONE
 
-        // Card press feedback: scale on touch
-        listOf(binding.cardCountdown, binding.cardExamCountdown, binding.cardHotDiscussion).forEach { card ->
-            card.setOnTouchListener { v, event ->
-                when (event.action) {
-                    MotionEvent.ACTION_DOWN -> {
-                        v.animate().scaleX(0.97f).scaleY(0.97f).setDuration(100).start()
+            binding.gridSyllabus.setOnClickListener {
+                startActivity(Intent(requireContext(), GridSyllabusActivity::class.java))
+            }
+            binding.gridElective.setOnClickListener {
+                startActivity(Intent(requireContext(), com.ifafu.kyzz.ui.elective.SimpleElectiveActivity::class.java))
+            }
+            binding.gridToolbox.setOnClickListener {
+                startActivity(Intent(requireContext(), KyzzToolboxActivity::class.java))
+            }
+            // Grid entry press feedback: scale on touch
+            listOf(binding.gridSyllabus, binding.gridElective, binding.gridToolbox).forEach { entry ->
+                entry.setOnTouchListener { v, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            v.animate().scaleX(0.93f).scaleY(0.93f).setDuration(100).start()
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            v.animate().scaleX(1f).scaleY(1f).setDuration(150)
+                                .setInterpolator(OvershootInterpolator(2f)).start()
+                        }
                     }
-                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        v.animate().scaleX(1f).scaleY(1f).setDuration(150)
-                            .setInterpolator(OvershootInterpolator(2f)).start()
-                    }
+                    false
                 }
-                false
+            }
+
+            // Card press feedback: scale on touch
+            listOf(binding.cardCountdown, binding.cardExamCountdown, binding.cardHotDiscussion).forEach { card ->
+                card.setOnTouchListener { v, event ->
+                    when (event.action) {
+                        MotionEvent.ACTION_DOWN -> {
+                            v.animate().scaleX(0.97f).scaleY(0.97f).setDuration(100).start()
+                        }
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                            v.animate().scaleX(1f).scaleY(1f).setDuration(150)
+                                .setInterpolator(OvershootInterpolator(2f)).start()
+                        }
+                    }
+                    false
+                }
             }
         }
 
@@ -197,11 +220,13 @@ class HomeFragment : Fragment() {
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
         binding.swipeRefresh.setOnRefreshListener {
             viewModel.refreshUser(force = true)
-            loadHotDiscussion()
-            loadCountdownEvents()
+            if (!simpleMode) {
+                loadHotDiscussion()
+                loadCountdownEvents()
+                loadWeather()
+            }
             checkForUpdate()
-            loadWeather()
-            petViewModel.onPetClicked()
+            if (!simpleMode) petViewModel.onPetClicked()
             val refresh = binding.swipeRefresh
             refresh.postDelayed({ refresh.isRefreshing = false }, 800)
         }
@@ -444,7 +469,7 @@ class HomeFragment : Fragment() {
 
     private fun setupPet() {
         val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
-        if (!prefs.getBoolean("show_pet", true)) {
+        if (simpleMode || !prefs.getBoolean("show_pet", true)) {
             binding.petWidget.root.visibility = View.GONE
             return
         }
@@ -527,6 +552,12 @@ class HomeFragment : Fragment() {
                     // Only start dragging after long press timeout + sufficient movement
                     if (!isDragging && elapsed >= longPressTimeout && moveDist > touchSlop) {
                         isDragging = true
+                        // Prevent all ancestors (CoordinatorLayout/AppBarLayout/SwipeRefreshLayout) from intercepting touch
+                        var p = v.parent as? View
+                        while (p != null) {
+                            p.parent?.requestDisallowInterceptTouchEvent(true)
+                            p = p.parent as? View
+                        }
                     }
                     if (isDragging) {
                         val maxX = (parent.width - v.width).toFloat().coerceAtLeast(0f)

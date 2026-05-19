@@ -1,5 +1,6 @@
 package com.ifafu.kyzz.ui.toolbox
 
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import com.ifafu.kyzz.BuildConfig
@@ -64,6 +65,10 @@ class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
 
         binding.cardGrabPE.setOnClickListener {
             Toast.makeText(this, "正在实现中，敬请期待", Toast.LENGTH_SHORT).show()
+        }
+
+        binding.cardVirtualLocation.setOnClickListener {
+            startActivity(Intent(this, MockLocationActivity::class.java))
         }
     }
 

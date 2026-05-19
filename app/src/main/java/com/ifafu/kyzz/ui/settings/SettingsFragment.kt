@@ -8,6 +8,7 @@ import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
 import androidx.preference.Preference
 import androidx.preference.PreferenceFragmentCompat
+import androidx.preference.SwitchPreferenceCompat
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.repository.PetRepository
@@ -31,6 +32,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         setPreferencesFromResource(R.xml.preferences, rootKey)
 
         setupDarkMode()
+        setupSimpleMode()
         setupShowPet()
         setupPetType()
         setupPetName()
@@ -54,6 +56,24 @@ class SettingsFragment : PreferenceFragmentCompat() {
             requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
                 .edit().putInt("dark_mode", mode).apply()
             AppCompatDelegate.setDefaultNightMode(mode)
+            true
+        }
+    }
+
+    private fun setupSimpleMode() {
+        val pref = findPreference<SwitchPreferenceCompat>("simple_mode") ?: return
+        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+        pref.isChecked = prefs.getBoolean("simple_mode", false)
+        pref.setOnPreferenceChangeListener { _, newValue ->
+            prefs.edit().putBoolean("simple_mode", newValue == true).apply()
+            com.google.android.material.snackbar.Snackbar.make(
+                requireView(), "重启应用后生效", com.google.android.material.snackbar.Snackbar.LENGTH_LONG
+            ).setAction("重启") {
+                val intent = requireActivity().packageManager.getLaunchIntentForPackage(requireActivity().packageName)
+                intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (intent != null) startActivity(intent)
+                Runtime.getRuntime().exit(0)
+            }.show()
             true
         }
     }

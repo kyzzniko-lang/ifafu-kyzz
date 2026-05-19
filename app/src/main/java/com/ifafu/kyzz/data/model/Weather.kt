@@ -3,6 +3,7 @@ package com.ifafu.kyzz.data.model
 /** 校区天气配置，坐标与 CampusMapActivity 保持一致 */
 enum class CampusWeather(val key: String, val displayName: String, val lat: Double, val lng: Double) {
     JINSHAN("jinshan", "金山校区", 26.085206, 119.239669),
+    QISHAN("qishan", "旗山校区", 26.056579, 119.180505),
     ANXI("anxi", "安溪校区", 25.079766, 118.234897),
     NANPING("nanping", "南平校区", 26.555664, 118.119161);
 

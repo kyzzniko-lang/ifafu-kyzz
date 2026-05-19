@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.coordinatorlayout.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/claude_bg">
+
+<androidx.coordinatorlayout.widget.CoordinatorLayout
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
 
     <com.google.android.material.appbar.AppBarLayout
         android:layout_width="match_parent"
@@ -13,7 +17,7 @@
 
         <com.google.android.material.appbar.CollapsingToolbarLayout
             android:layout_width="match_parent"
-            android:layout_height="260dp"
+            android:layout_height="200dp"
             app:layout_scrollFlags="scroll|exitUntilCollapsed"
             app:contentScrim="@color/claude_bg">
 
@@ -33,15 +37,28 @@
                     android:layout_height="match_parent"
                     android:background="@drawable/bg_header_decor" />
 
+                <ImageButton
+                    android:id="@+id/btnSettings"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_gravity="top|end"
+                    android:layout_marginTop="44dp"
+                    android:layout_marginEnd="20dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="设置"
+                    android:src="@drawable/ic_settings"
+                    app:tint="@android:color/white"
+                    app:tintMode="src_in" />
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="match_parent"
                     android:gravity="center_horizontal"
                     android:orientation="vertical"
                     android:paddingStart="32dp"
-                    android:paddingTop="48dp"
+                    android:paddingTop="40dp"
                     android:paddingEnd="32dp"
-                    android:paddingBottom="24dp">
+                    android:paddingBottom="20dp">
 
                     <TextView
                         android:id="@+id/tvAppName"
@@ -49,25 +66,24 @@
                         android:layout_height="wrap_content"
                         style="@style/ClaudeDisplay.Light"
                         android:text="@string/app_name"
-                        android:textSize="36sp" />
+                        android:textSize="30sp"
+                        android:letterSpacing="-0.02" />
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        style="@style/ClaudeSubtitle.Light"
-                        android:text="@string/main_subtitle"
-                        android:textSize="13sp" />
+                    <View
+                        android:layout_width="36dp"
+                        android:layout_height="2dp"
+                        android:layout_marginTop="10dp"
+                        android:background="#40FFFFFF" />
 
                     <TextView
                         android:id="@+id/tvWelcome"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="20dp"
+                        android:layout_marginTop="12dp"
                         android:fontFamily="@font/claude_serif"
-                        android:textColor="@color/white"
-                        android:textSize="18sp"
-                        android:letterSpacing="0.03" />
+                        android:textColor="#F0FFFFFF"
+                        android:textSize="17sp"
+                        android:letterSpacing="0.02" />
 
                     <TextView
                         android:id="@+id/tvDateInfo"
@@ -75,9 +91,9 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="6dp"
                         android:fontFamily="@font/claude_serif"
-                        android:textColor="#99FFFFFF"
+                        android:textColor="#80FFFFFF"
                         android:textSize="12sp"
-                        android:letterSpacing="0.05" />
+                        android:letterSpacing="0.06" />
 
                 </LinearLayout>
 
@@ -105,7 +121,7 @@
             android:orientation="vertical"
             android:paddingStart="20dp"
             android:paddingEnd="20dp"
-            android:paddingBottom="24dp">
+            android:paddingBottom="32dp">
 
             <!-- Quick info chips -->
             <HorizontalScrollView
@@ -113,7 +129,7 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="20dp"
-                android:layout_marginBottom="4dp"
+                android:layout_marginBottom="8dp"
                 android:scrollbars="none"
                 android:clipToPadding="false"
                 android:paddingStart="4dp"
@@ -171,8 +187,8 @@
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="10dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="12dp"
                 android:visibility="gone"
                 app:strokeColor="@color/claude_terracotta"
                 app:strokeWidth="1dp"
@@ -182,7 +198,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -239,15 +255,15 @@
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="10dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="12dp"
                 android:visibility="gone">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <TextView
                         android:id="@+id/tvWeatherSummary"
@@ -320,8 +336,8 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
-                android:layout_marginBottom="12dp"
-                android:layout_marginTop="8dp"
+                android:layout_marginBottom="14dp"
+                android:layout_marginTop="12dp"
                 android:visibility="gone"
                 style="@style/ClaudeOverline"
                 android:text="今日课程" />
@@ -379,15 +395,15 @@
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="12dp"
-                android:layout_marginBottom="10dp"
+                android:layout_marginTop="14dp"
+                android:layout_marginBottom="12dp"
                 android:visibility="gone">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -415,14 +431,14 @@
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
+                android:layout_marginBottom="12dp"
                 android:visibility="gone">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -450,14 +466,14 @@
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginBottom="10dp"
+                android:layout_marginBottom="12dp"
                 android:visibility="gone">
 
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:orientation="vertical"
-                    android:padding="16dp">
+                    android:padding="18dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -497,15 +513,17 @@
 
             <!-- Quick entry grid -->
             <TextView
+                android:id="@+id/tvQuickEntry"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_marginStart="4dp"
-                android:layout_marginBottom="12dp"
-                android:layout_marginTop="16dp"
+                android:layout_marginBottom="14dp"
+                android:layout_marginTop="20dp"
                 style="@style/ClaudeOverline"
                 android:text="快捷入口" />
 
             <LinearLayout
+                android:id="@+id/gridContainer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="horizontal"
@@ -645,14 +663,16 @@
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
-    <!-- Pet floating widget (positioned programmatically for drag support) -->
-    <include
-        android:id="@+id/petWidget"
-        layout="@layout/layout_pet"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_gravity="top|start"
-        android:layout_marginStart="20dp"
-        android:layout_marginBottom="24dp" />
-
 </androidx.coordinatorlayout.widget.CoordinatorLayout>
+
+<!-- Pet floating widget (outside CoordinatorLayout for free drag) -->
+<include
+    android:id="@+id/petWidget"
+    layout="@layout/layout_pet"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="top|start"
+    android:layout_marginStart="20dp"
+    android:layout_marginBottom="24dp" />
+
+</FrameLayout>

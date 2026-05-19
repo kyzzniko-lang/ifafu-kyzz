@@ -36,6 +36,9 @@ class CampusMapActivity : BaseActivity<ActivityCampusMapBinding>(), LocationList
             Place("下安田径场", 26.076947, 119.237111, "运动场/跑道"),
             Place("中华园", 26.082497, 119.235408, "校园景观")
         )),
+        Campus("旗山校区", 26.056579, 119.180505, listOf(
+            Place("旗山校区教学楼", 26.056579, 119.180505, "教学楼")
+        )),
         Campus("安溪茶学院", 25.079766, 118.234897, listOf(
             Place("食堂", 25.078867, 118.236826, "学生食堂"),
             Place("教学楼", 25.07895, 118.235415, "茶学院教学楼"),
@@ -136,12 +139,12 @@ class CampusMapActivity : BaseActivity<ActivityCampusMapBinding>(), LocationList
     }
 
     override fun onLocationChanged(location: Location) {
-        val lat = location.latitude
-        val lng = location.longitude
+        // GPS returns WGS-84, AMap tiles use GCJ-02, convert before showing on map
+        val gcj = wgs84ToGcj02(location.latitude, location.longitude)
         val acc = location.accuracy
         runOnUiThread {
             binding.webView.evaluateJavascript(
-                "showUserLocation($lat,$lng,$acc)", null
+                "showUserLocation(${gcj.first},${gcj.second},$acc)", null
             )
         }
     }
@@ -289,6 +292,40 @@ function switchCampus(lat,lng,markersJson){
     override fun onPause() {
         super.onPause()
         locationManager?.removeUpdates(this)
+    }
+
+    companion object {
+        private const val PI = Math.PI
+        private const val A = 6378245.0
+        private const val EE = 0.00669342162296594323
+
+        fun wgs84ToGcj02(lat: Double, lng: Double): Pair<Double, Double> {
+            val dLat = transformLat(lng - 105.0, lat - 35.0)
+            val dLng = transformLng(lng - 105.0, lat - 35.0)
+            val radLat = lat / 180.0 * PI
+            var magic = Math.sin(radLat)
+            magic = 1 - EE * magic * magic
+            val sqrtMagic = Math.sqrt(magic)
+            val deltaLat = (dLat * 180.0) / ((A * (1 - EE)) / (magic * sqrtMagic) * PI)
+            val deltaLng = (dLng * 180.0) / (A / sqrtMagic * Math.cos(radLat) * PI)
+            return Pair(lat + deltaLat, lng + deltaLng)
+        }
+
+        private fun transformLat(x: Double, y: Double): Double {
+            var ret = -100.0 + 2.0 * x + 3.0 * y + 0.2 * y * y + 0.1 * x * y + 0.2 * Math.sqrt(Math.abs(x))
+            ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0
+            ret += (20.0 * Math.sin(y * PI) + 40.0 * Math.sin(y / 3.0 * PI)) * 2.0 / 3.0
+            ret += (160.0 * Math.sin(y / 12.0 * PI) + 320.0 * Math.sin(y * PI / 30.0)) * 2.0 / 3.0
+            return ret
+        }
+
+        private fun transformLng(x: Double, y: Double): Double {
+            var ret = 300.0 + x + 2.0 * y + 0.1 * x * x + 0.1 * x * y + 0.1 * Math.sqrt(Math.abs(x))
+            ret += (20.0 * Math.sin(6.0 * x * PI) + 20.0 * Math.sin(2.0 * x * PI)) * 2.0 / 3.0
+            ret += (20.0 * Math.sin(x * PI) + 40.0 * Math.sin(x / 3.0 * PI)) * 2.0 / 3.0
+            ret += (150.0 * Math.sin(x / 12.0 * PI) + 300.0 * Math.sin(x / 30.0 * PI)) * 2.0 / 3.0
+            return ret
+        }
     }
 
     data class Place(val name: String, val lat: Double, val lng: Double, val desc: String)

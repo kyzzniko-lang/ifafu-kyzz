@@ -12,6 +12,12 @@
             android:summary="切换深色/浅色主题"
             android:defaultValue="false" />
 
+        <SwitchPreferenceCompat
+            android:key="simple_mode"
+            android:title="简洁界面"
+            android:summary="仅显示核心功能，重启后生效"
+            android:defaultValue="false" />
+
     </PreferenceCategory>
 
     <PreferenceCategory

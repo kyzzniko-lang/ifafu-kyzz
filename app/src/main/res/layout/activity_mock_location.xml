@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/claude_bg"
+    android:fitsSystemWindows="true"
+    android:orientation="vertical">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="@color/claude_bg"
+        app:navigationIcon="?attr/homeAsUpIndicator"
+        app:title="虚拟定位"
+        app:titleTextColor="@color/claude_text_primary" />
+
+    <androidx.core.widget.NestedScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <!-- Warning card -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/ClaudeCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                app:strokeColor="@color/claude_warning"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/claude_serif"
+                        android:text="使用说明"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:lineSpacingExtra="4dp"
+                        android:text="1. 手机设置 → 关于手机 → 连续点击「版本号」7次开启开发者模式\n2. 设置 → 开发者选项 → 选择模拟位置信息应用 → 选择本应用\n3. 输入经纬度或点击地图选择位置\n4. 点击「开始模拟定位」"
+                        android:textColor="@color/claude_text_secondary"
+                        android:textSize="13sp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Map card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardMap"
+                style="@style/ClaudeCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp">
+
+                <WebView
+                    android:id="@+id/webView"
+                    android:layout_width="match_parent"
+                    android:layout_height="250dp" />
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Coordinate inputs -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/ClaudeCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="纬度 (如 26.085206)"
+                        app:boxBackgroundColor="@color/claude_bg_subtle"
+                        app:boxStrokeColor="@color/claude_terracotta"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etLatitude"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal|numberSigned"
+                            android:textSize="15sp" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <com.google.android.material.textfield.TextInputLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:hint="经度 (如 119.239669)"
+                        app:boxBackgroundColor="@color/claude_bg_subtle"
+                        app:boxStrokeColor="@color/claude_terracotta"
+                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                        <com.google.android.material.textfield.TextInputEditText
+                            android:id="@+id/etLongitude"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:inputType="numberDecimal|numberSigned"
+                            android:textSize="15sp" />
+
+                    </com.google.android.material.textfield.TextInputLayout>
+
+                    <TextView
+                        android:id="@+id/tvPickedCoords"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="点击地图自动填入坐标"
+                        android:textColor="@color/claude_text_hint"
+                        android:textSize="12sp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Start/Stop button -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStartStop"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginTop="20dp"
+                android:text="开始模拟定位"
+                android:textSize="16sp"
+                app:backgroundTint="@color/claude_terracotta"
+                app:cornerRadius="14dp" />
+
+            <!-- Status text -->
+            <TextView
+                android:id="@+id/tvStatus"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center"
+                android:text="未启动"
+                android:textColor="@color/claude_text_hint"
+                android:textSize="13sp" />
+
+            <!-- Battery optimization warning -->
+            <TextView
+                android:id="@+id/tvBatteryWarning"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:gravity="center"
+                android:text="⚠ 电池优化未关闭，虚拟定位可能被系统中断"
+                android:textColor="#E53935"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <!-- Background keep-alive card -->
+            <com.google.android.material.card.MaterialCardView
+                style="@style/ClaudeCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/claude_serif"
+                        android:text="后台保活设置"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="15sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:lineSpacingExtra="4dp"
+                        android:text="为保证虚拟定位在后台持续运行（类似音乐播放器），请完成以下设置："
+                        android:textColor="@color/claude_text_secondary"
+                        android:textSize="13sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnBatteryOpt"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="1. 关闭电池优化（防系统杀进程）"
+                        android:textAllCaps="false"
+                        android:textColor="@color/claude_terracotta"
+                        app:cornerRadius="10dp"
+                        app:icon="@android:drawable/ic_lock_idle_lock"
+                        app:iconTint="@color/claude_terracotta"
+                        app:strokeColor="@color/claude_terracotta" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnAutoStart"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="2. 允许自启动（开机自动恢复定位）"
+                        android:textAllCaps="false"
+                        android:textColor="@color/claude_terracotta"
+                        app:cornerRadius="10dp"
+                        app:icon="@android:drawable/ic_lock_power_off"
+                        app:iconTint="@color/claude_terracotta"
+                        app:strokeColor="@color/claude_terracotta" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnNotificationSettings"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:text="3. 允许通知（前台服务必需）"
+                        android:textAllCaps="false"
+                        android:textColor="@color/claude_terracotta"
+                        app:cornerRadius="10dp"
+                        app:icon="@android:drawable/ic_popup_reminder"
+                        app:iconTint="@color/claude_terracotta"
+                        app:strokeColor="@color/claude_terracotta" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="10dp"
+                        android:text="提示：部分手机（小米/OPPO/vivo/华为）还需要在各自的安全中心中允许本应用自启动和后台运行。"
+                        android:textColor="@color/claude_text_hint"
+                        android:textSize="12sp"
+                        android:lineSpacingExtra="3dp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
+
+</LinearLayout>

@@ -29,6 +29,12 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val simpleMode = getSharedPreferences("ifafu_user", MODE_PRIVATE).getBoolean("simple_mode", false)
+        if (simpleMode) {
+            binding.bottomNav.menu.clear()
+            binding.bottomNav.inflateMenu(R.menu.bottom_nav_menu_simple)
+        }
+
         val navHostFragment = supportFragmentManager
             .findFragmentById(R.id.nav_host_fragment) as NavHostFragment
         navController = navHostFragment.navController
