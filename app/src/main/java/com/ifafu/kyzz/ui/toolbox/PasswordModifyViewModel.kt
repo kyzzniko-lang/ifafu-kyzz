@@ -52,9 +52,10 @@ class PasswordModifyViewModel @Inject constructor(
                 val html = result.html
 
                 val alert = htmlClient.checkAlert(html)
-                if (alert != null) {
+                if (alert != null && !alert.message.contains("修改成功")) {
                     _state.value = State.Error(alert.message)
                 } else {
+                    userRepository.savePassword(newPwd)
                     _state.value = State.Success
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {

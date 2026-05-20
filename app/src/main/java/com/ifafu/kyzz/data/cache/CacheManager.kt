@@ -56,12 +56,6 @@ class CacheManager @Inject constructor(
             .putString("scores_$account", gson.toJson(scores))
             .putLong("scores_${account}_ts", System.currentTimeMillis())
             .apply()
-        // 同时记录数量到 user prefs，供 ScoreCheckReceiver 对比
-        saveLastScoreCount(account, scores.size)
-    }
-
-    private fun saveLastScoreCount(account: String, count: Int) {
-        prefs.edit().putInt("last_score_count_$account", count).apply()
     }
 
     fun loadScores(account: String): List<Score>? {

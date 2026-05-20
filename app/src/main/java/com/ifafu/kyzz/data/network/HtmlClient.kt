@@ -200,7 +200,7 @@ class HtmlClient @Inject constructor(
         val scripts = doc.select("script")
         for (script in scripts) {
             val content = script.html()
-            val regex = Regex("alert\\('(.*?)'\\)")
+            val regex = Regex("""alert\(['"](.*?)['"]\)""")
             val match = regex.find(content)
             if (match != null) {
                 return Response(false, -1, match.groupValues[1])

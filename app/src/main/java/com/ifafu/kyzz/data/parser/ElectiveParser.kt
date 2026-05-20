@@ -29,6 +29,18 @@ class ElectiveParser @Inject constructor(
         val fullHtml = doc.html()
         var section = 0 // 0 = available, 1 = selected
 
+        // Find the "已选课程"/"已选列表" marker position once
+        val selectedPos1 = fullHtml.indexOf("已选课程")
+        val selectedPos2 = fullHtml.indexOf("已选列表")
+        val markerPos = when {
+            selectedPos1 >= 0 && selectedPos2 >= 0 -> minOf(selectedPos1, selectedPos2)
+            selectedPos1 >= 0 -> selectedPos1
+            selectedPos2 >= 0 -> selectedPos2
+            else -> -1
+        }
+
+        var searchStart = 0
+
         for (table in tables) {
             val rows = table.select("tr")
             if (rows.isEmpty()) continue
@@ -40,20 +52,15 @@ class ElectiveParser @Inject constructor(
             // Skip tables without course-related headers
             if (headerTexts.none { it.contains("课程") }) continue
 
-            // Check if "已选课程" or "已选列表" marker appears before this table
-            if (section == 0) {
+            // Check if marker appears before this table using full outerHtml with tracked position
+            if (section == 0 && markerPos >= 0) {
                 val tableHtml = table.outerHtml()
-                val tablePos = fullHtml.indexOf(tableHtml.take(80))
-                val selectedPos1 = fullHtml.indexOf("已选课程")
-                val selectedPos2 = fullHtml.indexOf("已选列表")
-                val markerPos = when {
-                    selectedPos1 >= 0 && selectedPos2 >= 0 -> minOf(selectedPos1, selectedPos2)
-                    selectedPos1 >= 0 -> selectedPos1
-                    selectedPos2 >= 0 -> selectedPos2
-                    else -> -1
-                }
-                if (markerPos in 0 until tablePos) {
-                    section = 1
+                val tablePos = fullHtml.indexOf(tableHtml, searchStart)
+                if (tablePos >= 0) {
+                    searchStart = tablePos + 1
+                    if (markerPos < tablePos) {
+                        section = 1
+                    }
                 }
             }
 

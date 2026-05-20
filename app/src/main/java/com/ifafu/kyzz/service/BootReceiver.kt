@@ -18,7 +18,7 @@ class BootReceiver : BroadcastReceiver() {
 
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // Course reminder at 7:30 AM daily
+        // Course reminder at 7:30 AM daily (exact alarm for Android 14+)
         val courseIntent = Intent(context, CourseReminderReceiver::class.java)
         val coursePending = PendingIntent.getBroadcast(
             context, 0, courseIntent,
@@ -28,9 +28,9 @@ class BootReceiver : BroadcastReceiver() {
             set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
-        am.setRepeating(AlarmManager.RTC_WAKEUP, courseCal.timeInMillis, AlarmManager.INTERVAL_DAY, coursePending)
+        am.setAlarmClock(AlarmManager.AlarmClockInfo(courseCal.timeInMillis, null), coursePending)
 
-        // Score check at 12:00 PM daily
+        // Score check at 12:00 PM daily (exact alarm for Android 14+)
         val scoreIntent = Intent(context, ScoreCheckReceiver::class.java)
         val scorePending = PendingIntent.getBroadcast(
             context, 1, scoreIntent,
@@ -40,7 +40,7 @@ class BootReceiver : BroadcastReceiver() {
             set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }
-        am.setRepeating(AlarmManager.RTC_WAKEUP, scoreCal.timeInMillis, AlarmManager.INTERVAL_DAY, scorePending)
+        am.setAlarmClock(AlarmManager.AlarmClockInfo(scoreCal.timeInMillis, null), scorePending)
 
         // Restart mock location if it was running before reboot
         if (prefs.getBoolean("mock_location_running", false)) {
