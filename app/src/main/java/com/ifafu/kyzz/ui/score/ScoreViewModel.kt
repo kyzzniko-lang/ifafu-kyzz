@@ -117,4 +117,11 @@ class ScoreViewModel @Inject constructor(
     fun getAvailableYears(): List<String> {
         return allScores.map { it.year }.distinct().sortedDescending()
     }
+
+    fun getLatestTerm(): Pair<String, String>? {
+        if (allScores.isEmpty()) return null
+        val sortedScores = allScores.sortedWith(compareByDescending<Score> { it.year }.thenByDescending { it.term })
+        val latest = sortedScores.firstOrNull() ?: return null
+        return Pair(latest.year, latest.term)
+    }
 }

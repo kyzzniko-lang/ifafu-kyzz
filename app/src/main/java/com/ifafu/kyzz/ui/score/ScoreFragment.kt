@@ -50,6 +50,9 @@ class ScoreFragment : Fragment() {
         selectedYear = savedInstanceState?.getString("selectedYear")
         selectedTerm = savedInstanceState?.getString("selectedTerm")
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            requireContext().getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadScores(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadScores(forceRefresh = true) }
 
@@ -91,6 +94,13 @@ class ScoreFragment : Fragment() {
         val adapter = ArrayAdapter(requireContext(), android.R.layout.simple_spinner_item, options)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerYear.adapter = adapter
+
+        // 默认选中最新学期
+        val latestTerm = viewModel.getLatestTerm()
+        if (selectedYear == null && latestTerm != null) {
+            selectedYear = latestTerm.first
+            selectedTerm = latestTerm.second
+        }
         val restoreIndex = if (selectedYear != null) options.indexOf(selectedYear).coerceAtLeast(0) else 0
         binding.spinnerYear.setSelection(restoreIndex)
 

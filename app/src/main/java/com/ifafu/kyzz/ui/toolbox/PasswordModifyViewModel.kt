@@ -44,8 +44,8 @@ class PasswordModifyViewModel @Inject constructor(
                 val formBody = htmlClient.buildViewStateFormBody(pageResult.viewState)
                     .add("TextBox2", oldPwd)
                     .add("TextBox3", newPwd)
-                    .add("TextBox4", confirmPwd)
-                    .add("Button1", "修 改")
+                    .add("Textbox4", confirmPwd)
+                    .add("Button1", "修  改")
                     .build()
 
                 val result = htmlClient.postWithFollow(pageUrl, formBody)

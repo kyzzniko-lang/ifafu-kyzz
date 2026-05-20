@@ -183,32 +183,35 @@ class HomeFragment : Fragment() {
             binding.gridToolbox.setOnClickListener {
                 startActivity(Intent(requireContext(), KyzzToolboxActivity::class.java))
             }
-            // Grid entry press feedback: scale on touch
+            // Grid entry press feedback: scale on touch with haptics
             listOf(binding.gridSyllabus, binding.gridElective, binding.gridToolbox).forEach { entry ->
                 entry.setOnTouchListener { v, event ->
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
-                            v.animate().scaleX(0.93f).scaleY(0.93f).setDuration(100).start()
+                            v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                            v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(100).start()
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            v.animate().scaleX(1f).scaleY(1f).setDuration(150)
-                                .setInterpolator(OvershootInterpolator(2f)).start()
+                            v.animate().scaleX(1f).scaleY(1f).setDuration(250)
+                                .setInterpolator(OvershootInterpolator(2.5f)).start()
                         }
                     }
                     false
                 }
             }
 
-            // Card press feedback: scale on touch
+            // Card press feedback: scale on touch with haptics
             listOf(binding.cardCountdown, binding.cardExamCountdown, binding.cardHotDiscussion).forEach { card ->
+                card.isClickable = true // Ensure view consumes touches and receives ACTION_UP/CANCEL
                 card.setOnTouchListener { v, event ->
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
-                            v.animate().scaleX(0.97f).scaleY(0.97f).setDuration(100).start()
+                            v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                            v.animate().scaleX(0.96f).scaleY(0.96f).setDuration(100).start()
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            v.animate().scaleX(1f).scaleY(1f).setDuration(150)
-                                .setInterpolator(OvershootInterpolator(2f)).start()
+                            v.animate().scaleX(1f).scaleY(1f).setDuration(250)
+                                .setInterpolator(OvershootInterpolator(2.5f)).start()
                         }
                     }
                     false
@@ -218,6 +221,9 @@ class HomeFragment : Fragment() {
 
         // Pull-to-refresh
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            requireContext().getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener {
             viewModel.refreshUser(force = true)
             if (!simpleMode) {
@@ -285,7 +291,7 @@ class HomeFragment : Fragment() {
         weatherJob = lifecycleScope.launch {
             try {
                 val weather = withContext(Dispatchers.IO) {
-                    val prefs = requireContext().getSharedPreferences("ifafu_settings", android.content.Context.MODE_PRIVATE)
+                    val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
                     val campusKey = prefs.getString("campus_weather", "jinshan") ?: "jinshan"
                     val campus = com.ifafu.kyzz.data.model.CampusWeather.fromKey(campusKey)
 
@@ -408,12 +414,23 @@ class HomeFragment : Fragment() {
         val container = binding.countdownContainer
         container.removeAllViews()
         binding.cardCountdown.visibility = View.VISIBLE
+        // A1: Card entrance animation
+        binding.cardCountdown.alpha = 0f
+        binding.cardCountdown.translationY = 20f
+        binding.cardCountdown.animate()
+            .alpha(1f).translationY(0f)
+            .setDuration(350).setStartDelay(50L)
+            .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
+            .start()
 
-        for ((event, days) in upcoming) {
+        for ((idx, pair) in upcoming.withIndex()) {
+            val (event, days) = pair
             val row = LinearLayout(requireContext()).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
                 setPadding(0, 6, 0, 6)
+                alpha = 0f
+                translationX = -20f
             }
             row.addView(TextView(requireContext()).apply {
                 text = event.name
@@ -436,6 +453,13 @@ class HomeFragment : Fragment() {
                 typeface = resources.getFont(R.font.claude_serif)
             })
             container.addView(row)
+            // A1: staggered slide-in for each row
+            row.animate()
+                .alpha(1f).translationX(0f)
+                .setDuration(300)
+                .setStartDelay(80L + idx * 60L)
+                .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
+                .start()
         }
 
         binding.cardCountdown.setOnClickListener {
@@ -549,8 +573,8 @@ class HomeFragment : Fragment() {
                         ((event.rawX - downX) * (event.rawX - downX) +
                          (event.rawY - downY) * (event.rawY - downY)).toDouble()
                     ).toFloat()
-                    // Only start dragging after long press timeout + sufficient movement
-                    if (!isDragging && elapsed >= longPressTimeout && moveDist > touchSlop) {
+                    // Start dragging immediately after exceeding touch slop
+                    if (!isDragging && moveDist > touchSlop) {
                         isDragging = true
                         // Prevent all ancestors (CoordinatorLayout/AppBarLayout/SwipeRefreshLayout) from intercepting touch
                         var p = v.parent as? View
@@ -645,12 +669,18 @@ class HomeFragment : Fragment() {
                 petView.tvBubbleText.text = ""
                 petView.petBubble.visibility = View.VISIBLE
                 petView.petBubble.alpha = 0f
-                petView.petBubble.translationY = 10f
-                petView.petBubble.animate().alpha(1f).translationY(0f).setDuration(200).start()
+                petView.petBubble.translationY = 12f
+                petView.petBubble.scaleX = 0.85f
+                petView.petBubble.scaleY = 0.85f
+                petView.petBubble.animate()
+                    .alpha(1f).translationY(0f).scaleX(1f).scaleY(1f)
+                    .setDuration(240)
+                    .setInterpolator(OvershootInterpolator(1.8f))
+                    .start()
                 // Typewriter: reveal one char at a time
                 bubbleAnimator?.cancel()
                 val animator = ValueAnimator.ofInt(0, text.length)
-                animator.duration = (text.length * 40L).coerceAtMost(1200L)
+                animator.duration = (text.length * 38L).coerceAtMost(1100L)
                 animator.interpolator = AccelerateDecelerateInterpolator()
                 animator.addUpdateListener { a ->
                     val idx = a.animatedValue as Int
@@ -659,9 +689,16 @@ class HomeFragment : Fragment() {
                 bubbleAnimator = animator
                 animator.start()
             } else {
-                petView.petBubble.animate().alpha(0f).setDuration(200).withEndAction {
-                    petView.petBubble.visibility = View.GONE
-                }.start()
+                // C4: Bubble flies upward and fades out
+                petView.petBubble.animate()
+                    .alpha(0f).translationY(-16f).scaleX(0.9f).scaleY(0.9f)
+                    .setDuration(220)
+                    .withEndAction {
+                        petView.petBubble.visibility = View.GONE
+                        petView.petBubble.translationY = 0f
+                        petView.petBubble.scaleX = 1f
+                        petView.petBubble.scaleY = 1f
+                    }.start()
             }
         }
 
@@ -1159,7 +1196,8 @@ class HomeFragment : Fragment() {
         }
         viewModel.currentWeek.observe(viewLifecycleOwner) { week ->
             if (week > 0) {
-                binding.chipWeek.text = getString(R.string.chip_week, week)
+                // B1: Animated counter for chip week number
+                animateChipText(binding.chipWeek, getString(R.string.chip_week, week))
                 binding.chipWeek.visibility = View.VISIBLE
             } else {
                 binding.chipWeek.visibility = View.GONE
@@ -1167,24 +1205,38 @@ class HomeFragment : Fragment() {
         }
         viewModel.todayCourses.observe(viewLifecycleOwner) { courses ->
             showTodayCourses(courses)
-            binding.chipCoursesCount.text = if (courses.isNotEmpty()) {
+            val newText = if (courses.isNotEmpty()) {
                 getString(R.string.chip_courses_today, courses.size)
             } else {
                 getString(R.string.chip_no_courses_today)
             }
+            // B1: Animated counter for courses chip
+            animateChipText(binding.chipCoursesCount, newText)
         }
         viewModel.nextExam.observe(viewLifecycleOwner) { countdown ->
             showExamCountdown(countdown)
-            binding.chipExamCountdown.text = if (countdown != null && countdown.daysLeft >= 0) {
+            val newExamText = if (countdown != null && countdown.daysLeft >= 0) {
                 getString(R.string.chip_exam_days, countdown.daysLeft)
             } else {
                 getString(R.string.chip_no_exam)
             }
+            // B1: Animated counter for exam chip
+            animateChipText(binding.chipExamCountdown, newExamText)
             // Pet exam reminder
             if (countdown != null && countdown.daysLeft in 0..7) {
                 petViewModel.onExamComing(countdown.exam.name, countdown.daysLeft)
             }
         }
+    }
+
+    /** B1: Chip text flip animation — short scale Y collapse/expand to swap text */
+    private fun animateChipText(chip: android.widget.TextView, newText: String) {
+        if (chip.text == newText) return
+        chip.animate().scaleY(0f).setDuration(100).withEndAction {
+            chip.text = newText
+            chip.animate().scaleY(1f).setDuration(150)
+                .setInterpolator(OvershootInterpolator(2f)).start()
+        }.start()
     }
 
     private fun updateGreeting() {
@@ -1197,9 +1249,47 @@ class HomeFragment : Fragment() {
             hour < 18 -> getString(R.string.greeting_afternoon, user.name)
             else -> getString(R.string.greeting_evening, user.name)
         }
-        binding.tvWelcome.text = greeting
-        binding.tvWelcome.alpha = 0f
-        binding.tvWelcome.animate().alpha(1f).setDuration(600).start()
+        // C3: Typewriter effect — reveal one character at a time
+        binding.tvWelcome.text = ""
+        binding.tvWelcome.alpha = 1f
+        val typeAnim = ValueAnimator.ofInt(0, greeting.length)
+        typeAnim.duration = (greeting.length * 45L).coerceIn(400L, 1200L)
+        typeAnim.interpolator = AccelerateDecelerateInterpolator()
+        typeAnim.addUpdateListener { a ->
+            val idx = a.animatedValue as Int
+            if (_binding != null) binding.tvWelcome.text = greeting.substring(0, idx)
+        }
+        typeAnim.start()
+        // A2: Time-aware header gradient
+        updateHeaderGradient(hour)
+    }
+
+    /** A2: Dynamically set header gradient color based on time of day */
+    private fun updateHeaderGradient(hour: Int) {
+        val (startColor, endColor) = when {
+            hour in 6..10  -> 0xFFE8925A.toInt() to 0xFFD4724A.toInt()  // Golden morning
+            hour in 11..14 -> 0xFFD4724A.toInt() to 0xFFB85A38.toInt()  // Standard terracotta
+            hour in 18..23 -> 0xFF2C2C2E.toInt() to 0xFF1C1C1E.toInt()  // Premium dark gray
+            else            -> 0xFFCC6A40.toInt() to 0xFFB05030.toInt()  // Afternoon: cooler terracotta
+        }
+        val gradient = android.graphics.drawable.GradientDrawable(
+            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
+            intArrayOf(startColor, endColor)
+        ).apply {
+            cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, 32f * resources.displayMetrics.density,
+                32f * resources.displayMetrics.density, 32f * resources.displayMetrics.density,
+                32f * resources.displayMetrics.density)
+        }
+        val prevDrawable = binding.headerBackground.drawable
+        if (prevDrawable != null) {
+            val transition = android.graphics.drawable.TransitionDrawable(
+                arrayOf(prevDrawable, gradient)
+            )
+            binding.headerBackground.setImageDrawable(transition)
+            transition.startTransition(800)
+        } else {
+            binding.headerBackground.setImageDrawable(gradient)
+        }
     }
 
     private fun setDateInfo() {
@@ -1251,14 +1341,39 @@ class HomeFragment : Fragment() {
             typeface = resources.getFont(R.font.claude_serif)
             layoutParams = android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
-        val countdownTv = TextView(requireContext()).apply {
-            text = countdownText
-            textSize = 16f
+        
+        val countdownContainer = android.widget.LinearLayout(requireContext()).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.BOTTOM // Align to bottom baseline
+        }
+        
+        val numberStr = countdown.daysLeft.toString()
+        val textStr = when {
+            countdown.daysLeft < 0 -> "已结束"
+            countdown.daysLeft == 0 -> "今天"
+            countdown.daysLeft == 1 -> "明天"
+            else -> "天后"
+        }
+
+        if (countdown.daysLeft > 1) {
+            countdownContainer.addView(TextView(requireContext()).apply {
+                text = numberStr
+                textSize = 20f // Larger number for premium feel
+                setTextColor(resources.getColor(R.color.claude_terracotta, null))
+                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL) // Clean number font
+                setPadding(0, 0, 2, 0)
+            })
+        }
+        countdownContainer.addView(TextView(requireContext()).apply {
+            text = textStr
+            textSize = 13f
             setTextColor(resources.getColor(R.color.claude_terracotta, null))
             typeface = resources.getFont(R.font.claude_serif)
-        }
+            setPadding(0, 0, 0, 2) // Slight tweak to perfectly match baseline optically
+        })
+
         row.addView(name)
-        row.addView(countdownTv)
+        row.addView(countdownContainer)
         container.addView(row)
 
         val detail = TextView(requireContext()).apply {
@@ -1331,6 +1446,9 @@ class HomeFragment : Fragment() {
             val tvCourseLocation = itemView.findViewById<TextView>(R.id.tvCourseLocation)
             val tvCourseTeacher = itemView.findViewById<TextView>(R.id.tvCourseTeacher)
             val tvCourseStatus = itemView.findViewById<TextView>(R.id.tvCourseStatus)
+            // A3: Status stripe view
+            val courseStatusStripe = itemView.findViewById<View>(R.id.courseStatusStripe)
+            val cardCourse = itemView.findViewById<com.google.android.material.card.MaterialCardView>(R.id.cardCourse)
 
             val startTime = sectionTimeMap[course.begin]?.first ?: "--:--"
             val endTime = sectionTimeMap[course.end]?.second ?: "--:--"
@@ -1341,7 +1459,7 @@ class HomeFragment : Fragment() {
             tvCourseLocation.text = course.address.ifEmpty { "-" }
             tvCourseTeacher.text = course.teacher.ifEmpty { "-" }
 
-            // 天气信息
+            // Weather info
             val tvWeather = itemView.findViewById<TextView>(R.id.tvCourseWeather)
             val courseStartHour = (sectionStartMinutes[course.begin] ?: 480) / 60
             val weather = dailyWeather?.getWeatherForHour(courseStartHour)
@@ -1357,24 +1475,50 @@ class HomeFragment : Fragment() {
 
             when {
                 nowMinutes > courseEndMin -> {
+                    // Finished: dim it, grey dot, no stripe
                     tvCourseStatus.text = "已结束"
                     tvCourseStatus.setTextColor(resources.getColor(R.color.claude_text_hint, null))
                     timelineDot.setBackgroundResource(R.drawable.timeline_dot_inactive)
-                    itemView.alpha = 0.5f
+                    courseStatusStripe.visibility = View.GONE
+                    itemView.alpha = 0.65f
+                    tvCourseName.alpha = 0.6f
                 }
                 nowMinutes in courseStartMin..courseEndMin -> {
+                    // A3: In progress — show orange stripe + warm card stroke + pulse dot
                     tvCourseStatus.text = "进行中"
                     tvCourseStatus.setTextColor(resources.getColor(R.color.claude_success, null))
                     timelineDot.setBackgroundResource(R.drawable.timeline_dot_current)
+                    courseStatusStripe.visibility = View.VISIBLE
+                    // Warm card border to highlight active course
+                    cardCourse.strokeColor = resources.getColor(R.color.claude_terracotta_300, null)
+                    cardCourse.cardElevation = 2f * resources.displayMetrics.density
                     itemView.alpha = 1f
+                    // Pulsing dot animation
+                    val pulseAnim = ObjectAnimator.ofFloat(timelineDot, "scaleX", 1f, 1.5f, 1f).apply {
+                        duration = 1000; repeatCount = ObjectAnimator.INFINITE
+                    }
+                    val pulseAnimY = ObjectAnimator.ofFloat(timelineDot, "scaleY", 1f, 1.5f, 1f).apply {
+                        duration = 1000; repeatCount = ObjectAnimator.INFINITE
+                    }
+                    AnimatorSet().apply { playTogether(pulseAnim, pulseAnimY); start() }
                 }
                 else -> {
                     val minutesUntil = courseStartMin - nowMinutes
                     tvCourseStatus.text = when {
+                        minutesUntil <= 30 -> "还有${minutesUntil}分钟"
                         minutesUntil <= 60 -> "还有${minutesUntil}分钟"
-                        else -> "还有${minutesUntil / 60}小时${minutesUntil % 60}分钟"
+                        else -> "还有${minutesUntil / 60}h${minutesUntil % 60}m"
                     }
-                    tvCourseStatus.setTextColor(resources.getColor(R.color.claude_terracotta, null))
+                    // Upcoming soon: show subtle stripe
+                    if (minutesUntil <= 30) {
+                        courseStatusStripe.background = resources.getDrawable(
+                            R.drawable.bg_section_accent, null)
+                        courseStatusStripe.visibility = View.VISIBLE
+                        tvCourseStatus.setTextColor(resources.getColor(R.color.claude_warning, null))
+                    } else {
+                        courseStatusStripe.visibility = View.GONE
+                        tvCourseStatus.setTextColor(resources.getColor(R.color.claude_terracotta, null))
+                    }
                     timelineDot.setBackgroundResource(R.drawable.timeline_dot)
                     itemView.alpha = 1f
                 }
@@ -1384,18 +1528,22 @@ class HomeFragment : Fragment() {
                 timelineLine.visibility = View.INVISIBLE
             }
 
-            // Click to show course detail dialog
+            // Click to show course detail
             itemView.setOnClickListener {
                 showCourseDetail(course, startTime, endTime)
             }
 
+            // A1: Staggered entrance animation — each card slides up with delay
             itemView.alpha = 0f
-            itemView.translationY = 16f
+            itemView.translationY = 24f
+            itemView.scaleX = 0.96f
             itemView.animate()
-                .alpha(if (nowMinutes > courseEndMin) 0.5f else 1f)
+                .alpha(if (nowMinutes > courseEndMin) 0.65f else 1f)
                 .translationY(0f)
-                .setDuration(350)
-                .setStartDelay((i * 80).toLong())
+                .scaleX(1f)
+                .setDuration(380)
+                .setStartDelay((i * 90).toLong())
+                .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
                 .start()
 
             container.addView(itemView)

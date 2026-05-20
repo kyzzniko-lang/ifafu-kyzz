@@ -25,7 +25,6 @@ class PasswordModifyActivity : BaseActivity<ActivityPasswordModifyBinding>() {
             val oldPwd = binding.etOldPassword.text.toString()
             val newPwd = binding.etNewPassword.text.toString()
             val confirmPwd = binding.etConfirmPassword.text.toString()
-            val confirmPwd2 = binding.etConfirmPassword2.text.toString()
 
             if (oldPwd.isEmpty()) {
                 binding.tilOldPassword.error = "请输入原密码"
@@ -39,16 +38,8 @@ class PasswordModifyActivity : BaseActivity<ActivityPasswordModifyBinding>() {
                 binding.tilConfirmPassword.error = "请输入确认密码"
                 return@setOnClickListener
             }
-            if (confirmPwd2.isEmpty()) {
-                binding.tilConfirmPassword2.error = "请再次确认密码"
-                return@setOnClickListener
-            }
             if (newPwd != confirmPwd) {
                 binding.tilConfirmPassword.error = "两次密码不一致"
-                return@setOnClickListener
-            }
-            if (newPwd != confirmPwd2) {
-                binding.tilConfirmPassword2.error = "两次密码不一致"
                 return@setOnClickListener
             }
 

@@ -63,10 +63,6 @@ class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
             Toast.makeText(this, "正在实现中，敬请期待", Toast.LENGTH_SHORT).show()
         }
 
-        binding.cardGrabPE.setOnClickListener {
-            Toast.makeText(this, "正在实现中，敬请期待", Toast.LENGTH_SHORT).show()
-        }
-
         binding.cardVirtualLocation.setOnClickListener {
             startActivity(Intent(this, MockLocationActivity::class.java))
         }

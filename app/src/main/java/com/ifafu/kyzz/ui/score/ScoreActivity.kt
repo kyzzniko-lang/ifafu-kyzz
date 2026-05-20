@@ -41,6 +41,9 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
             }
         }
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadScores(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadScores(forceRefresh = true) }
 
@@ -80,7 +83,15 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         val adapter = ArrayAdapter(this, android.R.layout.simple_spinner_item, options)
         adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
         binding.spinnerYear.adapter = adapter
-        binding.spinnerYear.setSelection(0)
+
+        // 默认选中最新学期
+        val latestTerm = viewModel.getLatestTerm()
+        if (selectedYear == null && latestTerm != null) {
+            selectedYear = latestTerm.first
+            selectedTerm = latestTerm.second
+        }
+        val restoreIndex = if (selectedYear != null) options.indexOf(selectedYear).coerceAtLeast(0) else 0
+        binding.spinnerYear.setSelection(restoreIndex)
 
         binding.spinnerYear.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
