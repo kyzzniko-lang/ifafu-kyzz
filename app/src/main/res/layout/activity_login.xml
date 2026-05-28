@@ -1,150 +1,197 @@
 <?xml version="1.0" encoding="utf-8"?>
-<androidx.constraintlayout.widget.ConstraintLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/claude_bg"
+    android:background="@drawable/bg_login_gradient"
     android:fitsSystemWindows="true"
-    android:padding="32dp">
+    android:gravity="center"
+    android:orientation="vertical">
 
-    <TextView
-        android:id="@+id/tvTitle"
-        style="@style/ClaudeDisplay"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:text="@string/login_title"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
-
-    <TextView
-        android:id="@+id/tvSubtitle"
-        style="@style/ClaudeSubtitle"
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:text="@string/login_subtitle"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tvTitle" />
-
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/tilAccount"
-        style="@style/ClaudeInput"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="48dp"
-        android:hint="@string/hint_account"
-        app:layout_constraintTop_toBottomOf="@id/tvSubtitle">
+        android:layout_gravity="center"
+        android:gravity="center_horizontal"
+        android:orientation="vertical"
+        android:paddingHorizontal="32dp">
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etAccount"
+        <!-- Logo area -->
+        <ImageView
+            android:id="@+id/ivLogo"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:alpha="0"
+            android:contentDescription="@string/app_name"
+            android:scaleType="fitCenter"
+            android:src="@drawable/ic_banner_kyzz" />
+
+        <!-- App title -->
+        <TextView
+            android:id="@+id/tvTitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:alpha="0"
+            android:fontFamily="@font/claude_serif"
+            android:letterSpacing="-0.02"
+            android:text="@string/app_name"
+            android:textColor="#EDEBE8"
+            android:textSize="32sp"
+            android:textStyle="bold" />
+
+        <!-- Subtitle -->
+        <TextView
+            android:id="@+id/tvSubtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:alpha="0"
+            android:fontFamily="@font/claude_serif"
+            android:text="@string/login_subtitle"
+            android:textColor="@color/claude_text_secondary"
+            android:textSize="14sp" />
+
+        <!-- Account selector (multi-account) -->
+        <LinearLayout
+            android:id="@+id/accountSelectorLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
-            android:inputType="number"
-            android:padding="16dp"
-            android:textSize="15sp" />
+            android:layout_marginTop="40dp"
+            android:alpha="0"
+            android:orientation="vertical"
+            android:visibility="gone">
 
-    </com.google.android.material.textfield.TextInputLayout>
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginBottom="8dp"
+                android:fontFamily="@font/claude_serif"
+                android:text="选择账号"
+                android:textColor="@color/claude_text_hint"
+                android:textSize="12sp" />
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/tilPassword"
-        style="@style/ClaudeInput"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:hint="@string/hint_password"
-        app:layout_constraintTop_toBottomOf="@id/tilAccount"
-        app:passwordToggleEnabled="true">
+            <androidx.recyclerview.widget.RecyclerView
+                android:id="@+id/rvAccounts"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:overScrollMode="never" />
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etPassword"
+        </LinearLayout>
+
+        <!-- Account input -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilAccount"
+            style="@style/ClaudeInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
-            android:inputType="textPassword"
-            android:padding="16dp"
-            android:textSize="15sp" />
+            android:layout_marginTop="24dp"
+            android:alpha="0"
+            android:background="@drawable/bg_login_input"
+            android:hint="@string/hint_account"
+            app:boxStrokeColor="@color/claude_terracotta"
+            app:hintTextColor="@color/claude_text_hint">
 
-    </com.google.android.material.textfield.TextInputLayout>
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etAccount"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/claude_serif"
+                android:hint="学号"
+                android:inputType="number"
+                android:padding="16dp"
+                android:textColor="@color/claude_text_primary"
+                android:textColorHint="@color/claude_text_hint"
+                android:textSize="15sp" />
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/tilCaptcha"
-        style="@style/ClaudeInput"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:layout_marginEnd="12dp"
-        android:hint="@string/hint_captcha"
-        android:visibility="gone"
-        app:layout_constraintEnd_toStartOf="@id/ivCaptcha"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toBottomOf="@id/tilPassword">
+        </com.google.android.material.textfield.TextInputLayout>
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etCaptcha"
+        <!-- Password input -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilPassword"
+            style="@style/ClaudeInput"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:alpha="0"
+            android:background="@drawable/bg_login_input"
+            android:hint="@string/hint_password"
+            app:boxStrokeColor="@color/claude_terracotta"
+            app:endIconMode="password_toggle"
+            app:endIconTint="@color/claude_text_hint"
+            app:hintTextColor="@color/claude_text_hint">
+
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etPassword"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="@font/claude_serif"
+                android:hint="密码"
+                android:inputType="textPassword"
+                android:padding="16dp"
+                android:textColor="@color/claude_text_primary"
+                android:textColorHint="@color/claude_text_hint"
+                android:textSize="15sp" />
+
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <!-- Login button -->
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="28dp"
+            android:alpha="0">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnLogin"
+                style="@style/ClaudeButton"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:background="@drawable/bg_button_primary"
+                android:fontFamily="@font/claude_serif"
+                android:letterSpacing="0.05"
+                android:text="@string/btn_login"
+                android:textColor="@color/white"
+                android:textSize="16sp"
+                app:backgroundTint="@null"
+                app:cornerRadius="100dp"
+                app:elevation="0dp" />
+
+            <ProgressBar
+                android:id="@+id/progressBar"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:indeterminateTint="@color/white"
+                android:visibility="gone" />
+
+        </FrameLayout>
+
+        <!-- Error message -->
+        <TextView
+            android:id="@+id/tvError"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:alpha="0"
             android:fontFamily="@font/claude_serif"
-            android:inputType="text"
-            android:padding="16dp"
-            android:textSize="15sp" />
+            android:gravity="center"
+            android:textColor="@color/claude_error"
+            android:textSize="14sp"
+            android:visibility="gone" />
 
-    </com.google.android.material.textfield.TextInputLayout>
+        <!-- Footer hint -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="48dp"
+            android:alpha="0"
+            android:fontFamily="@font/claude_serif"
+            android:gravity="center"
+            android:text="登录即表示同意相关服务条款"
+            android:textColor="@color/claude_text_hint"
+            android:textSize="11sp" />
 
-    <ImageView
-        android:id="@+id/ivCaptcha"
-        android:layout_width="120dp"
-        android:layout_height="0dp"
-        android:background="@drawable/bg_card"
-        android:scaleType="centerCrop"
-        android:visibility="gone"
-        android:contentDescription="@string/hint_captcha"
-        app:layout_constraintBottom_toBottomOf="@id/tilCaptcha"
-        app:layout_constraintEnd_toEndOf="parent"
-        app:layout_constraintTop_toTopOf="@id/tilCaptcha" />
+    </LinearLayout>
 
-    <com.google.android.material.button.MaterialButton
-        android:id="@+id/btnLogin"
-        style="@style/ClaudeButton"
-        android:layout_width="match_parent"
-        android:layout_height="52dp"
-        android:layout_marginTop="36dp"
-        android:background="@drawable/bg_button_primary"
-        android:text="@string/btn_login"
-        app:backgroundTint="@null"
-        app:layout_constraintTop_toBottomOf="@id/tilPassword" />
-
-    <ProgressBar
-        android:id="@+id/progressBar"
-        android:layout_width="24dp"
-        android:layout_height="24dp"
-        android:indeterminateTint="@color/white"
-        android:visibility="gone"
-        app:layout_constraintBottom_toBottomOf="@id/btnLogin"
-        app:layout_constraintEnd_toEndOf="@id/btnLogin"
-        app:layout_constraintStart_toStartOf="@id/btnLogin"
-        app:layout_constraintTop_toTopOf="@id/btnLogin" />
-
-    <TextView
-        android:id="@+id/tvError"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="16dp"
-        android:fontFamily="@font/claude_serif"
-        android:textColor="@color/claude_error"
-        android:textSize="14sp"
-        android:visibility="gone"
-        app:layout_constraintTop_toBottomOf="@id/btnLogin" />
-
-    <TextView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="温馨提示：登录时小概率出现验证码识别出错，请重进程序再次尝试"
-        android:textSize="11sp"
-        android:textColor="@color/claude_text_hint"
-        android:gravity="center"
-        android:fontFamily="@font/claude_serif"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent" />
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+</LinearLayout>

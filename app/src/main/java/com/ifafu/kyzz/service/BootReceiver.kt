@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.util.Log
 import androidx.core.content.ContextCompat
 import java.util.Calendar
 
@@ -18,41 +19,53 @@ class BootReceiver : BroadcastReceiver() {
 
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 
-        // Course reminder at 7:30 AM daily (exact alarm for Android 14+)
-        val courseIntent = Intent(context, CourseReminderReceiver::class.java)
-        val coursePending = PendingIntent.getBroadcast(
-            context, 0, courseIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val courseCal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
+        try {
+            // Course reminder at 7:30 AM daily
+            val courseIntent = Intent(context, CourseReminderReceiver::class.java)
+            val coursePending = PendingIntent.getBroadcast(
+                context, 0, courseIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val courseCal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
+                if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
+            }
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(courseCal.timeInMillis, null), coursePending)
+        } catch (e: SecurityException) {
+            Log.w("BootReceiver", "无精确闹钟权限，跳过课程提醒", e)
         }
-        am.setAlarmClock(AlarmManager.AlarmClockInfo(courseCal.timeInMillis, null), coursePending)
 
-        // Score check at 12:00 PM daily (exact alarm for Android 14+)
-        val scoreIntent = Intent(context, ScoreCheckReceiver::class.java)
-        val scorePending = PendingIntent.getBroadcast(
-            context, 1, scoreIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val scoreCal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
+        try {
+            // Score check at 12:00 PM daily
+            val scoreIntent = Intent(context, ScoreCheckReceiver::class.java)
+            val scorePending = PendingIntent.getBroadcast(
+                context, 1, scoreIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val scoreCal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
+                if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
+            }
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(scoreCal.timeInMillis, null), scorePending)
+        } catch (e: SecurityException) {
+            Log.w("BootReceiver", "无精确闹钟权限，跳过成绩检查", e)
         }
-        am.setAlarmClock(AlarmManager.AlarmClockInfo(scoreCal.timeInMillis, null), scorePending)
 
         // Restart mock location if it was running before reboot
-        if (prefs.getBoolean("mock_location_running", false)) {
-            val lat = prefs.getFloat("mock_location_lat", 0f).toDouble()
-            val lng = prefs.getFloat("mock_location_lng", 0f).toDouble()
-            if (lat != 0.0 && lng != 0.0) {
-                val mockIntent = Intent(context, MockLocationService::class.java).apply {
-                    putExtra(MockLocationService.EXTRA_LATITUDE, lat)
-                    putExtra(MockLocationService.EXTRA_LONGITUDE, lng)
+        try {
+            if (prefs.getBoolean("mock_location_running", false)) {
+                val lat = prefs.getFloat("mock_location_lat", 0f).toDouble()
+                val lng = prefs.getFloat("mock_location_lng", 0f).toDouble()
+                if (lat != 0.0 && lng != 0.0) {
+                    val mockIntent = Intent(context, MockLocationService::class.java).apply {
+                        putExtra(MockLocationService.EXTRA_LATITUDE, lat)
+                        putExtra(MockLocationService.EXTRA_LONGITUDE, lng)
+                    }
+                    ContextCompat.startForegroundService(context, mockIntent)
                 }
-                ContextCompat.startForegroundService(context, mockIntent)
             }
+        } catch (e: Exception) {
+            Log.w("BootReceiver", "重启虚拟定位失败", e)
         }
     }
 }

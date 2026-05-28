@@ -78,8 +78,14 @@ class HtmlClient @Inject constructor(
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
                 val html = bytesToString(bytes)
-                val state = parseViewState(html)
-                extractViewState(html) // keep global state in sync for legacy callers
+                val doc = Jsoup.parse(html)
+                val vs = doc.select("input[name=__VIEWSTATE]").first()
+                val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").first()
+                val state = ViewStateData(
+                    viewState = vs?.attr("value")?.trim() ?: "",
+                    viewStateGenerator = vsg?.attr("value")?.trim() ?: ""
+                )
+                extractViewState(doc) // keep global state in sync for legacy callers
                 StringResult(html, state)
             }
         }
@@ -139,13 +145,17 @@ class HtmlClient @Inject constructor(
             val html = bytesToString(bytes)
             lastUrl = response.request.url.toString()
             referer = lastUrl
-            extractViewState(html)
-            return Jsoup.parse(html)
+            val doc = Jsoup.parse(html)
+            extractViewState(doc)
+            return doc
         }
     }
 
     fun extractViewState(html: String) {
-        val doc = Jsoup.parse(html)
+        extractViewState(Jsoup.parse(html))
+    }
+
+    private fun extractViewState(doc: Document) {
         val vs = doc.select("input[name=__VIEWSTATE]").first()
         val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").first()
         viewState = vs?.attr("value")?.trim() ?: ""

@@ -97,15 +97,29 @@ class SettingsFragment : PreferenceFragmentCompat() {
         pref.summary = when (pet.petType) {
             "dog" -> "小狗"
             "dragon" -> "小龙"
+            "crab" -> "小螃蟹"
+            "calico" -> "三花猫"
+            "cloudling" -> "云精灵"
             else -> "猫咪"
         }
         pref.setOnPreferenceChangeListener { _, newValue ->
             val pet2 = petRepository.loadPet()
-            pet2.petType = newValue as String
+            val newType = newValue as String
+            pet2.petType = newType
+            if (newType == "crab" && pet2.name in listOf("小农", "")) {
+                pet2.name = "Claude"
+                findPreference<EditTextPreference>("pet_name")?.apply {
+                    text = "Claude"
+                    summary = "Claude"
+                }
+            }
             petRepository.savePet(pet2)
-            pref.summary = when (newValue) {
+            pref.summary = when (newType) {
                 "dog" -> "小狗"
                 "dragon" -> "小龙"
+                "crab" -> "小螃蟹"
+                "calico" -> "三花猫"
+                "cloudling" -> "云精灵"
                 else -> "猫咪"
             }
             true

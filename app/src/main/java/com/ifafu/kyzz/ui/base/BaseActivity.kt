@@ -11,7 +11,10 @@ abstract class BaseActivity<VB : ViewBinding> : AppCompatActivity() {
     abstract fun createBinding(): VB
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        // Prevent FragmentManager from restoring fragments after process death.
+        // On some devices (e.g. iQOO), restored fragments conflict with Hilt injection
+        // and cause alternating crash patterns (1st OK, 2nd crash, 3rd OK...).
+        super.onCreate(null)
         binding = createBinding()
         setContentView(binding.root)
     }

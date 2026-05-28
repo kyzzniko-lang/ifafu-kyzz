@@ -20,6 +20,7 @@ import dagger.hilt.android.AndroidEntryPoint
 class ExamActivity : BaseActivity<ActivityExamBinding>() {
 
     private val viewModel: ExamViewModel by viewModels()
+    private var layoutManagerSet = false
 
     override fun createBinding(): ActivityExamBinding = ActivityExamBinding.inflate(layoutInflater)
 
@@ -28,6 +29,9 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = getString(R.string.exam_title)
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadExams(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadExams(forceRefresh = true) }
 
@@ -70,9 +74,11 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
         }
         allItems.addAll(exams)
 
-        val adapter = ExamAdapter(allItems)
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = adapter
+        if (!layoutManagerSet) {
+            binding.recyclerView.layoutManager = LinearLayoutManager(this)
+            layoutManagerSet = true
+        }
+        binding.recyclerView.adapter = ExamAdapter(allItems)
     }
 
     private fun findConflicts(exams: List<Exam>): List<List<Exam>> {

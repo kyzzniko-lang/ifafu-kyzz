@@ -17,11 +17,17 @@
         <item>猫咪</item>
         <item>小狗</item>
         <item>小龙</item>
+        <item>小螃蟹</item>
+        <item>三花猫</item>
+        <item>云精灵</item>
     </string-array>
     <string-array name="pet_type_values">
         <item>cat</item>
         <item>dog</item>
         <item>dragon</item>
+        <item>crab</item>
+        <item>calico</item>
+        <item>cloudling</item>
     </string-array>
 
     <string-array name="campus_weather_entries">

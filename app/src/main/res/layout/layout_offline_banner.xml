@@ -2,7 +2,7 @@
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
-    android:background="#FFF3E0"
+    android:background="@color/claude_offline_banner_bg"
     android:gravity="center"
     android:orientation="horizontal"
     android:padding="8dp"
@@ -12,7 +12,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="离线模式 · 显示缓存数据"
-        android:textColor="#E65100"
+        android:textColor="@color/claude_offline_banner_text"
         android:textSize="13sp"
         android:fontFamily="@font/claude_serif" />
 

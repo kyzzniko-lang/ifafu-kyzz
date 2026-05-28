@@ -11,6 +11,7 @@ import android.content.Intent
 import android.location.Criteria
 import android.location.Location
 import android.location.LocationManager
+import android.location.LocationProvider
 import android.location.provider.ProviderProperties
 import android.os.Binder
 import android.os.Build
@@ -22,7 +23,13 @@ import android.os.Process
 import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import com.ifafu.kyzz.R
+import com.ifafu.kyzz.data.model.LatLng
 import com.ifafu.kyzz.ui.toolbox.MockLocationActivity
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.sin
+import kotlin.math.sqrt
+import java.util.Random
 
 class MockLocationService : Service() {
 
@@ -32,10 +39,28 @@ class MockLocationService : Service() {
         const val ACTION_STOP = "com.ifafu.kyzz.STOP_MOCK_LOCATION"
         const val EXTRA_LATITUDE = "latitude"
         const val EXTRA_LONGITUDE = "longitude"
+        const val EXTRA_MODE = "mode"
+        const val EXTRA_TRAJECTORY_SPEED = "trajectory_speed"
+        const val EXTRA_TRAJECTORY_LOOP = "trajectory_loop"
+        const val MODE_SINGLE = "single"
+        const val MODE_TRAJECTORY = "trajectory"
 
         @Volatile
         var isRunning = false
             private set
+
+        // Pending trajectory data (set by activity before service starts)
+        @Volatile
+        var pendingTrajectory: List<LatLng>? = null
+
+        @Volatile
+        var pendingTrajectorySpeed: Double = 1.2
+
+        @Volatile
+        var pendingTrajectoryLoop: Boolean = false
+
+        @Volatile
+        var pendingTrajectoryLaps: Int = 0
 
         fun stopService(context: Context) {
             context.stopService(Intent(context, MockLocationService::class.java))
@@ -49,7 +74,28 @@ class MockLocationService : Service() {
     private var longitude: Double = 0.0
     private var overlay: MockLocationOverlay? = null
 
-    private val binder = MockLocationBinder()
+    // Trajectory mode state
+    private var isTrajectoryMode = false
+    private var trajectoryWaypoints: List<LatLng> = emptyList()
+    private var trajectorySpeed: Double = 1.2
+    private var elapsedTrajectoryTime = 0.0
+    private var totalTrajectoryDistance = 0.0
+    private var currentWaypointIndex = 0
+    private var isLoopMode = false
+    private var loopCloseDistance = 0.0
+    private var trajectoryTargetLaps = 0
+    private var completedLaps = 0
+    private var cumulativeTrajectoryDistance = 0.0
+    private var currentActualSpeed = 0.0
+
+    // Realism: drift noise, bearing, accuracy jitter
+    private val random = Random()
+    private var driftLat = 0.0
+    private var driftLng = 0.0
+    private var currentBearing = 0f
+    private var currentAccuracy = 12f
+
+    val binder = MockLocationBinder()
 
     override fun onBind(intent: Intent?): IBinder = binder
 
@@ -74,8 +120,47 @@ class MockLocationService : Service() {
             return START_NOT_STICKY
         }
 
-        latitude = intent?.getDoubleExtra(EXTRA_LATITUDE, latitude) ?: latitude
-        longitude = intent?.getDoubleExtra(EXTRA_LONGITUDE, longitude) ?: longitude
+        val mode = intent?.getStringExtra(EXTRA_MODE) ?: MODE_SINGLE
+
+        if (mode == MODE_TRAJECTORY) {
+            // Read pending trajectory set by activity
+            val wp = pendingTrajectory
+            if (wp != null && wp.size >= 2) {
+                isTrajectoryMode = true
+                trajectoryWaypoints = wp
+                trajectorySpeed = intent?.getDoubleExtra(EXTRA_TRAJECTORY_SPEED, 1.2) ?: 1.2
+                elapsedTrajectoryTime = 0.0
+                currentWaypointIndex = 0
+                isLoopMode = pendingTrajectoryLoop
+                trajectoryTargetLaps = if (isLoopMode) pendingTrajectoryLaps else 0
+                completedLaps = 0
+                cumulativeTrajectoryDistance = 0.0
+                currentActualSpeed = trajectorySpeed
+                driftLat = 0.0; driftLng = 0.0
+                currentBearing = 0f
+                currentAccuracy = 8f + random.nextFloat() * 12f
+
+                // Start at first waypoint
+                val first = wp.first()
+                latitude = first.lat
+                longitude = first.lng
+                val baseDist = calculateTotalDistance(wp)
+                loopCloseDistance = if (isLoopMode) haversineDistance(wp.last(), wp.first()) else 0.0
+                totalTrajectoryDistance = baseDist + loopCloseDistance
+
+                // Clear pending so service restart doesn't re-use stale data
+                pendingTrajectory = null
+            } else {
+                isTrajectoryMode = false
+                latitude = intent?.getDoubleExtra(EXTRA_LATITUDE, latitude) ?: latitude
+                longitude = intent?.getDoubleExtra(EXTRA_LONGITUDE, longitude) ?: longitude
+            }
+        } else {
+            isTrajectoryMode = false
+            trajectoryWaypoints = emptyList()
+            latitude = intent?.getDoubleExtra(EXTRA_LATITUDE, latitude) ?: latitude
+            longitude = intent?.getDoubleExtra(EXTRA_LONGITUDE, longitude) ?: longitude
+        }
 
         getSharedPreferences("ifafu_user", MODE_PRIVATE).edit()
             .putFloat("mock_location_lat", latitude.toFloat())
@@ -94,6 +179,9 @@ class MockLocationService : Service() {
 
     override fun onDestroy() {
         isRunning = false
+        isTrajectoryMode = false
+        trajectoryWaypoints = emptyList()
+        pendingTrajectory = null
         removeOverlay()
         locationHandler.removeCallbacksAndMessages(null)
         locationThread.quitSafely()
@@ -108,6 +196,11 @@ class MockLocationService : Service() {
         super.onDestroy()
     }
 
+    fun stopTrajectory() {
+        isTrajectoryMode = false
+        trajectoryWaypoints = emptyList()
+    }
+
     // ==================== Location Handler ====================
 
     private fun initLocationHandler() {
@@ -116,14 +209,129 @@ class MockLocationService : Service() {
         val updateRunnable = object : Runnable {
             override fun run() {
                 try {
+                    if (isTrajectoryMode) {
+                        advanceTrajectory(0.1) // 100ms nominal
+                    }
                     setLocationGPS()
                     setLocationNetwork()
                 } catch (_: Exception) {}
-                locationHandler.postDelayed(this, 100)
+                // Randomize interval by ±30ms so it's not perfectly regular
+                val jitter = (random.nextLong() % 61) - 30 // -30 ~ +30 ms
+                locationHandler.postDelayed(this, (100L + jitter).coerceAtLeast(50L))
             }
         }
         locationHandler.post(updateRunnable)
     }
+
+    // ==================== Trajectory Following ====================
+
+    private fun advanceTrajectory(deltaSeconds: Double) {
+        if (trajectoryWaypoints.size < 2 || totalTrajectoryDistance <= 0) return
+
+        elapsedTrajectoryTime += deltaSeconds
+        currentActualSpeed = calculateFluctuatingSpeed()
+        cumulativeTrajectoryDistance += currentActualSpeed * deltaSeconds
+
+        if (isLoopMode) {
+            val newCompleted = (cumulativeTrajectoryDistance / totalTrajectoryDistance).toInt()
+            if (newCompleted > completedLaps) {
+                completedLaps = newCompleted
+                if (trajectoryTargetLaps > 0 && completedLaps >= trajectoryTargetLaps) {
+                    val first = trajectoryWaypoints.first()
+                    latitude = first.lat
+                    longitude = first.lng
+                    currentWaypointIndex = 0
+                    isLoopMode = false
+                    updateCoordsDisplay()
+                    return
+                }
+            }
+            val pos = interpolatePosition(cumulativeTrajectoryDistance % totalTrajectoryDistance)
+            latitude = pos.first
+            longitude = pos.second
+        } else {
+            val pos = interpolatePosition(cumulativeTrajectoryDistance.coerceAtMost(totalTrajectoryDistance))
+            latitude = pos.first
+            longitude = pos.second
+        }
+        updateCoordsDisplay()
+    }
+
+    /** Smooth sinusoidal speed fluctuation around base speed for natural feel. */
+    private fun calculateFluctuatingSpeed(): Double {
+        // Two sine waves at different frequencies for organic variation (±~12%)
+        val wave = sin(elapsedTrajectoryTime * 1.7) * 0.08 +
+                   sin(elapsedTrajectoryTime * 3.2) * 0.04
+        return (trajectorySpeed * (1.0 + wave)).coerceAtLeast(trajectorySpeed * 0.5)
+    }
+
+    private fun interpolatePosition(distance: Double): Pair<Double, Double> {
+        var accumulated = 0.0
+        for (i in 0 until trajectoryWaypoints.size - 1) {
+            val p0 = trajectoryWaypoints[i]
+            val p1 = trajectoryWaypoints[i + 1]
+            val segDist = haversineDistance(p0, p1)
+            if (distance <= accumulated + segDist + 1e-10) {
+                val segProgress = ((distance - accumulated) / segDist).coerceIn(0.0, 1.0)
+                currentWaypointIndex = i
+                return Pair(
+                    p0.lat + (p1.lat - p0.lat) * segProgress,
+                    p0.lng + (p1.lng - p0.lng) * segProgress
+                )
+            }
+            accumulated += segDist
+        }
+        // Closing segment (loop back to start)
+        if (isLoopMode && loopCloseDistance > 0) {
+            val remaining = (distance - accumulated).coerceAtLeast(0.0)
+            val segProgress = (remaining / loopCloseDistance).coerceIn(0.0, 1.0)
+            val last = trajectoryWaypoints.last()
+            val first = trajectoryWaypoints.first()
+            currentWaypointIndex = trajectoryWaypoints.size - 1
+            return Pair(
+                last.lat + (first.lat - last.lat) * segProgress,
+                last.lng + (first.lng - last.lng) * segProgress
+            )
+        }
+        // End of trajectory — last waypoint
+        val last = trajectoryWaypoints.last()
+        currentWaypointIndex = trajectoryWaypoints.size - 1
+        return Pair(last.lat, last.lng)
+    }
+
+    private fun updateCoordsDisplay() {
+        val hasTrajectory = trajectoryWaypoints.size >= 2
+        val progress = if (hasTrajectory && currentWaypointIndex < trajectoryWaypoints.size) {
+            "${currentWaypointIndex + 1}/${trajectoryWaypoints.size}"
+        } else null
+
+        // Show noisy (realistic) position on overlay
+        val displayLat = latitude + driftLat
+        val displayLng = longitude + driftLng
+        overlay?.updateCoords(displayLat, displayLng)
+        overlay?.updateTrajectoryProgress(progress, currentActualSpeed, isTrajectoryMode, isLoopMode, completedLaps, trajectoryTargetLaps)
+        updateNotification(displayLat, displayLng)
+    }
+
+    private fun haversineDistance(p1: LatLng, p2: LatLng): Double {
+        val R = 6371000.0
+        val dLat = Math.toRadians(p2.lat - p1.lat)
+        val dLng = Math.toRadians(p2.lng - p1.lng)
+        val a = sin(dLat / 2).pow2() +
+                cos(Math.toRadians(p1.lat)) * cos(Math.toRadians(p2.lat)) * sin(dLng / 2).pow2()
+        val c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return R * c
+    }
+
+    private fun calculateTotalDistance(points: List<LatLng>): Double {
+        var total = 0.0
+        for (i in 0 until points.size - 1) {
+            total += haversineDistance(points[i], points[i + 1])
+        }
+        return total
+    }
+
+    private fun Double.pow2() = this * this
 
     // ==================== GPS Provider ====================
 
@@ -146,6 +354,10 @@ class MockLocationService : Service() {
             if (!locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
                 locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, true)
             }
+            // Mark provider as available so apps see it as working GPS
+            locationManager.setTestProviderStatus(
+                LocationManager.GPS_PROVIDER, LocationProvider.AVAILABLE, null, System.currentTimeMillis()
+            )
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -162,19 +374,77 @@ class MockLocationService : Service() {
 
     private fun setLocationGPS() {
         try {
+            // Apply GPS random drift
+            updateDrift()
+            val reportLat = latitude + driftLat
+            val reportLng = longitude + driftLng
+
+            // Update bearing from trajectory forward direction (not noisy positions)
+            if (isTrajectoryMode) {
+                currentBearing = calculateTrajectoryBearing()
+            }
+
+            // Slowly fluctuate accuracy
+            currentAccuracy += (random.nextFloat() - 0.5f) * 2f
+            currentAccuracy = currentAccuracy.coerceIn(5f, 25f)
+
+            val timeJitter = (random.nextLong() % 21) - 10 // ±10ms
+            val nanoJitter = timeJitter * 1_000_000L
+
             val loc = Location(LocationManager.GPS_PROVIDER).apply {
-                latitude = this@MockLocationService.latitude
-                longitude = this@MockLocationService.longitude
-                altitude = 20.0
-                accuracy = Criteria.ACCURACY_FINE.toFloat()
-                bearing = 0f
-                speed = 0f
-                time = System.currentTimeMillis()
-                elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
-                extras = Bundle().apply { putInt("satellites", 7) }
+                latitude = reportLat
+                longitude = reportLng
+                altitude = 20.0 + (random.nextDouble() - 0.5) * 5.0
+                accuracy = currentAccuracy
+                bearing = currentBearing
+                speed = if (isTrajectoryMode) currentActualSpeed.toFloat() else 0f
+                time = System.currentTimeMillis() + timeJitter
+                elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos() + nanoJitter
+                extras = Bundle().apply {
+                    putInt("satellites", (5 + random.nextInt(4))) // 5-8 satellites
+                }
             }
             locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
         } catch (_: Exception) {}
+    }
+
+    private fun updateDrift() {
+        // Random walk with spring-back for smooth natural jitter (~±8m radius)
+        driftLat += (random.nextDouble() - 0.5) * 0.000025
+        driftLng += (random.nextDouble() - 0.5) * 0.000025
+        driftLat *= 0.97
+        driftLng *= 0.97
+        val maxDrift = 0.00008 // ~8m
+        driftLat = driftLat.coerceIn(-maxDrift, maxDrift)
+        driftLng = driftLng.coerceIn(-maxDrift, maxDrift)
+    }
+
+    /** Bearing from the current trajectory segment, with ±60° smooth noise. */
+    private fun calculateTrajectoryBearing(): Float {
+        if (trajectoryWaypoints.size < 2) return currentBearing
+        val idx = currentWaypointIndex.coerceIn(0, trajectoryWaypoints.size - 2)
+        val p0 = trajectoryWaypoints[idx]
+        val p1 = trajectoryWaypoints[idx + 1]
+
+        val dLng = Math.toRadians(p1.lng - p0.lng)
+        val y = sin(dLng) * cos(Math.toRadians(p1.lat))
+        val x = cos(Math.toRadians(p0.lat)) * sin(Math.toRadians(p1.lat)) -
+                sin(Math.toRadians(p0.lat)) * cos(Math.toRadians(p1.lat)) * cos(dLng)
+        val trueBearing = ((Math.toDegrees(atan2(y, x))).toFloat() + 360) % 360
+
+        // Smooth variation within ±60° so arrow wobbles naturally but never points backward
+        val variation = sin(elapsedTrajectoryTime * 0.7) * 60.0
+        return ((trueBearing + variation).toFloat() + 360) % 360
+    }
+
+    /** Pure bearing between two points (used by calculateTrajectoryBearing, kept for reference). */
+    private fun calculateBearing(lat1: Double, lng1: Double, lat2: Double, lng2: Double): Float {
+        if (lat1 == lat2 && lng1 == lng2) return currentBearing
+        val dLng = Math.toRadians(lng2 - lng1)
+        val y = sin(dLng) * cos(Math.toRadians(lat2))
+        val x = cos(Math.toRadians(lat1)) * sin(Math.toRadians(lat2)) -
+                sin(Math.toRadians(lat1)) * cos(Math.toRadians(lat2)) * cos(dLng)
+        return ((Math.toDegrees(atan2(y, x))).toFloat() + 360) % 360
     }
 
     // ==================== Network Provider ====================
@@ -198,6 +468,9 @@ class MockLocationService : Service() {
             if (!locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
                 locationManager.setTestProviderEnabled(LocationManager.NETWORK_PROVIDER, true)
             }
+            locationManager.setTestProviderStatus(
+                LocationManager.NETWORK_PROVIDER, LocationProvider.AVAILABLE, null, System.currentTimeMillis()
+            )
         } catch (_: Exception) {}
     }
 
@@ -212,15 +485,23 @@ class MockLocationService : Service() {
 
     private fun setLocationNetwork() {
         try {
+            // Network provider uses same position but worse/noisy accuracy
+            val reportLat = latitude + driftLat
+            val reportLng = longitude + driftLng
+            val netAccuracy = currentAccuracy * (2f + random.nextFloat()) // 2-3x GPS error
+
+            val timeJitter = (random.nextLong() % 31) - 15 // ±15ms (more than GPS)
+            val nanoJitter = timeJitter * 1_000_000L
+
             val loc = Location(LocationManager.NETWORK_PROVIDER).apply {
-                latitude = this@MockLocationService.latitude
-                longitude = this@MockLocationService.longitude
-                altitude = 20.0
-                accuracy = Criteria.ACCURACY_COARSE.toFloat()
-                bearing = 0f
-                speed = 0f
-                time = System.currentTimeMillis()
-                elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos()
+                latitude = reportLat
+                longitude = reportLng
+                altitude = 20.0 + (random.nextDouble() - 0.5) * 10.0
+                accuracy = netAccuracy
+                bearing = currentBearing
+                speed = if (isTrajectoryMode) currentActualSpeed.toFloat() else 0f
+                time = System.currentTimeMillis() + timeJitter
+                elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos() + nanoJitter
             }
             locationManager.setTestProviderLocation(LocationManager.NETWORK_PROVIDER, loc)
         } catch (_: Exception) {}
@@ -284,10 +565,29 @@ class MockLocationService : Service() {
             this, 0, openIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
+
+        val speedStr = "${"%.1f".format(currentActualSpeed)}m/s"
+        val contentText = if (isTrajectoryMode && isLoopMode) {
+            val wps = "${currentWaypointIndex.coerceIn(0, trajectoryWaypoints.size - 1) + 1}/${trajectoryWaypoints.size}"
+            val lapInfo = if (trajectoryTargetLaps > 0) "圈: ${completedLaps + 1}/${trajectoryTargetLaps}" else "圈: ${completedLaps + 1}/∞"
+            "校园跑 $wps | $lapInfo | $speedStr"
+        } else if (isTrajectoryMode) {
+            val progress = if (trajectoryWaypoints.size >= 2) {
+                "${currentWaypointIndex.coerceIn(0, trajectoryWaypoints.size - 1) + 1}/${trajectoryWaypoints.size}"
+            } else ""
+            "轨迹: $progress | $speedStr | ${String.format("%.6f", lat)}, ${String.format("%.6f", lng)}"
+        } else {
+            "纬度: ${String.format("%.6f", lat)}, 经度: ${String.format("%.6f", lng)}"
+        }
+
+        val title = if (isTrajectoryMode && isLoopMode) "校园跑模拟运行中"
+            else if (isTrajectoryMode) "轨迹模拟运行中"
+            else "虚拟定位运行中"
+
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("虚拟定位运行中")
-            .setContentText("纬度: ${String.format("%.6f", lat)}, 经度: ${String.format("%.6f", lng)}")
+            .setContentTitle(title)
+            .setContentText(contentText)
             .setOngoing(true)
             .setContentIntent(openPending)
             .addAction(R.mipmap.ic_launcher, "停止", stopPending)

@@ -2,7 +2,6 @@ package com.ifafu.kyzz.ui.pet
 
 import android.animation.ValueAnimator
 import android.content.Context
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.util.AttributeSet
 import android.view.Gravity
@@ -39,7 +38,7 @@ class PetLoadingView @JvmOverloads constructor(
     )
 
     init {
-        setBackgroundColor(Color.parseColor("#F5F0EB"))
+        setBackgroundColor(resources.getColor(R.color.claude_bg, null))
 
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -84,16 +83,20 @@ class PetLoadingView @JvmOverloads constructor(
     }
 
     fun startLoading(petType: String = "cat") {
-        val lottieFile = when (petType) {
-            "dog" -> "lottie/lottie_dog_idle.json"
-            "dragon" -> "lottie/lottie_dragon_idle.json"
-            else -> "lottie/lottie_cat_idle.json"
-        }
-        try {
-            lottieView.setAnimation(lottieFile)
-            lottieView.playAnimation()
-        } catch (_: Exception) {
-            lottieView.setImageResource(R.drawable.pet_cat_idle)
+        if (petType in PetLottieManager.gifPetTypes) {
+            PetLottieManager.applyAnimation(context, lottieView, com.ifafu.kyzz.data.model.PetState.IDLE, petType)
+        } else {
+            val lottieFile = when (petType) {
+                "dog" -> "lottie/lottie_dog_idle.json"
+                "dragon" -> "lottie/lottie_dragon_idle.json"
+                else -> "lottie/lottie_cat_idle.json"
+            }
+            try {
+                lottieView.setAnimation(lottieFile)
+                lottieView.playAnimation()
+            } catch (_: Exception) {
+                lottieView.setImageResource(R.drawable.pet_cat_idle)
+            }
         }
 
         alpha = 0f
@@ -124,14 +127,19 @@ class PetLoadingView @JvmOverloads constructor(
     private fun startHintRotation() {
         hintText.text = hints.random()
         hintAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
-            duration = 2000
+            duration = 3000
             repeatCount = ValueAnimator.INFINITE
-            interpolator = AccelerateDecelerateInterpolator()
             addUpdateListener {
-                if (it.animatedFraction >= 0.99f) {
+                if (it.animatedFraction >= 0.99f && hintText.tag == null) {
+                    hintText.tag = true
                     hintText.text = hints.random()
                 }
             }
+            addListener(object : android.animation.AnimatorListenerAdapter() {
+                override fun onAnimationStart(animation: android.animation.Animator) {
+                    hintText.tag = null
+                }
+            })
             start()
         }
     }

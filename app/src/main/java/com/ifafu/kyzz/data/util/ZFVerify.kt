@@ -33,6 +33,7 @@ class ZFVerify(context: Context) {
     fun recognize(bitmap: Bitmap): String {
         if (!initialized) return ""
         val data = prepareData(bitmap)
+        if (data.isEmpty() || data[0].isEmpty()) return ""
         val x = Array(4) { Array(337) { BigDecimal.ZERO } }
         for (i in 0 until 4) {
             x[i][0] = BigDecimal.ONE
@@ -93,7 +94,9 @@ class ZFVerify(context: Context) {
     private fun prepareData(bitmap: Bitmap): Array<IntArray> {
         val xSize = bitmap.width
         val ySize = bitmap.height - 5
+        if (xSize < 22 || ySize < 1) return Array(4) { IntArray(0) }
         val piece = (xSize - 22) / 8
+        if (piece <= 0) return Array(4) { IntArray(0) }
 
         val centers = IntArray(4)
         for (i in 0 until 4) {

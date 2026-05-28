@@ -23,6 +23,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.observe
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.airbnb.lottie.LottieAnimationView
 import com.google.gson.Gson
@@ -68,6 +69,7 @@ class HomeFragment : Fragment() {
     private val bubbleHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var bubbleRunnable: Runnable? = null
     private var bubbleAnimator: ValueAnimator? = null
+    private var pulseAnimator: AnimatorSet? = null
     private val resumeRunnable = Runnable {
         if (isAdded && _binding != null) {
             val courses = viewModel.todayCourses.value ?: emptyList()
@@ -122,6 +124,7 @@ class HomeFragment : Fragment() {
 
     private var hasLoadedData = false
     private var simpleMode = false
+    private var cachedCountdownEvents: List<CountdownEvent> = emptyList()
 
     private fun loadData() {
         if (hasLoadedData) return
@@ -140,11 +143,9 @@ class HomeFragment : Fragment() {
         updateGreeting()
         if (!simpleMode) {
             petViewModel.reloadPet()
-            petViewModel.updateState()
         }
         // Show cached update result if available
         showCachedUpdateIfNeeded()
-        if (!simpleMode) loadWeather()
         // Auto bubble on resume
         if (!simpleMode) {
             bubbleHandler.removeCallbacks(resumeRunnable)
@@ -233,8 +234,10 @@ class HomeFragment : Fragment() {
             }
             checkForUpdate()
             if (!simpleMode) petViewModel.onPetClicked()
-            val refresh = binding.swipeRefresh
-            refresh.postDelayed({ refresh.isRefreshing = false }, 800)
+            viewLifecycleOwner.lifecycleScope.launch {
+                delay(800)
+                if (isAdded) binding.swipeRefresh.isRefreshing = false
+            }
         }
 
         // Entrance animation for chips
@@ -244,7 +247,7 @@ class HomeFragment : Fragment() {
     }
 
     private fun loadHotDiscussion() {
-        lifecycleScope.launch {
+        viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val comments = withContext(Dispatchers.IO) {
                     commentRepository.getComments(page = 1, perPage = 50)
@@ -288,7 +291,7 @@ class HomeFragment : Fragment() {
 
     private fun loadWeather() {
         weatherJob?.cancel()
-        weatherJob = lifecycleScope.launch {
+        weatherJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val weather = withContext(Dispatchers.IO) {
                     val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
@@ -381,11 +384,12 @@ class HomeFragment : Fragment() {
     private fun loadCountdownEvents() {
         val prefs = requireContext().getSharedPreferences("countdown_prefs", android.content.Context.MODE_PRIVATE)
         val json = prefs.getString("events", null)
-        val events: List<CountdownEvent> = if (json != null) {
+        cachedCountdownEvents = if (json != null) {
             try {
                 Gson().fromJson(json, object : TypeToken<List<CountdownEvent>>() {}.type)
             } catch (_: Exception) { emptyList() }
         } else emptyList()
+        val events = cachedCountdownEvents
 
         if (events.isEmpty()) {
             binding.cardCountdown.visibility = View.GONE
@@ -468,13 +472,7 @@ class HomeFragment : Fragment() {
     }
 
     private fun getCountdownPairs(): List<Pair<String, Int>> {
-        val prefs = requireContext().getSharedPreferences("countdown_prefs", android.content.Context.MODE_PRIVATE)
-        val json = prefs.getString("events", null)
-        val events: List<CountdownEvent> = if (json != null) {
-            try {
-                Gson().fromJson(json, object : TypeToken<List<CountdownEvent>>() {}.type)
-            } catch (_: Exception) { emptyList() }
-        } else emptyList()
+        val events = cachedCountdownEvents
 
         val now = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
@@ -619,17 +617,19 @@ class HomeFragment : Fragment() {
                         }
                         val snapY = v.y.coerceIn(0f, maxY)
                         v.animate()
-                            .x(snapX).y(snapY)
+                            .x(snapX).y(snapY).rotation(0f)
                             .setDuration(250)
                             .setInterpolator(OvershootInterpolator(1.2f))
-                            .withEndAction { savePetPosition(snapX, snapY) }
+                            .withEndAction {
+                                savePetPosition(snapX, snapY)
+                                // Wobble after snap completes
+                                v.animate().rotation(3f).setDuration(80).withEndAction {
+                                    v.animate().rotation(-3f).setDuration(80).withEndAction {
+                                        v.animate().rotation(0f).setDuration(60).start()
+                                    }.start()
+                                }.start()
+                            }
                             .start()
-                        // Slight wobble
-                        v.animate().rotation(3f).setDuration(80).withEndAction {
-                            v.animate().rotation(-3f).setDuration(80).withEndAction {
-                                v.animate().rotation(0f).setDuration(60).start()
-                            }.start()
-                        }.start()
                     } else {
                         gestureDetector.onTouchEvent(event)
                     }
@@ -754,7 +754,24 @@ class HomeFragment : Fragment() {
         binding.petWidget.tvPetStatus.text = state.label
         binding.petWidget.tvPetStatus.visibility = View.VISIBLE
 
-        // Adjust animation by state
+        // GIF pet type: skip Lottie speed, only adjust alpha/scale
+        if (petType in com.ifafu.kyzz.ui.pet.PetLottieManager.gifPetTypes) {
+            when (state) {
+                PetState.SLEEPING -> {
+                    binding.petWidget.ivPet.alpha = 0.6f
+                    binding.petWidget.ivPet.scaleX = 0.9f
+                    binding.petWidget.ivPet.scaleY = 0.9f
+                }
+                else -> {
+                    binding.petWidget.ivPet.alpha = 1f
+                    binding.petWidget.ivPet.scaleX = 1f
+                    binding.petWidget.ivPet.scaleY = 1f
+                }
+            }
+            return
+        }
+
+        // Adjust animation by state (Lottie pets)
         when (state) {
             PetState.SLEEPING -> {
                 binding.petWidget.ivPet.speed = 0.3f
@@ -945,19 +962,26 @@ class HomeFragment : Fragment() {
                 R.id.chipQwen -> com.ifafu.kyzz.data.api.PetChatApi.AiModel.QWEN
                 else -> com.ifafu.kyzz.data.api.PetChatApi.AiModel.GLM
             }
-            lifecycleScope.launch {
-                val reply = withContext(Dispatchers.IO) {
-                    chatApi.chat(text, currentPet, messages, userContext, selectedModel)
+            viewLifecycleOwner.lifecycleScope.launch {
+                try {
+                    val reply = withContext(Dispatchers.IO) {
+                        chatApi.chat(text, currentPet, messages, userContext, selectedModel)
+                    }
+                    tvTyping.visibility = View.GONE
+                    btnSend.isEnabled = true
+
+                    messages.add(com.ifafu.kyzz.data.api.PetChatApi.ChatMessage(reply, false))
+                    adapter.notifyItemInserted(messages.size - 1)
+                    rvMessages.smoothScrollToPosition(messages.size - 1)
+                    if (account.isNotEmpty()) cacheManager.saveChatHistory(account, messages)
+
+                    petViewModel.onPetClicked()
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    tvTyping.visibility = View.GONE
+                    btnSend.isEnabled = true
                 }
-                tvTyping.visibility = View.GONE
-                btnSend.isEnabled = true
-
-                messages.add(com.ifafu.kyzz.data.api.PetChatApi.ChatMessage(reply, false))
-                adapter.notifyItemInserted(messages.size - 1)
-                rvMessages.smoothScrollToPosition(messages.size - 1)
-                if (account.isNotEmpty()) cacheManager.saveChatHistory(account, messages)
-
-                petViewModel.onPetClicked()
             }
         }
 
@@ -1175,14 +1199,21 @@ class HomeFragment : Fragment() {
     private fun showLevelUpDialog(level: Int) {
         val pet = petViewModel.pet.value
         val name = pet?.name ?: "宠物"
-        val emoji = when (pet?.petType) {
-            "dog" -> "汪~"
-            "dragon" -> "吼~"
-            else -> "喵~"
+        val msg = when (pet?.petType) {
+            "crab" -> "${name}升到了 Lv.$level！代码能力又变强了"
+            "cloudling" -> "${name}升到了 Lv.$level！变得更闪亮了"
+            else -> {
+                val emoji = when (pet?.petType) {
+                    "dog" -> "汪~"
+                    "dragon" -> "吼~"
+                    else -> "喵~"
+                }
+                "${name}升到了 Lv.$level！继续加油$emoji"
+            }
         }
         AlertDialog.Builder(requireContext())
             .setTitle("升级啦！")
-            .setMessage("${name}升到了 Lv.$level！继续加油$emoji")
+            .setMessage(msg)
             .setPositiveButton("好的", null)
             .show()
     }
@@ -1264,31 +1295,73 @@ class HomeFragment : Fragment() {
         updateHeaderGradient(hour)
     }
 
-    /** A2: Dynamically set header gradient color based on time of day */
+    /** A2: Solid color header with breathing animation */
+    private var breathingAnimator: android.animation.ValueAnimator? = null
+
     private fun updateHeaderGradient(hour: Int) {
-        val (startColor, endColor) = when {
-            hour in 6..10  -> 0xFFE8925A.toInt() to 0xFFD4724A.toInt()  // Golden morning
-            hour in 11..14 -> 0xFFD4724A.toInt() to 0xFFB85A38.toInt()  // Standard terracotta
-            hour in 18..23 -> 0xFF2C2C2E.toInt() to 0xFF1C1C1E.toInt()  // Premium dark gray
-            else            -> 0xFFCC6A40.toInt() to 0xFFB05030.toInt()  // Afternoon: cooler terracotta
+        val color = when {
+            hour in 6..10  -> 0xFFD4724A.toInt()  // Morning: warm terracotta
+            hour in 11..14 -> 0xFFC05E38.toInt()  // Noon: standard terracotta
+            hour in 18..23 -> 0xFF2C2C2E.toInt()  // Evening: dark
+            else            -> 0xFFB85A38.toInt()  // Afternoon: deeper terracotta
         }
-        val gradient = android.graphics.drawable.GradientDrawable(
-            android.graphics.drawable.GradientDrawable.Orientation.TL_BR,
-            intArrayOf(startColor, endColor)
-        ).apply {
-            cornerRadii = floatArrayOf(0f, 0f, 0f, 0f, 32f * resources.displayMetrics.density,
-                32f * resources.displayMetrics.density, 32f * resources.displayMetrics.density,
-                32f * resources.displayMetrics.density)
+        val shape = android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
         }
-        val prevDrawable = binding.headerBackground.drawable
-        if (prevDrawable != null) {
+        val prevBackground = binding.headerBackground.background
+        if (prevBackground != null) {
             val transition = android.graphics.drawable.TransitionDrawable(
-                arrayOf(prevDrawable, gradient)
+                arrayOf(prevBackground, shape)
             )
-            binding.headerBackground.setImageDrawable(transition)
+            binding.headerBackground.background = transition
             transition.startTransition(800)
         } else {
-            binding.headerBackground.setImageDrawable(gradient)
+            binding.headerBackground.background = shape
+        }
+        startBreathing()
+        drawBottomArc(color)
+    }
+
+    private fun drawBottomArc(color: Int) {
+        if (_binding == null) return
+        binding.headerBottomArc.background = object : android.graphics.drawable.Drawable() {
+            private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply {
+                this.color = color
+                style = android.graphics.Paint.Style.FILL
+            }
+            private val path = android.graphics.Path()
+            override fun draw(canvas: android.graphics.Canvas) {
+                path.reset()
+                val w = bounds.width().toFloat()
+                val h = bounds.height().toFloat()
+                path.moveTo(0f, 0f)
+                path.lineTo(w, 0f)
+                path.quadTo(w / 2f, h * 1.8f, 0f, 0f)
+                path.close()
+                canvas.drawPath(path, paint)
+            }
+            override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+            override fun setColorFilter(cf: android.graphics.ColorFilter?) { paint.colorFilter = cf }
+            @Deprecated("Deprecated in Java")
+            override fun getOpacity() = android.graphics.PixelFormat.TRANSLUCENT
+        }
+    }
+
+    private fun startBreathing() {
+        breathingAnimator?.cancel()
+        breathingAnimator = android.animation.ValueAnimator.ofFloat(1f, 0.82f).apply {
+            duration = 2400
+            repeatMode = android.animation.ValueAnimator.REVERSE
+            repeatCount = android.animation.ValueAnimator.INFINITE
+            interpolator = android.view.animation.AccelerateDecelerateInterpolator()
+            addUpdateListener { anim ->
+                if (_binding != null) {
+                    val alpha = anim.animatedValue as Float
+                    binding.headerBackground.alpha = alpha
+                    binding.headerBottomArc.alpha = alpha
+                }
+            }
+            start()
         }
     }
 
@@ -1316,8 +1389,8 @@ class HomeFragment : Fragment() {
         }
         binding.cardExamCountdown.visibility = View.VISIBLE
         binding.cardExamCountdown.alpha = 0f
-        binding.cardExamCountdown.animate().alpha(1f).translationY(0f).setDuration(400).setStartDelay(100).start()
         binding.cardExamCountdown.translationY = 16f
+        binding.cardExamCountdown.animate().alpha(1f).translationY(0f).setDuration(400).setStartDelay(100).start()
 
         val container = binding.examCountdownContainer
         container.removeAllViews()
@@ -1396,15 +1469,21 @@ class HomeFragment : Fragment() {
             // Load pet's idle Lottie for empty state
             val emptyLottie = binding.emptyLottie
             val petType = petViewModel.pet.value?.petType ?: "cat"
-            val lottieFile = when (petType) {
-                "dog" -> "lottie/lottie_dog_idle.json"
-                "dragon" -> "lottie/lottie_dragon_idle.json"
-                else -> "lottie/lottie_cat_idle.json"
+            if (petType in com.ifafu.kyzz.ui.pet.PetLottieManager.gifPetTypes) {
+                com.ifafu.kyzz.ui.pet.PetLottieManager.applyAnimation(
+                    requireContext(), emptyLottie, PetState.IDLE, petType
+                )
+            } else {
+                val lottieFile = when (petType) {
+                    "dog" -> "lottie/lottie_dog_idle.json"
+                    "dragon" -> "lottie/lottie_dragon_idle.json"
+                    else -> "lottie/lottie_cat_idle.json"
+                }
+                try {
+                    emptyLottie.setAnimation(lottieFile)
+                    emptyLottie.playAnimation()
+                } catch (_: Exception) { }
             }
-            try {
-                emptyLottie.setAnimation(lottieFile)
-                emptyLottie.playAnimation()
-            } catch (_: Exception) { }
             return
         }
         binding.emptyCoursesState.visibility = View.GONE
@@ -1494,13 +1573,14 @@ class HomeFragment : Fragment() {
                     cardCourse.cardElevation = 2f * resources.displayMetrics.density
                     itemView.alpha = 1f
                     // Pulsing dot animation
+                    pulseAnimator?.cancel()
                     val pulseAnim = ObjectAnimator.ofFloat(timelineDot, "scaleX", 1f, 1.5f, 1f).apply {
                         duration = 1000; repeatCount = ObjectAnimator.INFINITE
                     }
                     val pulseAnimY = ObjectAnimator.ofFloat(timelineDot, "scaleY", 1f, 1.5f, 1f).apply {
                         duration = 1000; repeatCount = ObjectAnimator.INFINITE
                     }
-                    AnimatorSet().apply { playTogether(pulseAnim, pulseAnimY); start() }
+                    pulseAnimator = AnimatorSet().apply { playTogether(pulseAnim, pulseAnimY); start() }
                 }
                 else -> {
                     val minutesUntil = courseStartMin - nowMinutes
@@ -1575,6 +1655,7 @@ class HomeFragment : Fragment() {
 
     private fun checkForUpdate() {
         val ctx = context ?: return
+        if (!com.ifafu.kyzz.ui.settings.UpdateChecker.shouldCheck(ctx)) return
         android.util.Log.i("HomeFragment", "checkForUpdate called")
         com.ifafu.kyzz.ui.settings.UpdateChecker.checkForUpdate(ctx) { release ->
             android.util.Log.i("HomeFragment", "checkForUpdate callback: release=${release?.versionName}, binding=${_binding != null}")
@@ -1624,11 +1705,15 @@ class HomeFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        breathingAnimator?.cancel()
+        breathingAnimator = null
         bubbleRunnable?.let { bubbleHandler.removeCallbacks(it) }
         bubbleRunnable = null
         bubbleHandler.removeCallbacks(resumeRunnable)
         bubbleAnimator?.cancel()
         bubbleAnimator = null
+        pulseAnimator?.cancel()
+        pulseAnimator = null
         _binding = null
     }
 }

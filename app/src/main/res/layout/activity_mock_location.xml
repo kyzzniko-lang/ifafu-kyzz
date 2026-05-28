@@ -54,7 +54,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:lineSpacingExtra="4dp"
-                        android:text="1. 手机设置 → 关于手机 → 连续点击「版本号」7次开启开发者模式\n2. 设置 → 开发者选项 → 选择模拟位置信息应用 → 选择本应用\n3. 输入经纬度或点击地图选择位置\n4. 点击「开始模拟定位」"
+                        android:text="1. 手机设置 → 关于手机 → 连续点击「版本号」7次开启开发者模式\n2. 设置 → 开发者选项 → 选择模拟位置信息应用 → 选择本应用\n3. 点击下方校区按钮快速定位，或在地图上选点/手动输入\n4. 点击「开始模拟定位」"
                         android:textColor="@color/claude_text_secondary"
                         android:textSize="13sp" />
 
@@ -77,8 +77,287 @@
 
             </com.google.android.material.card.MaterialCardView>
 
+            <!-- Campus quick-select card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardCampusSelect"
+                style="@style/ClaudeCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="@font/claude_serif"
+                        android:text="校区位置"
+                        android:textColor="@color/claude_text_hint"
+                        android:textSize="12sp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCampusJinshan"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_marginStart="8dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="金山"
+                        android:textColor="@color/claude_terracotta"
+                        android:textSize="12sp"
+                        app:cornerRadius="8dp"
+                        app:strokeColor="@color/claude_terracotta"
+                        app:strokeWidth="1dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCampusQishan"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="旗山"
+                        android:textColor="@color/claude_terracotta"
+                        android:textSize="12sp"
+                        app:cornerRadius="8dp"
+                        app:strokeColor="@color/claude_terracotta"
+                        app:strokeWidth="1dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCampusAnxi"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="安溪"
+                        android:textColor="@color/claude_terracotta"
+                        android:textSize="12sp"
+                        app:cornerRadius="8dp"
+                        app:strokeColor="@color/claude_terracotta"
+                        app:strokeWidth="1dp" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCampusNanping"
+                        style="@style/Widget.MaterialComponents.Button.TextButton"
+                        android:layout_width="0dp"
+                        android:layout_height="34dp"
+                        android:layout_weight="1"
+                        android:insetTop="0dp"
+                        android:insetBottom="0dp"
+                        android:text="南平"
+                        android:textColor="@color/claude_terracotta"
+                        android:textSize="12sp"
+                        app:cornerRadius="8dp"
+                        app:strokeColor="@color/claude_terracotta"
+                        app:strokeWidth="1dp" />
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
+            <!-- Trajectory mode card -->
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardTrajectory"
+                style="@style/ClaudeCard"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="16dp">
+
+                    <!-- Mode toggle -->
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:fontFamily="@font/claude_serif"
+                            android:text="轨迹模式"
+                            android:textColor="@color/claude_text_primary"
+                            android:textSize="15sp"
+                            android:textStyle="bold" />
+
+                        <androidx.appcompat.widget.SwitchCompat
+                            android:id="@+id/switchTrajectoryMode"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content" />
+                    </LinearLayout>
+
+                    <!-- Trajectory controls (shown when trajectory mode is on) -->
+                    <LinearLayout
+                        android:id="@+id/layoutTrajectoryControls"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:visibility="gone">
+
+                        <com.google.android.material.textfield.TextInputLayout
+                            android:id="@+id/inputSpeed"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:hint="速度"
+                            app:boxBackgroundColor="@color/claude_bg_subtle"
+                            app:boxStrokeColor="@color/claude_terracotta"
+                            app:suffixText="m/s"
+                            style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                            <com.google.android.material.textfield.TextInputEditText
+                                android:id="@+id/etSpeed"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:inputType="numberDecimal"
+                                android:text="1.2"
+                                android:textSize="15sp" />
+
+                        </com.google.android.material.textfield.TextInputLayout>
+
+                        <!-- Loop mode toggle -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="12dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="校园跑模式（首尾相连循环）"
+                                android:textColor="@color/claude_text_primary"
+                                android:textSize="14sp" />
+
+                            <androidx.appcompat.widget.SwitchCompat
+                                android:id="@+id/switchLoopMode"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content" />
+
+                        </LinearLayout>
+
+                        <!-- Lap count (shown when loop mode is on) -->
+                        <LinearLayout
+                            android:id="@+id/layoutLapCount"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="跑步圈数"
+                                android:textColor="@color/claude_text_secondary"
+                                android:textSize="13sp" />
+
+                            <com.google.android.material.textfield.TextInputLayout
+                                android:id="@+id/inputLapCount"
+                                android:layout_width="100dp"
+                                android:layout_height="wrap_content"
+                                android:hint="圈数"
+                                app:boxBackgroundColor="@color/claude_bg_subtle"
+                                app:boxStrokeColor="@color/claude_terracotta"
+                                app:helperText="0=无限"
+                                app:helperTextTextColor="@color/claude_text_hint"
+                                style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                                <com.google.android.material.textfield.TextInputEditText
+                                    android:id="@+id/etLapCount"
+                                    android:layout_width="match_parent"
+                                    android:layout_height="wrap_content"
+                                    android:inputType="number"
+                                    android:maxLength="3"
+                                    android:text="0"
+                                    android:textAlignment="center"
+                                    android:textSize="15sp" />
+
+                            </com.google.android.material.textfield.TextInputLayout>
+
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tvWaypointInfo"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="点击地图添加路径点（至少2个）"
+                            android:textColor="@color/claude_text_hint"
+                            android:textSize="13sp" />
+
+                        <TextView
+                            android:id="@+id/tvTrajectoryStats"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text=""
+                            android:textColor="@color/claude_terracotta"
+                            android:textSize="14sp"
+                            android:visibility="gone" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:orientation="horizontal">
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnUndoWaypoint"
+                                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:enabled="false"
+                                android:text="撤销"
+                                android:textAllCaps="false"
+                                app:cornerRadius="10dp"
+                                app:strokeColor="@color/claude_terracotta" />
+
+                            <com.google.android.material.button.MaterialButton
+                                android:id="@+id/btnClearWaypoints"
+                                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:layout_weight="1"
+                                android:enabled="false"
+                                android:text="清除"
+                                android:textAllCaps="false"
+                                app:cornerRadius="10dp"
+                                app:strokeColor="@color/claude_terracotta" />
+
+                        </LinearLayout>
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+            </com.google.android.material.card.MaterialCardView>
+
             <!-- Coordinate inputs -->
             <com.google.android.material.card.MaterialCardView
+                android:id="@+id/cardCoords"
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -93,6 +372,7 @@
                     <com.google.android.material.textfield.TextInputLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
                         android:hint="纬度 (如 26.085206)"
                         app:boxBackgroundColor="@color/claude_bg_subtle"
                         app:boxStrokeColor="@color/claude_terracotta"
@@ -130,7 +410,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="点击地图自动填入坐标"
+                        android:text="点击地图或校区按钮自动填入"
                         android:textColor="@color/claude_text_hint"
                         android:textSize="12sp" />
 

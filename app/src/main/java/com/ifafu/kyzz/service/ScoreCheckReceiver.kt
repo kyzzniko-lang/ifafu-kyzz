@@ -8,14 +8,29 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.util.Log
 import androidx.core.app.NotificationCompat
-import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
 import com.ifafu.kyzz.R
+import com.ifafu.kyzz.data.api.ScoreApi
+import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Score
+import com.ifafu.kyzz.data.repository.UserRepository
+import dagger.hilt.EntryPoint
+import dagger.hilt.InstallIn
+import dagger.hilt.android.EntryPointAccessors
+import dagger.hilt.components.SingletonComponent
+import kotlinx.coroutines.runBlocking
 import java.util.Calendar
 
 class ScoreCheckReceiver : BroadcastReceiver() {
+
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface ScoreCheckEntryPoint {
+        fun scoreApi(): ScoreApi
+        fun cacheManager(): CacheManager
+        fun userRepository(): UserRepository
+    }
 
     override fun onReceive(context: Context, intent: Intent?) {
         val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
@@ -38,41 +53,71 @@ class ScoreCheckReceiver : BroadcastReceiver() {
 
     private fun checkNewScores(context: Context) {
         try {
-            val userPrefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
-            val account = userPrefs.getString("account", "") ?: ""
-            if (account.isEmpty()) return
+            val appContext = context.applicationContext
+            val entryPoint = EntryPointAccessors.fromApplication(
+                appContext, ScoreCheckEntryPoint::class.java
+            )
+            val userRepository = entryPoint.userRepository()
+            val cacheManager = entryPoint.cacheManager()
+            val scoreApi = entryPoint.scoreApi()
 
-            val cachePrefs = context.getSharedPreferences("ifafu_cache", Context.MODE_PRIVATE)
-            val json = cachePrefs.getString("scores_$account", null) ?: return
-            val type = object : TypeToken<List<Score>>() {}.type
-            val scores: List<Score> = Gson().fromJson<List<Score>>(json, type) ?: return
+            val user = userRepository.getUser()
+            if (!user.isLogin || user.account.isEmpty()) return
 
-            val lastCount = cachePrefs.getInt("last_score_count_$account", 0)
-            val currentCount = scores.size
+            // Load previous count from cache
+            val lastCount = cacheManager.loadScores(user.account)?.size ?: 0
 
-            if (lastCount > 0 && currentCount > lastCount) {
-                val newCount = currentCount - lastCount
-                val newScores = scores.takeLast(newCount)
-                val names = newScores.joinToString("、") { it.courseName }
-                showNotification(context, "有${newCount}门新成绩", names)
+            // Fetch fresh scores from network
+            val freshScores = runBlocking {
+                scoreApi.getAllScores(
+                    userRepository.host, user.token, user.account, user.name
+                )
             }
 
-            cachePrefs.edit().putInt("last_score_count_$account", currentCount).apply()
-        } catch (_: Exception) {}
+            if (freshScores != null) {
+                // Save fresh scores to cache
+                cacheManager.saveScores(user.account, freshScores)
+                val currentCount = freshScores.size
+
+                if (lastCount > 0 && currentCount > lastCount) {
+                    val newCount = currentCount - lastCount
+                    val newScores = freshScores.takeLast(newCount)
+                    val names = newScores.joinToString("、") { it.courseName }
+                    showNotification(context, "有${newCount}门新成绩", names)
+                }
+            } else {
+                // Network failed, fall back to cached data for comparison
+                val cachedScores = cacheManager.loadScores(user.account)
+                val currentCount = cachedScores?.size ?: 0
+
+                if (lastCount > 0 && currentCount > lastCount) {
+                    val newCount = currentCount - lastCount
+                    val newScores = cachedScores!!.takeLast(newCount)
+                    val names = newScores.joinToString("、") { it.courseName }
+                    showNotification(context, "有${newCount}门新成绩", names)
+                }
+            }
+        } catch (e: Exception) {
+            Log.w("ScoreCheckReceiver", "检查成绩失败", e)
+        }
     }
 
     private fun scheduleNext(context: Context) {
-        val intent = Intent(context, ScoreCheckReceiver::class.java)
-        val pending = PendingIntent.getBroadcast(
-            context, 1, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
-            add(Calendar.DAY_OF_YEAR, 1)
+        try {
+            val intent = Intent(context, ScoreCheckReceiver::class.java)
+            val pending = PendingIntent.getBroadcast(
+                context, 1, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
+            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pending)
+        } catch (e: SecurityException) {
+            android.util.Log.w("ScoreCheckReceiver", "无精确闹钟权限", e)
         }
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pending)
     }
 
     private fun showNotification(context: Context, title: String, content: String) {

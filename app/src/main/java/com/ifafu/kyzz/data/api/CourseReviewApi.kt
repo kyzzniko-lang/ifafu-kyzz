@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.ifafu.kyzz.BuildConfig
 import com.ifafu.kyzz.data.model.CourseReview
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -68,9 +69,12 @@ class CourseReviewApi @Inject constructor(
                             commentId = commentId,
                             createdAt = createdAt
                         )
-                    } catch (e: Exception) { null }
+                    } catch (e: CancellationException) { throw e }
+                    catch (e: Exception) { null }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "getReviews error", e)
             emptyList()
@@ -87,6 +91,8 @@ class CourseReviewApi @Inject constructor(
             }.post(bodyJson.toRequestBody(JSON)).build()
 
             client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "postReview error", e)
             false
@@ -102,6 +108,8 @@ class CourseReviewApi @Inject constructor(
             }.delete().build()
 
             client.newCall(request).execute().use { it.isSuccessful }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "deleteReview error", e)
             false

@@ -2,10 +2,18 @@ package com.ifafu.kyzz.ui.login
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.LayoutInflater
 import android.view.View
+import android.view.ViewGroup
+import android.view.animation.OvershootInterpolator
+import android.widget.ImageButton
+import android.widget.TextView
 import androidx.activity.viewModels
-import androidx.lifecycle.observe
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.button.MaterialButton
 import com.ifafu.kyzz.R
+import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.databinding.ActivityLoginBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import com.ifafu.kyzz.ui.main.MainActivity
@@ -16,10 +24,17 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
 
     private val viewModel: LoginViewModel by viewModels()
 
+    private var accountAdapter: AccountAdapter? = null
+
     override fun createBinding(): ActivityLoginBinding = ActivityLoginBinding.inflate(layoutInflater)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        setupInputAnimations()
+        setupAccountSelector()
+        loadSavedCredentials()
+        playEntryAnimation()
 
         binding.btnLogin.setOnClickListener {
             val account = binding.etAccount.text.toString().trim()
@@ -31,14 +46,14 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
             when (state) {
                 is LoginViewModel.LoginState.Idle -> {
                     showLoading(false)
-                    binding.tvError.visibility = View.GONE
+                    hideError()
                 }
                 is LoginViewModel.LoginState.Loading -> {
                     showLoading(true)
-                    binding.tvError.visibility = View.GONE
+                    hideError()
                 }
                 is LoginViewModel.LoginState.CaptchaLoaded -> {
-                    binding.tvError.visibility = View.GONE
+                    hideError()
                 }
                 is LoginViewModel.LoginState.Success -> {
                     showLoading(false)
@@ -52,11 +67,110 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
                 }
                 is LoginViewModel.LoginState.Error -> {
                     showLoading(false)
-                    binding.tvError.text = state.message
-                    binding.tvError.visibility = View.VISIBLE
+                    showError(state.message)
                 }
             }
         }
+    }
+
+    private fun setupInputAnimations() {
+        val focusListener = View.OnFocusChangeListener { view, hasFocus ->
+            val scale = if (hasFocus) 1.02f else 1f
+            val alpha = if (hasFocus) 1f else 0.9f
+            view.animate()
+                .scaleX(scale).scaleY(scale)
+                .alpha(alpha)
+                .setDuration(200)
+                .setInterpolator(OvershootInterpolator(2f))
+                .start()
+        }
+
+        binding.etAccount.onFocusChangeListener = focusListener
+        binding.etPassword.onFocusChangeListener = focusListener
+    }
+
+    private fun setupAccountSelector() {
+        val profiles = viewModel.getSavedProfiles()
+        if (profiles.isEmpty()) {
+            binding.accountSelectorLayout.visibility = View.GONE
+            return
+        }
+
+        binding.accountSelectorLayout.visibility = View.VISIBLE
+        accountAdapter = AccountAdapter(profiles) { profile ->
+            binding.etAccount.setText(profile.account)
+            binding.etPassword.setText(profile.password)
+            binding.accountSelectorLayout.animate()
+                .alpha(0f).translationY(-10f)
+                .setDuration(200)
+                .withEndAction { binding.accountSelectorLayout.visibility = View.GONE }
+                .start()
+        }
+
+        binding.rvAccounts.apply {
+            layoutManager = LinearLayoutManager(this@LoginActivity)
+            adapter = accountAdapter
+        }
+    }
+
+    private fun loadSavedCredentials() {
+        val profiles = viewModel.getSavedProfiles()
+        if (profiles.size == 1) {
+            val profile = profiles.first()
+            binding.etAccount.setText(profile.account)
+            binding.etPassword.setText(profile.password)
+        }
+    }
+
+    private fun playEntryAnimation() {
+        val views = listOf(
+            binding.ivLogo,
+            binding.tvTitle,
+            binding.tvSubtitle,
+            binding.tilAccount,
+            binding.tilPassword,
+            binding.btnLogin.parent as View
+        )
+
+        views.forEachIndexed { index, view ->
+            view.alpha = 0f
+            view.translationY = 30f
+            view.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .setDuration(500)
+                .setStartDelay(100L + index * 80)
+                .setInterpolator(OvershootInterpolator(1.2f))
+                .start()
+        }
+    }
+
+    private fun showError(message: String) {
+        binding.tvError.text = message
+        binding.tvError.visibility = View.VISIBLE
+        binding.tvError.alpha = 0f
+        binding.tvError.translationY = -10f
+        binding.tvError.animate()
+            .alpha(1f).translationY(0f)
+            .setDuration(300)
+            .setInterpolator(OvershootInterpolator(1.5f))
+            .start()
+    }
+
+    private fun hideError() {
+        if (binding.tvError.visibility == View.VISIBLE) {
+            binding.tvError.animate()
+                .alpha(0f).translationY(-10f)
+                .setDuration(200)
+                .withEndAction { binding.tvError.visibility = View.GONE }
+                .start()
+        }
+    }
+
+    private fun showLoading(loading: Boolean) {
+        binding.btnLogin.text = if (loading) "" else getString(R.string.btn_login)
+        binding.btnLogin.isEnabled = !loading
+        binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
     }
 
     private fun showWelcomeDialog() {
@@ -66,7 +180,7 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
             .setCancelable(false)
             .create()
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
-        view.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnDismiss)
+        view.findViewById<MaterialButton>(R.id.btnDismiss)
             .setOnClickListener {
                 dialog.dismiss()
                 goToMain()
@@ -79,11 +193,44 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
         intent.flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         startActivity(intent)
         finish()
+        overridePendingTransition(android.R.anim.fade_in, android.R.anim.fade_out)
     }
 
-    private fun showLoading(loading: Boolean) {
-        binding.btnLogin.text = if (loading) getString(R.string.btn_logining) else getString(R.string.btn_login)
-        binding.btnLogin.isEnabled = !loading
-        binding.progressBar.visibility = if (loading) View.VISIBLE else View.GONE
+    inner class AccountAdapter(
+        private val accounts: List<UserRepository.AccountProfile>,
+        private val onClick: (UserRepository.AccountProfile) -> Unit
+    ) : RecyclerView.Adapter<AccountAdapter.ViewHolder>() {
+
+        inner class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
+            val tvAccount: TextView = view.findViewById(R.id.tvAccount)
+            val tvName: TextView = view.findViewById(R.id.tvName)
+            val btnRemove: ImageButton = view.findViewById(R.id.btnRemove)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
+            val view = LayoutInflater.from(parent.context)
+                .inflate(R.layout.item_account, parent, false)
+            return ViewHolder(view)
+        }
+
+        override fun onBindViewHolder(holder: ViewHolder, position: Int) {
+            val account = accounts[position]
+            holder.tvAccount.text = account.account
+            holder.tvName.text = account.name.ifEmpty { "未命名" }
+            holder.itemView.setOnClickListener { onClick(account) }
+            holder.btnRemove.setOnClickListener {
+                viewModel.removeAccount(account.account)
+                val newList = viewModel.getSavedProfiles()
+                if (newList.isEmpty()) {
+                    binding.accountSelectorLayout.visibility = View.GONE
+                } else {
+                    // Rebuild adapter to avoid stale position references
+                    accountAdapter = AccountAdapter(newList, onClick)
+                    binding.rvAccounts.adapter = accountAdapter
+                }
+            }
+        }
+
+        override fun getItemCount() = accounts.size
     }
 }

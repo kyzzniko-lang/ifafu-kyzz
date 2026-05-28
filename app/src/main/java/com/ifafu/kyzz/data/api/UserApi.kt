@@ -8,6 +8,8 @@ import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.data.util.ZFVerify
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -17,6 +19,8 @@ class UserApi @Inject constructor(
     private val userRepository: UserRepository,
     private val zfVerify: ZFVerify
 ) {
+    private val loginMutex = Mutex()
+
     companion object {
         private const val TAG = "UserApi"
     }
@@ -52,10 +56,12 @@ class UserApi @Inject constructor(
     }
 
     suspend fun login(account: String, password: String, captcha: String, user: User): Response {
-        if (sessionToken.isEmpty() || loginUrl.isEmpty()) {
-            val bitmap = prepareLogin(userRepository.host)
-            if (bitmap == null || sessionToken.isEmpty() || loginUrl.isEmpty()) {
-                return Response(false, -1, "无法连接教务系统，请重试")
+        loginMutex.withLock {
+            if (sessionToken.isEmpty() || loginUrl.isEmpty()) {
+                val bitmap = prepareLogin(userRepository.host)
+                if (bitmap == null || sessionToken.isEmpty() || loginUrl.isEmpty()) {
+                    return Response(false, -1, "无法连接教务系统，请重试")
+                }
             }
         }
 

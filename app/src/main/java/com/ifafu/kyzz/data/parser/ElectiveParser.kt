@@ -23,9 +23,8 @@ class ElectiveParser @Inject constructor(
         courseList.courses.clear()
         courseList.electived.clear()
 
-        // Get all tables in document order, then determine section by
-        // checking if "已选课程"/"已选列表" text appears before each table
         val tables = doc.select("table")
+        Log.d(TAG, "Found ${tables.size} tables in document")
         val fullHtml = doc.html()
         var section = 0 // 0 = available, 1 = selected
 
@@ -50,7 +49,10 @@ class ElectiveParser @Inject constructor(
             val headerTexts = headerCells.map { it.text().trim() }
 
             // Skip tables without course-related headers
-            if (headerTexts.none { it.contains("课程") }) continue
+            if (headerTexts.none { it.contains("课程") }) {
+                Log.d(TAG, "Skipping table: headers=$headerTexts")
+                continue
+            }
 
             // Check if marker appears before this table using full outerHtml with tracked position
             if (section == 0 && markerPos >= 0) {

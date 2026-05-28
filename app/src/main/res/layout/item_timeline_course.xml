@@ -56,108 +56,121 @@
 
     </LinearLayout>
 
-    <!-- Course info card -->
-    <com.google.android.material.card.MaterialCardView
-        android:id="@+id/cardCourse"
+    <!-- Course info card with status stripe -->
+    <FrameLayout
         android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:layout_weight="1"
-        android:layout_marginStart="12dp"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="0dp"
-        app:strokeWidth="1dp"
-        app:strokeColor="@color/claude_border"
-        xmlns:app="http://schemas.android.com/apk/res-auto">
+        android:layout_marginStart="12dp">
 
-        <LinearLayout
+        <View
+            android:id="@+id/courseStatusStripe"
+            android:layout_width="3dp"
+            android:layout_height="match_parent"
+            android:background="@color/claude_terracotta"
+            android:visibility="gone" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:id="@+id/cardCourse"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="12dp">
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="1dp"
+            app:strokeColor="@color/claude_border"
+            xmlns:app="http://schemas.android.com/apk/res-auto">
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center_vertical">
+                android:orientation="vertical"
+                android:padding="12dp">
 
-                <TextView
-                    android:id="@+id/tvCourseName"
-                    android:layout_width="0dp"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:fontFamily="@font/claude_serif"
-                    android:textColor="@color/claude_text_primary"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
+                    android:gravity="center_vertical">
 
-                <TextView
-                    android:id="@+id/tvCourseWeather"
+                    <TextView
+                        android:id="@+id/tvCourseName"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvCourseWeather"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="@color/claude_terracotta"
+                        android:textSize="12sp"
+                        android:gravity="end" />
+
+                </LinearLayout>
+
+                <LinearLayout
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginStart="8dp"
+                    android:layout_marginTop="4dp"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="12dp"
+                        android:layout_height="12dp"
+                        android:src="@android:drawable/ic_menu_mapmode"
+                        android:alpha="0.5" />
+
+                    <TextView
+                        android:id="@+id/tvCourseLocation"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="@color/claude_text_secondary"
+                        android:textSize="12sp" />
+
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="2dp"
+                    android:gravity="center_vertical">
+
+                    <ImageView
+                        android:layout_width="12dp"
+                        android:layout_height="12dp"
+                        android:src="@android:drawable/ic_menu_myplaces"
+                        android:alpha="0.5" />
+
+                    <TextView
+                        android:id="@+id/tvCourseTeacher"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:textColor="@color/claude_text_secondary"
+                        android:textSize="12sp" />
+
+                </LinearLayout>
+
+                <TextView
+                    android:id="@+id/tvCourseStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
                     android:fontFamily="@font/claude_serif"
-                    android:textColor="@color/claude_terracotta"
-                    android:textSize="12sp"
-                    android:gravity="end" />
+                    android:textSize="11sp" />
 
             </LinearLayout>
 
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:gravity="center_vertical">
+        </com.google.android.material.card.MaterialCardView>
 
-                <ImageView
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
-                    android:src="@android:drawable/ic_menu_mapmode"
-                    android:alpha="0.5" />
-
-                <TextView
-                    android:id="@+id/tvCourseLocation"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:fontFamily="@font/claude_serif"
-                    android:textColor="@color/claude_text_secondary"
-                    android:textSize="12sp" />
-
-            </LinearLayout>
-
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="2dp"
-                android:gravity="center_vertical">
-
-                <ImageView
-                    android:layout_width="12dp"
-                    android:layout_height="12dp"
-                    android:src="@android:drawable/ic_menu_myplaces"
-                    android:alpha="0.5" />
-
-                <TextView
-                    android:id="@+id/tvCourseTeacher"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginStart="4dp"
-                    android:fontFamily="@font/claude_serif"
-                    android:textColor="@color/claude_text_secondary"
-                    android:textSize="12sp" />
-
-            </LinearLayout>
-
-            <TextView
-                android:id="@+id/tvCourseStatus"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="6dp"
-                android:fontFamily="@font/claude_serif"
-                android:textSize="11sp" />
-
-        </LinearLayout>
-
-    </com.google.android.material.card.MaterialCardView>
+    </FrameLayout>
 
 </LinearLayout>

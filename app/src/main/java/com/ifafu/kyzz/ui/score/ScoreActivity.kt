@@ -26,6 +26,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
     private var selectedYear: String? = null
     private var selectedTerm: String? = null
     private var spinnerReady = false
+    private var layoutManagerSet = false
 
     override fun createBinding(): ActivityScoreBinding = ActivityScoreBinding.inflate(layoutInflater)
 
@@ -139,7 +140,10 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
         if (trendData != null) items.add(trendData)
         items.addAll(scores)
 
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        if (!layoutManagerSet) {
+            binding.recyclerView.layoutManager = LinearLayoutManager(this)
+            layoutManagerSet = true
+        }
         binding.recyclerView.adapter = ScoreAdapter(items, validScores)
     }
 
@@ -240,6 +244,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
 
             val file = java.io.File(cacheDir, "score_share.png")
             java.io.FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
             val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
             val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                 type = "image/png"

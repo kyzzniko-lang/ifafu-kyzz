@@ -94,7 +94,11 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
             set(java.util.Calendar.HOUR_OF_DAY, 7); set(java.util.Calendar.MINUTE, 30); set(java.util.Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(java.util.Calendar.DAY_OF_YEAR, 1)
         }
-        am.setRepeating(android.app.AlarmManager.RTC_WAKEUP, courseCal.timeInMillis, android.app.AlarmManager.INTERVAL_DAY, coursePending)
+        try {
+            am.setAlarmClock(android.app.AlarmManager.AlarmClockInfo(courseCal.timeInMillis, null), coursePending)
+        } catch (_: SecurityException) {
+            am.set(android.app.AlarmManager.RTC_WAKEUP, courseCal.timeInMillis, coursePending)
+        }
 
         val scoreIntent = android.content.Intent(this, com.ifafu.kyzz.service.ScoreCheckReceiver::class.java)
         val scorePending = android.app.PendingIntent.getBroadcast(

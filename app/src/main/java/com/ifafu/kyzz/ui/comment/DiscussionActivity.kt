@@ -48,6 +48,9 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
         }
 
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadComments(refresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadComments(refresh = true) }
 

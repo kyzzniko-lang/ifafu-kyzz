@@ -33,6 +33,7 @@ class ScoreFragment : Fragment() {
     private var selectedTerm: String? = null
     private var spinnerReady = false
     private val activeAnimators = mutableListOf<ValueAnimator>()
+    private var layoutManagerSet = false
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
@@ -150,7 +151,10 @@ class ScoreFragment : Fragment() {
         if (trendData != null) items.add(trendData)
         items.addAll(scores)
 
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        if (!layoutManagerSet) {
+            binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+            layoutManagerSet = true
+        }
         binding.recyclerView.adapter = ScoreAdapter(items, validScores)
     }
 

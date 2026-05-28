@@ -28,7 +28,7 @@ class ElectiveCourseApi @Inject constructor(
         host: String, token: String, number: String, name: String, courseList: ElectiveCourseList
     ): Response {
         return try {
-            val accessUrl = "${host}/(${token})/xf_xsqxxxk.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121400"
+            val accessUrl = "${host}/(${token})/xf_xsqxxxk.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121203"
 
             val html = htmlClient.getString(accessUrl)
             if (html.isBlank()) return Response(false, -1, "网络异常")
@@ -37,7 +37,7 @@ class ElectiveCourseApi @Inject constructor(
                 val reloginResp = reloginHelper.relogin()
                 if (!reloginResp.success) return Response(false, -1, reloginResp.message)
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xf_xsqxxxk.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121400"
+                val retryUrl = "${host}/(${user.token})/xf_xsqxxxk.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121203"
                 val retryHtml = htmlClient.getString(retryUrl)
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return Response(false, -1, "会话已过期，请重新登录")
@@ -55,7 +55,10 @@ class ElectiveCourseApi @Inject constructor(
 
     private fun parseElectiveCourseIndex(html: String, courseList: ElectiveCourseList): Response {
         val alert = htmlClient.checkAlert(html)
-        if (alert != null) return Response(false, 0, alert.message)
+        if (alert != null) {
+            Log.w(TAG, "Alert found: ${alert.message}")
+            return Response(false, 0, alert.message)
+        }
         if (html.contains("防刷")) return Response(false, 0, "防刷限制")
 
         val vs = htmlClient.parseViewState(html)
@@ -64,6 +67,7 @@ class ElectiveCourseApi @Inject constructor(
         val doc = org.jsoup.Jsoup.parse(html)
         electiveParser.parseFilter(doc, courseList.filter)
         electiveParser.parseCourseList(doc, courseList)
+        Log.d(TAG, "Parsed: ${courseList.courses.size} available, ${courseList.electived.size} selected, htmlLen=${html.length}")
         return Response(true, 0, "获取成功")
     }
 

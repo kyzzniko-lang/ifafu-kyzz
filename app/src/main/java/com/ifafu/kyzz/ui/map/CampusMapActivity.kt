@@ -289,6 +289,15 @@ function switchCampus(lat,lng,markersJson){
         }
     }
 
+    override fun onDestroy() {
+        binding.webView?.apply {
+            stopLoading()
+            removeJavascriptInterface("AndroidBridge")
+            destroy()
+        }
+        super.onDestroy()
+    }
+
     override fun onPause() {
         super.onPause()
         locationManager?.removeUpdates(this)

@@ -177,7 +177,7 @@ class SimpleElectiveParser @Inject constructor() {
 
     fun isNotOpen(html: String): Boolean {
         val text = Jsoup.parse(html).text()
-        return text.contains("未到") || text.contains("未开放") || text.contains("不在选课时间内")
-                || text.contains("没有数据") || text.trim().length < 200
+        return text.contains("未到选课时间") || text.contains("未开放选课") || text.contains("不在选课时间内")
+                || text.contains("没有数据")
     }
 }

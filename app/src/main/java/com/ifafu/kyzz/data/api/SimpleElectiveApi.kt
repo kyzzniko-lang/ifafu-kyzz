@@ -64,10 +64,12 @@ class SimpleElectiveApi @Inject constructor(
         }
 
         if (simpleElectiveParser.isNotOpen(html)) {
+            Log.d(TAG, "isNotOpen=true for page=$page, htmlLen=${html.length}")
             return Result(true, "暂未开放选课", notOpen = true)
         }
 
         val (available, selected) = simpleElectiveParser.parseCourses(html)
+        Log.d(TAG, "page=$page: ${available.size} available, ${selected.size} selected, htmlLen=${html.length}")
 
         htmlClient.extractViewState(html)
         return Result(true, "获取成功", available = available, selected = selected)

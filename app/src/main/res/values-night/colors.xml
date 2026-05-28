@@ -39,4 +39,7 @@
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
     <color name="transparent">#00000000</color>
+
+    <color name="claude_offline_banner_bg">#3A2A20</color>
+    <color name="claude_offline_banner_text">#E8926A</color>
 </resources>

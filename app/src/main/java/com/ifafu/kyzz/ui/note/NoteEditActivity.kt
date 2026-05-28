@@ -122,8 +122,13 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
 
     private fun stopRecording() {
         try {
-            recorder?.apply { stop(); release() }
+            recorder?.stop()
         } catch (_: Exception) {}
+        finally {
+            try {
+                recorder?.release()
+            } catch (_: Exception) {}
+        }
         recorder = null
         isRecording = false
         binding.btnRecord.text = "重录"
@@ -260,9 +265,12 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
 
     override fun onDestroy() {
         super.onDestroy()
-        recorder?.release()
+        if (isRecording) {
+            try { recorder?.stop() } catch (_: Exception) {}
+        }
+        try { recorder?.release() } catch (_: Exception) {}
         recorder = null
-        player?.release()
+        try { player?.release() } catch (_: Exception) {}
         player = null
     }
 }

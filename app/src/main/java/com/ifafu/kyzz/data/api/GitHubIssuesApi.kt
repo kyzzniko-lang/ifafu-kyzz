@@ -5,6 +5,7 @@ import com.google.gson.Gson
 import com.google.gson.JsonParser
 import com.ifafu.kyzz.BuildConfig
 import com.ifafu.kyzz.data.model.Comment
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -74,11 +75,15 @@ class GitHubIssuesApi @Inject constructor(
                             tag = data.get("tag")?.asString ?: "",
                             likes = likes
                         )
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         null
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "getComments error", e)
             emptyList()
@@ -118,6 +123,8 @@ class GitHubIssuesApi @Inject constructor(
                     likes = emptyList()
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "postComment error", e)
             null
@@ -135,6 +142,8 @@ class GitHubIssuesApi @Inject constructor(
             client.newCall(request).execute().use { response ->
                 response.isSuccessful
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "deleteComment error", e)
             false
@@ -169,7 +178,8 @@ class GitHubIssuesApi @Inject constructor(
                                 result = data.get("nickname")?.asString
                                 return@use false
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: CancellationException) { throw e }
+                        catch (_: Exception) {}
                     }
                     arr.size() >= 100
                 }
@@ -177,6 +187,8 @@ class GitHubIssuesApi @Inject constructor(
                 page++
             }
             result
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "getNickname error", e)
             null
@@ -209,7 +221,8 @@ class GitHubIssuesApi @Inject constructor(
                                 foundId = obj.get("id")?.asLong
                                 break
                             }
-                        } catch (_: Exception) {}
+                        } catch (e: CancellationException) { throw e }
+                        catch (_: Exception) {}
                     }
                     if (foundId != null) {
                         existingCommentId = foundId
@@ -244,6 +257,8 @@ class GitHubIssuesApi @Inject constructor(
                 }.post(nicknameBody.toRequestBody(JSON)).build()
                 client.newCall(createRequest).execute().use { it.isSuccessful }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "saveNickname error", e)
             false
@@ -296,6 +311,8 @@ class GitHubIssuesApi @Inject constructor(
                     likes = likes
                 )
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Log.e(TAG, "likeComment error", e)
             null

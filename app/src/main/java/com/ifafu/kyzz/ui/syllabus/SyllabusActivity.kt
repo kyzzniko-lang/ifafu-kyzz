@@ -31,6 +31,9 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
         binding.toolbar.setNavigationOnClickListener { finish() }
         binding.toolbar.title = getString(R.string.syllabus_title)
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadSyllabus(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadSyllabus() }
 

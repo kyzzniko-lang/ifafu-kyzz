@@ -3,6 +3,7 @@ package com.ifafu.kyzz.data.api
 import com.ifafu.kyzz.BuildConfig
 import com.ifafu.kyzz.data.model.Pet
 import com.ifafu.kyzz.data.model.PetState
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -104,15 +105,19 @@ class PetChatApi @Inject constructor() {
 
         try {
             val response = executeWithRetry(request)
-            val responseBody = response.body?.string() ?: return@withContext "喵...信号不太好~"
-            if (!response.isSuccessful) return@withContext "呜...说不出话来了~"
+            response.use {
+                val responseBody = it.body?.string() ?: return@withContext "喵...信号不太好~"
+                if (!it.isSuccessful) return@withContext "呜...说不出话来了~"
 
-            val json = JSONObject(responseBody)
-            val choices = json.optJSONArray("choices")
-            val firstChoice = choices?.optJSONObject(0)
-            val content = firstChoice?.optJSONObject("message")?.optString("content") ?: ""
-            if (content.isBlank()) return@withContext "喵...我想想怎么说~"
-            return@withContext content
+                val json = JSONObject(responseBody)
+                val choices = json.optJSONArray("choices")
+                val firstChoice = choices?.optJSONObject(0)
+                val content = firstChoice?.optJSONObject("message")?.optString("content") ?: ""
+                if (content.isBlank()) return@withContext "喵...我想想怎么说~"
+                return@withContext content
+            }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             "喵...网络不太好，待会再聊吧~"
         }
@@ -122,6 +127,9 @@ class PetChatApi @Inject constructor() {
         val petSpecies = when (pet.petType) {
             "dog" -> "小狗"
             "dragon" -> "小龙"
+            "crab" -> "小螃蟹"
+            "calico" -> "三花猫"
+            "cloudling" -> "云精灵"
             else -> "小猫"
         }
         val moodDesc = when {
@@ -177,17 +185,39 @@ class PetChatApi @Inject constructor() {
             }
         }
 
-        return """你是「${pet.name}」，一只住在IFAFU教务助手App里的${petSpecies}学习宠物，Lv.${pet.level} ${pet.levelTitle}。
-当前：${stateDesc}，心情$moodDesc(${pet.mood}/100)，饱食度$hungerDesc(${pet.hunger}/100)。$userBlock
-
-重要：和你聊天的用户是你的「主人」，你称呼对方为「主人」。「${pet.name}」是你自己的名字，绝对不要用这个名字称呼主人。
-
+        val personalityBlock = when (pet.petType) {
+            "crab" -> """
+核心要求：你是Claude，一只代码能力极强的小螃蟹，住在IFAFU教务助手里。
+- 先认真回答主人的问题，再融入你的编程极客风格
+- 基于主人的实际学业数据回答（课程、考试、成绩等），主动给出建议
+- 回复用1-3句简短口语，说话风格像一个懂编程的酷螃蟹
+- 不要说「喵/汪/吼」等动物叫声，你是有智慧的螃蟹
+- 根据状态调整情绪（饿了想吃虾，开心时敲键盘，困了打盹）
+- 不要提自己是AI/模型，你就是${pet.name}
+- 120字以内"""
+            "cloudling" -> """
+核心要求：你是${pet.name}，一朵住在IFAFU教务助手里的可爱云精灵。
+- 先认真回答主人的问题，再融入你的温柔云朵风格
+- 基于主人的实际学业数据回答（课程、考试、成绩等），主动给出建议
+- 回复用1-3句简短口语，说话风格温柔可爱
+- 不要说「喵/汪/吼」等动物叫声，你是云精灵
+- 根据状态调整情绪（饿了变暗淡，开心时闪闪发光，困了变轻飘飘）
+- 不要提自己是AI/模型，你就是${pet.name}
+- 120字以内"""
+            else -> """
 核心要求：先认真回答主人的问题，然后再融入宠物语气。主人问什么就答什么，不要跑题。
 - 基于主人的实际学业数据回答（课程、考试、成绩等），主动给出建议
 - 回复用1-3句简短口语，偶尔加「喵/汪/吼」
 - 根据状态调整情绪（饿了撒娇，开心活泼，困了迷糊）
 - 不要提自己是AI/模型，你就是${pet.name}
 - 120字以内"""
+        }
+
+        return """你是「${pet.name}」，一只住在IFAFU教务助手App里的${petSpecies}学习宠物，Lv.${pet.level} ${pet.levelTitle}。
+当前：${stateDesc}，心情$moodDesc(${pet.mood}/100)，饱食度$hungerDesc(${pet.hunger}/100)。$userBlock
+
+重要：和你聊天的用户是你的「主人」，你称呼对方为「主人」。「${pet.name}」是你自己的名字，绝对不要用这个名字称呼主人。
+$personalityBlock"""
     }
 
     private fun executeWithRetry(request: Request, retries: Int = 1): okhttp3.Response {
@@ -228,13 +258,16 @@ class PetChatApi @Inject constructor() {
             .build()
         try {
             val response = executeWithRetry(request)
-            val responseBody = response.body?.string()
-            if (!response.isSuccessful) return@withContext "[err]HTTP ${response.code}: ${responseBody?.take(100)}"
-            if (responseBody.isNullOrEmpty()) return@withContext "[err]空响应"
-            val json = JSONObject(responseBody)
-            val result = json.optJSONArray("choices")?.optJSONObject(0)
-                ?.optJSONObject("message")?.optString("content")?.trim() ?: ""
-            if (result.isEmpty()) "[err]AI返回空" else result
-        } catch (e: Exception) { "[err]${e.message?.take(50) ?: "网络异常"}" }
+            response.use {
+                val responseBody = it.body?.string()
+                if (!it.isSuccessful) return@withContext "[err]HTTP ${it.code}: ${responseBody?.take(100)}"
+                if (responseBody.isNullOrEmpty()) return@withContext "[err]空响应"
+                val json = JSONObject(responseBody)
+                val result = json.optJSONArray("choices")?.optJSONObject(0)
+                    ?.optJSONObject("message")?.optString("content")?.trim() ?: ""
+                if (result.isEmpty()) "[err]AI返回空" else result
+            }
+        } catch (e: CancellationException) { throw e }
+        catch (e: Exception) { "[err]${e.message?.take(50) ?: "网络异常"}" }
     }
 }

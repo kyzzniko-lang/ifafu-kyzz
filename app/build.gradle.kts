@@ -20,8 +20,8 @@ android {
         applicationId = "com.ifafu.kyzz"
         minSdk = 24
         targetSdk = 34
-        versionCode = 11
-        versionName = "2.2.0"
+        versionCode = 12
+        versionName = "2.3.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -86,7 +86,7 @@ dependencies {
     implementation("androidx.navigation:navigation-fragment-ktx:2.7.7")
     implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
 
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
 
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")

@@ -56,7 +56,13 @@ class ElectiveScoreViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = State.Error(e.message ?: "加载失败")
+                // Fallback to stale cache on network error
+                val cached = cacheManager.loadScores(user.account)
+                if (cached != null) {
+                    filterElectives(cached)
+                } else {
+                    _state.value = State.Error(e.message ?: "加载失败")
+                }
             }
         }
     }

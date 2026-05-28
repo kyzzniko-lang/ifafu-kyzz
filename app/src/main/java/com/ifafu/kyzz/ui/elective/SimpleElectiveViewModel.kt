@@ -8,6 +8,7 @@ import com.ifafu.kyzz.data.model.SimpleCourse
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -52,6 +53,8 @@ class SimpleElectiveViewModel @Inject constructor(
                 } else {
                     _state.value = State.Error(result.message)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = State.Error(e.message ?: "加载失败")
             }

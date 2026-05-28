@@ -8,6 +8,7 @@ import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -47,6 +48,8 @@ class ElectiveViewModel @Inject constructor(
                 } else {
                     _state.value = ElectiveState.Error(response.message)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = ElectiveState.Error("加载失败：${e.message}")
             }
@@ -66,6 +69,8 @@ class ElectiveViewModel @Inject constructor(
                 } else {
                     _state.value = ElectiveState.Error(response.message)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = ElectiveState.Error("搜索失败：${e.message}")
             }
@@ -83,7 +88,6 @@ class ElectiveViewModel @Inject constructor(
                 )
                 if (response.success) {
                     _state.value = ElectiveState.Success(response.message)
-                    // Refresh course list after successful selection
                     try {
                         val list = ElectiveCourseList()
                         val listResponse = electiveCourseApi.getElectiveCourseIndex(
@@ -92,10 +96,12 @@ class ElectiveViewModel @Inject constructor(
                         if (listResponse.success) {
                             _courseList.value = list
                         }
-                    } catch (_: Exception) { }
+                    } catch (e: CancellationException) { throw e } catch (_: Exception) { }
                 } else {
                     _state.value = ElectiveState.Error(response.message)
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _state.value = ElectiveState.Error("选课失败：${e.message}")
             }

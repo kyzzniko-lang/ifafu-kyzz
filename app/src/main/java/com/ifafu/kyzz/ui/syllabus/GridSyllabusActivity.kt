@@ -136,6 +136,9 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
         // Feature 3: Pull-to-refresh
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener {
             viewModel.loadSyllabus(viewModel.selectedYear, viewModel.selectedTerm, forceRefresh = true)
         }
@@ -794,6 +797,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
             val file = java.io.File(cacheDir, "schedule_share.png")
             java.io.FileOutputStream(file).use { bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
             val uri = androidx.core.content.FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
 
             // Share with chooser

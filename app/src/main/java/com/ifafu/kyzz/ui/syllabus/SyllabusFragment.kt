@@ -36,6 +36,9 @@ class SyllabusFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            requireContext().getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadSyllabus(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadSyllabus() }
 

@@ -30,6 +30,9 @@ class ElectiveScoreActivity : BaseActivity<ActivityElectiveScoreBinding>() {
         binding.toolbar.title = getString(R.string.elective_score_title)
 
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener { viewModel.load(forceRefresh = true) }
 
         viewModel.state.observe(this) { state ->

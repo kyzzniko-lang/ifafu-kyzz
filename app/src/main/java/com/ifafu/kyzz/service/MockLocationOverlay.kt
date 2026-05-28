@@ -11,7 +11,6 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.TextView
 import kotlin.math.cos
@@ -21,13 +20,25 @@ import kotlin.math.sin
 class MockLocationOverlay(private val context: Context) {
 
     private var windowManager: WindowManager? = null
+    private var layoutParams: WindowManager.LayoutParams? = null
     private var rootView: View? = null
     private var tvCoords: TextView? = null
+    private var tvProgress: TextView? = null
     private var isShowing = false
+    private var touchPassthrough = false
+
+    private companion object {
+        private const val BASE_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+        private const val PASSTHROUGH_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+    }
 
     // Movement
     private var moveAngle = 0.0
-    private var moveSpeed = 1.2 // m/s (walk)
+    private var moveSpeed = 1.2
     private var isMoving = false
     private val moveHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var moveRunnable: Runnable? = null
@@ -46,7 +57,7 @@ class MockLocationOverlay(private val context: Context) {
         currentLng = lng
         windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-        val layoutParams = WindowManager.LayoutParams(
+        layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT,
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
@@ -54,9 +65,7 @@ class MockLocationOverlay(private val context: Context) {
             else
                 @Suppress("DEPRECATION")
                 WindowManager.LayoutParams.TYPE_PHONE,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            BASE_FLAGS,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
@@ -69,7 +78,7 @@ class MockLocationOverlay(private val context: Context) {
         try {
             windowManager?.addView(rootView, layoutParams)
             isShowing = true
-            setupDrag(rootView!!, layoutParams)
+            setupDrag(rootView!!, layoutParams!!)
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -79,6 +88,21 @@ class MockLocationOverlay(private val context: Context) {
         currentLat = lat
         currentLng = lng
         tvCoords?.text = "%.5f, %.5f".format(lat, lng)
+    }
+
+    fun updateTrajectoryProgress(progress: String?, speed: Double, isTrajectory: Boolean, isLoop: Boolean = false, completedLaps: Int = 0, targetLaps: Int = 0) {
+        if (isTrajectory && progress != null) {
+            val text = if (isLoop) {
+                val lapInfo = if (targetLaps > 0) "${completedLaps + 1}/$targetLaps" else "${completedLaps + 1}/∞"
+                "校园跑: $progress  圈: $lapInfo  ${speed} m/s"
+            } else {
+                "路径: $progress  ${speed} m/s"
+            }
+            tvProgress?.text = text
+            tvProgress?.visibility = View.VISIBLE
+        } else if (!isTrajectory) {
+            tvProgress?.visibility = View.GONE
+        }
     }
 
     fun setPositionListener(listener: (Double, Double) -> Unit) {
@@ -96,13 +120,22 @@ class MockLocationOverlay(private val context: Context) {
         isShowing = false
     }
 
+    private fun togglePassthrough() {
+        touchPassthrough = !touchPassthrough
+        val params = layoutParams ?: return
+        params.flags = if (touchPassthrough) PASSTHROUGH_FLAGS else BASE_FLAGS
+        try {
+            windowManager?.updateViewLayout(rootView, params)
+        } catch (_: Exception) {}
+    }
+
     private fun createFloatingView(lat: Double, lng: Double): View {
         val dp = context.resources.displayMetrics.density
 
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = createBackground(dp)
-            setPadding((10 * dp).toInt(), (8 * dp).toInt(), (10 * dp).toInt(), (8 * dp).toInt())
+            setPadding((6 * dp).toInt(), (4 * dp).toInt(), (6 * dp).toInt(), (4 * dp).toInt())
         }
 
         // Title row
@@ -115,33 +148,64 @@ class MockLocationOverlay(private val context: Context) {
                 shape = GradientDrawable.OVAL
                 setColor(Color.parseColor("#4CAF50"))
             }
-            layoutParams = LinearLayout.LayoutParams((8 * dp).toInt(), (8 * dp).toInt()).apply {
-                marginEnd = (6 * dp).toInt()
+            layoutParams = LinearLayout.LayoutParams((5 * dp).toInt(), (5 * dp).toInt()).apply {
+                marginEnd = (4 * dp).toInt()
             }
         }
         titleRow.addView(dot)
         titleRow.addView(TextView(context).apply {
             text = "虚拟定位"
             setTextColor(Color.WHITE)
-            textSize = 12f
+            textSize = 10f
             setTypeface(null, android.graphics.Typeface.BOLD)
+            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
         })
+
+        // Touch passthrough toggle
+        val btnPassthrough = TextView(context).apply {
+            text = "⛶"
+            setTextColor(Color.parseColor("#88FFFFFF"))
+            textSize = 10f
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                shape = GradientDrawable.RECTANGLE
+                cornerRadius = 3 * dp
+                setColor(Color.parseColor("#33FFFFFF"))
+            }
+            layoutParams = LinearLayout.LayoutParams((18 * dp).toInt(), (18 * dp).toInt())
+            setOnClickListener {
+                togglePassthrough()
+                text = if (touchPassthrough) "⛶" else "⛶"
+                alpha = if (touchPassthrough) 0.3f else 1f
+            }
+        }
+        titleRow.addView(btnPassthrough)
         container.addView(titleRow)
 
         // Coordinates
         tvCoords = TextView(context).apply {
             text = "%.5f, %.5f".format(lat, lng)
             setTextColor(Color.parseColor("#DDFFFFFF"))
-            textSize = 11f
-            setPadding(0, (4 * dp).toInt(), 0, 0)
+            textSize = 9f
+            setPadding(0, (2 * dp).toInt(), 0, 0)
         }
         container.addView(tvCoords)
+
+        // Trajectory progress (hidden by default)
+        tvProgress = TextView(context).apply {
+            text = ""
+            setTextColor(Color.parseColor("#88D4724A"))
+            textSize = 9f
+            setPadding(0, 0, 0, 0)
+            visibility = View.GONE
+        }
+        container.addView(tvProgress)
 
         // Speed row
         val speedRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, (6 * dp).toInt(), 0, (4 * dp).toInt())
+            setPadding(0, (3 * dp).toInt(), 0, (2 * dp).toInt())
         }
         val tvWalk = createSpeedBtn(dp, "步行", true)
         val tvRun = createSpeedBtn(dp, "跑步", false)
@@ -174,13 +238,13 @@ class MockLocationOverlay(private val context: Context) {
             gravity = Gravity.CENTER
         }
         val directions = arrayOf(
-            doubleArrayOf(135.0, 90.0, 45.0),   // NW, N, NE
-            doubleArrayOf(180.0, -1.0, 0.0),      // W, stop, E
-            doubleArrayOf(225.0, 270.0, 315.0)    // SW, S, SE
+            doubleArrayOf(135.0, 90.0, 45.0),
+            doubleArrayOf(180.0, -1.0, 0.0),
+            doubleArrayOf(225.0, 270.0, 315.0)
         )
         val labels = arrayOf(
             arrayOf("↖", "↑", "↗"),
-            arrayOf("←", "·", "→"),
+            arrayOf("←", "■", "→"),
             arrayOf("↙", "↓", "↘")
         )
         for (row in 0..2) {
@@ -194,24 +258,25 @@ class MockLocationOverlay(private val context: Context) {
                 val btn = TextView(context).apply {
                     text = label
                     setTextColor(Color.WHITE)
-                    textSize = 16f
+                    textSize = 12f
                     gravity = Gravity.CENTER
                     layoutParams = LinearLayout.LayoutParams(
-                        (36 * dp).toInt(), (36 * dp).toInt()
+                        (26 * dp).toInt(), (26 * dp).toInt()
                     ).apply {
-                        setMargins((2 * dp).toInt(), (2 * dp).toInt(), (2 * dp).toInt(), (2 * dp).toInt())
+                        setMargins(
+                            (1 * dp).toInt(), (1 * dp).toInt(),
+                            (1 * dp).toInt(), (1 * dp).toInt()
+                        )
                     }
                     background = GradientDrawable().apply {
                         shape = GradientDrawable.RECTANGLE
-                        cornerRadius = 6 * dp
+                        cornerRadius = 4 * dp
                         setColor(Color.parseColor("#44FFFFFF"))
                     }
                 }
                 if (angle < 0) {
-                    // Center button: stop
                     btn.setOnClickListener { stopMoving() }
-                    btn.text = "■"
-                    btn.textSize = 14f
+                    btn.textSize = 11f
                 } else {
                     val a = angle
                     btn.setOnTouchListener { _, event ->
@@ -220,7 +285,7 @@ class MockLocationOverlay(private val context: Context) {
                                 startMoving(a)
                                 btn.background = GradientDrawable().apply {
                                     shape = GradientDrawable.RECTANGLE
-                                    cornerRadius = 6 * dp
+                                    cornerRadius = 4 * dp
                                     setColor(Color.parseColor("#66D4724A"))
                                 }
                                 true
@@ -229,7 +294,7 @@ class MockLocationOverlay(private val context: Context) {
                                 stopMoving()
                                 btn.background = GradientDrawable().apply {
                                     shape = GradientDrawable.RECTANGLE
-                                    cornerRadius = 6 * dp
+                                    cornerRadius = 4 * dp
                                     setColor(Color.parseColor("#44FFFFFF"))
                                 }
                                 true
@@ -248,21 +313,24 @@ class MockLocationOverlay(private val context: Context) {
         val btnStop = TextView(context).apply {
             text = "停止"
             setTextColor(Color.WHITE)
-            textSize = 11f
+            textSize = 10f
             gravity = Gravity.CENTER
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = 6 * dp
+                cornerRadius = 4 * dp
                 setColor(Color.parseColor("#E53935"))
             }
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                (28 * dp).toInt()
+                (20 * dp).toInt()
             ).apply {
-                topMargin = (8 * dp).toInt()
+                topMargin = (4 * dp).toInt()
             }
             setOnClickListener {
-                MockLocationService.stopService(context)
+                val intent = android.content.Intent(context, MockLocationService::class.java).apply {
+                    action = MockLocationService.ACTION_STOP
+                }
+                context.startService(intent)
             }
         }
         container.addView(btnStop)
@@ -273,12 +341,12 @@ class MockLocationOverlay(private val context: Context) {
     private fun createSpeedBtn(dp: Float, text: String, selected: Boolean): TextView {
         return TextView(context).apply {
             this.text = text
-            textSize = 11f
+            textSize = 9f
             gravity = Gravity.CENTER
             setTextColor(if (selected) Color.WHITE else Color.parseColor("#88FFFFFF"))
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = 4 * dp
+                cornerRadius = 3 * dp
                 setColor(Color.parseColor("#33FFFFFF"))
                 setStroke(
                     (1 * dp).toInt(),
@@ -286,9 +354,9 @@ class MockLocationOverlay(private val context: Context) {
                 )
             }
             layoutParams = LinearLayout.LayoutParams(
-                0, (26 * dp).toInt(), 1f
+                0, (18 * dp).toInt(), 1f
             ).apply {
-                marginEnd = (4 * dp).toInt()
+                marginEnd = (3 * dp).toInt()
             }
         }
     }
@@ -300,9 +368,7 @@ class MockLocationOverlay(private val context: Context) {
         moveRunnable = object : Runnable {
             override fun run() {
                 if (!isMoving) return
-                // 1 degree latitude ≈ 110.574 km
-                // 1 degree longitude ≈ 111.320 * cos(lat) km
-                val intervalSec = 0.1 // 100ms
+                val intervalSec = 0.1
                 val distM = moveSpeed * intervalSec
                 val distLat = distM * sin(Math.toRadians(angle)) / 110574.0
                 val distLng = distM * cos(Math.toRadians(angle)) / (111320.0 * cos(Math.toRadians(currentLat)))
@@ -324,7 +390,7 @@ class MockLocationOverlay(private val context: Context) {
     private fun createBackground(dp: Float): GradientDrawable {
         return GradientDrawable().apply {
             shape = GradientDrawable.RECTANGLE
-            cornerRadius = 12 * dp
+            cornerRadius = 8 * dp
             setColor(Color.parseColor("#CC333333"))
             setStroke((1 * dp).toInt(), Color.parseColor("#44FFFFFF"))
         }
@@ -346,7 +412,7 @@ class MockLocationOverlay(private val context: Context) {
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
                     isDragging = false
-                    false // Don't consume, let children handle
+                    false
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val dx = event.rawX - initialTouchX

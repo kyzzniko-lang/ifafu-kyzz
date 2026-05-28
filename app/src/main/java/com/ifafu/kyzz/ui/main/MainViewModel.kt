@@ -12,6 +12,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -91,22 +92,25 @@ class MainViewModel @Inject constructor(
     }
 
     private fun loadTodayCourses() {
-        val user = userRepository.getUser()
-        if (!user.isLogin) { _todayCourses.postValue(emptyList()); return }
+        viewModelScope.launch {
+            val user = userRepository.getUser()
+            if (!user.isLogin) { _todayCourses.postValue(emptyList()); return@launch }
 
-        val syllabus = cacheManager.loadSyllabus(user.account)
-        if (syllabus == null) {
-            fetchSyllabusAndShow()
-            return
+            val syllabus = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                cacheManager.loadSyllabus(user.account)
+            }
+            if (syllabus == null) {
+                fetchSyllabusAndShow()
+                return@launch
+            }
+            val currentWeek = calculateCurrentWeek()
+            val maxCourseWeek = if (syllabus.courses.isNotEmpty()) syllabus.courses.maxOf { it.weekEnd } else 20
+            if (currentWeek > maxCourseWeek + 4) {
+                fetchSyllabusAndShow()
+                return@launch
+            }
+            computeTodayCourses(syllabus)
         }
-        // If current week is far beyond course range, the cache is from a previous semester
-        val currentWeek = calculateCurrentWeek()
-        val maxCourseWeek = if (syllabus.courses.isNotEmpty()) syllabus.courses.maxOf { it.weekEnd } else 20
-        if (currentWeek > maxCourseWeek + 4) {
-            fetchSyllabusAndShow()
-            return
-        }
-        computeTodayCourses(syllabus)
     }
 
     private fun fetchSyllabusAndShow() {
@@ -169,15 +173,19 @@ class MainViewModel @Inject constructor(
     }
 
     private fun loadNextExam() {
-        val user = userRepository.getUser()
-        if (!user.isLogin) { _nextExam.postValue(null); return }
+        viewModelScope.launch {
+            val user = userRepository.getUser()
+            if (!user.isLogin) { _nextExam.postValue(null); return@launch }
 
-        val examTable = cacheManager.loadExamTable(user.account)
-        if (examTable == null) {
-            fetchExamsAndShow()
-            return
+            val examTable = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                cacheManager.loadExamTable(user.account)
+            }
+            if (examTable == null) {
+                fetchExamsAndShow()
+                return@launch
+            }
+            findNextExam(examTable.exams)
         }
-        findNextExam(examTable.exams)
     }
 
     private fun fetchExamsAndShow() {
@@ -272,50 +280,48 @@ class MainViewModel @Inject constructor(
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
                 val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    response.close()
-                    fallbackTermFirstDay()
-                    return@launch
-                }
-                val body = response.body?.string() ?: run {
-                    response.close()
-                    fallbackTermFirstDay()
-                    return@launch
-                }
-                val json = com.google.gson.JsonParser.parseString(body).asJsonObject
-                val issueBody = json.get("body")?.asString ?: ""
-                val regex = Regex("""term_first_day:\s*(\d{4}-\d{2}-\d{2})""")
-                val match = regex.find(issueBody)
-                if (match != null) {
-                    val dateStr = match.groupValues[1]
-                    val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                    val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateStr)
-                    if (parsed != null) {
-                        val newTermFirstDay = normalizeToMonday(sdf.format(parsed))
-                        val oldTermFirstDay = userRepository.termFirstDay
-                        val semesterChanged = oldTermFirstDay.isNotEmpty() && newTermFirstDay != oldTermFirstDay
-
-                        userRepository.termFirstDay = newTermFirstDay
-                        // Auto-reset manual flag when GitHub provides an update
-                        userRepository.termFirstDayManual = false
-                        _currentWeek.postValue(calculateCurrentWeek())
-
-                        if (semesterChanged) {
-                            // Semester changed — clear old syllabus cache and force re-fetch
-                            val user = userRepository.getUser()
-                            if (user.isLogin) {
-                                cacheManager.clearCache(user.account)
-                                android.util.Log.i("MainViewModel", "Semester changed ($oldTermFirstDay -> $newTermFirstDay), cache cleared")
-                            }
-                            // Re-fetch syllabus for today's courses
-                            loadTodayCourses()
-                        }
-                        // Same semester — courses already loaded from cache in refreshUser(), no need to recompute
-                        android.util.Log.i("MainViewModel", "Term first day synced from GitHub: $dateStr")
+                response.use {
+                    if (!it.isSuccessful) {
+                        fallbackTermFirstDay()
                         return@launch
                     }
+                    val body = it.body?.string() ?: run {
+                        fallbackTermFirstDay()
+                        return@launch
+                    }
+                    val json = com.google.gson.JsonParser.parseString(body).asJsonObject
+                    val issueBody = json.get("body")?.asString ?: ""
+                    val regex = Regex("""term_first_day:\s*(\d{4}-\d{2}-\d{2})""")
+                    val match = regex.find(issueBody)
+                    if (match != null) {
+                        val dateStr = match.groupValues[1]
+                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateStr)
+                        if (parsed != null) {
+                            val newTermFirstDay = normalizeToMonday(sdf.format(parsed))
+                            val oldTermFirstDay = userRepository.termFirstDay
+                            val semesterChanged = oldTermFirstDay.isNotEmpty() && newTermFirstDay != oldTermFirstDay
+
+                            userRepository.termFirstDay = newTermFirstDay
+                            userRepository.termFirstDayManual = false
+                            _currentWeek.postValue(calculateCurrentWeek())
+
+                            if (semesterChanged) {
+                                val user = userRepository.getUser()
+                                if (user.isLogin) {
+                                    cacheManager.clearCache(user.account)
+                                    android.util.Log.i("MainViewModel", "Semester changed ($oldTermFirstDay -> $newTermFirstDay), cache cleared")
+                                }
+                                loadTodayCourses()
+                            }
+                            android.util.Log.i("MainViewModel", "Term first day synced from GitHub: $dateStr")
+                            return@launch
+                        }
+                    }
+                    fallbackTermFirstDay()
                 }
-                fallbackTermFirstDay()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
             } catch (_: Exception) {
                 fallbackTermFirstDay()
             }

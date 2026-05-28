@@ -27,6 +27,7 @@ class ExamFragment : Fragment() {
     private var _binding: FragmentExamBinding? = null
     private val binding get() = _binding!!
     private val viewModel: ExamViewModel by viewModels()
+    private var layoutManagerSet = false
 
     @Inject
     lateinit var cacheManager: CacheManager
@@ -39,6 +40,9 @@ class ExamFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         binding.swipeRefresh.setColorSchemeResources(R.color.claude_terracotta)
+        binding.swipeRefresh.setProgressBackgroundColorSchemeColor(
+            requireContext().getColor(R.color.claude_bg_elevated)
+        )
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadExams(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadExams(forceRefresh = true) }
 
@@ -93,7 +97,10 @@ class ExamFragment : Fragment() {
             cacheManager.loadExamProgress(account).associateBy { it.examId }
         } else emptyMap()
 
-        binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+        if (!layoutManagerSet) {
+            binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
+            layoutManagerSet = true
+        }
         binding.recyclerView.adapter = ExamAdapter(allItems, progressMap.toMutableMap())
     }
 

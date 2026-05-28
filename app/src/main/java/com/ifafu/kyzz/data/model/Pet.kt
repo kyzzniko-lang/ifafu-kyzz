@@ -3,7 +3,7 @@ package com.ifafu.kyzz.data.model
 // 喂食/玩耍机制：每小时恢复1次，上限3次
 data class Pet(
     var name: String = "小农",
-    var petType: String = "cat",  // cat / dog / dragon
+    var petType: String = "cat",  // cat / dog / dragon / crab / calico / cloudling
     var level: Int = 1,
     var exp: Int = 0,
     var mood: Int = 80,        // 0-100 心情值
@@ -40,6 +40,30 @@ data class Pet(
             level >= 10 -> "进步龙"
             level >= 5 -> "学习龙"
             else -> "小龙崽"
+        }
+        "crab" -> when {
+            level >= 30 -> "学霸Claude"
+            level >= 20 -> "优等Claude"
+            level >= 15 -> "努力Claude"
+            level >= 10 -> "进步Claude"
+            level >= 5 -> "学习Claude"
+            else -> "Claude"
+        }
+        "calico" -> when {
+            level >= 30 -> "学霸猫"
+            level >= 20 -> "优等猫"
+            level >= 15 -> "努力猫"
+            level >= 10 -> "进步猫"
+            level >= 5 -> "学习猫"
+            else -> "小奶猫"
+        }
+        "cloudling" -> when {
+            level >= 30 -> "学霸云"
+            level >= 20 -> "优等云"
+            level >= 15 -> "努力云"
+            level >= 10 -> "进步云"
+            level >= 5 -> "学习云"
+            else -> "小云朵"
         }
         else -> when {
             level >= 30 -> "学霸猫"

@@ -19,48 +19,59 @@ import java.util.Locale
 class CourseReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
-        val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
-        val shouldNotify = prefs.getBoolean("notify_course", true)
+        val pendingResult = goAsync()
+        Thread {
+            try {
+                val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
+                val shouldNotify = prefs.getBoolean("notify_course", true)
 
-        if (shouldNotify) {
-            val text = buildReminderText(context)
-            if (text.isNotEmpty()) {
-                val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    val channel = NotificationChannel(
-                        CHANNEL_ID, "课程提醒", NotificationManager.IMPORTANCE_DEFAULT
-                    )
-                    nm.createNotificationChannel(channel)
+                if (shouldNotify) {
+                    val text = buildReminderText(context)
+                    if (text.isNotEmpty()) {
+                        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                            val channel = NotificationChannel(
+                                CHANNEL_ID, "课程提醒", NotificationManager.IMPORTANCE_DEFAULT
+                            )
+                            nm.createNotificationChannel(channel)
+                        }
+
+                        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+                            .setSmallIcon(R.mipmap.ic_launcher)
+                            .setContentTitle("今日课程提醒")
+                            .setContentText(text)
+                            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                            .setAutoCancel(true)
+                            .build()
+
+                        nm.notify(1001, notification)
+                    }
                 }
 
-                val notification = NotificationCompat.Builder(context, CHANNEL_ID)
-                    .setSmallIcon(R.mipmap.ic_launcher)
-                    .setContentTitle("今日课程提醒")
-                    .setContentText(text)
-                    .setStyle(NotificationCompat.BigTextStyle().bigText(text))
-                    .setAutoCancel(true)
-                    .build()
-
-                nm.notify(1001, notification)
+                // Always re-schedule for next day to keep the alarm chain alive
+                scheduleNext(context)
+            } finally {
+                pendingResult.finish()
             }
-        }
-
-        // Always re-schedule for next day to keep the alarm chain alive
-        scheduleNext(context)
+        }.start()
     }
 
     private fun scheduleNext(context: Context) {
-        val intent = Intent(context, CourseReminderReceiver::class.java)
-        val pending = PendingIntent.getBroadcast(
-            context, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
-            add(Calendar.DAY_OF_YEAR, 1)
+        try {
+            val intent = Intent(context, CourseReminderReceiver::class.java)
+            val pending = PendingIntent.getBroadcast(
+                context, 0, intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            val cal = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
+                add(Calendar.DAY_OF_YEAR, 1)
+            }
+            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pending)
+        } catch (e: SecurityException) {
+            android.util.Log.w("CourseReminderReceiver", "无精确闹钟权限", e)
         }
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pending)
     }
 
     private fun buildReminderText(context: Context): String {
