@@ -6,8 +6,10 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import java.nio.charset.Charset
@@ -63,7 +65,9 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
-                bytesToString(bytes)
+                val html = bytesToString(bytes)
+                checkAlert(html)?.let { throw AlertException(it.message) }
+                html
             }
         }
     }
@@ -78,6 +82,7 @@ class HtmlClient @Inject constructor(
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
                 val html = bytesToString(bytes)
+                checkAlert(html)?.let { throw AlertException(it.message) }
                 val doc = Jsoup.parse(html)
                 val vs = doc.select("input[name=__VIEWSTATE]").first()
                 val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").first()
@@ -116,7 +121,9 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
-                bytesToString(bytes)
+                val html = bytesToString(bytes)
+                checkAlert(html)?.let { throw AlertException(it.message) }
+                html
             }
         }
     }
@@ -131,10 +138,119 @@ class HtmlClient @Inject constructor(
         return builder.build()
     }
 
+    companion object {
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        private const val ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+        private const val ACCEPT_LANGUAGE = "zh-CN,zh;q=0.9,en-US;q=0.6,en;q=0.5"
+    }
+
     private fun buildRequest(url: String): Request.Builder {
         return Request.Builder().url(url).apply {
+            header("User-Agent", USER_AGENT)
+            header("Accept", ACCEPT)
+            header("Accept-Language", ACCEPT_LANGUAGE)
+            header("Upgrade-Insecure-Requests", "1")
             if (referer.isNotEmpty()) {
                 header("Referer", referer)
+            }
+        }
+    }
+
+    /**
+     * GET a URL and return the raw HTML without checking for alerts.
+     * Used for navigation setup where alert scripts are expected and should be ignored.
+     */
+    suspend fun getStringRaw(url: String): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val request = buildRequest(url).get().build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                lastUrl = response.request.url.toString()
+                referer = lastUrl
+                bytesToString(bytes)
+            }
+        }
+    }
+
+    /** Atomic: set referer + getStringRaw under the same mutex lock */
+    suspend fun getStringRawWithReferer(url: String, refererUrl: String): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            referer = refererUrl
+            val request = buildRequest(url).get().build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                lastUrl = response.request.url.toString()
+                this@HtmlClient.referer = lastUrl
+                bytesToString(bytes)
+            }
+        }
+    }
+
+    /** Atomic: set referer + getString under the same mutex lock */
+    suspend fun getStringWithReferer(url: String, refererUrl: String): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            referer = refererUrl
+            val request = buildRequest(url).get().build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                lastUrl = response.request.url.toString()
+                this@HtmlClient.referer = lastUrl
+                val html = bytesToString(bytes)
+                checkAlert(html)?.let { throw AlertException(it.message) }
+                html
+            }
+        }
+    }
+
+    /** Atomic: set referer + postString under the same mutex lock */
+    suspend fun postStringWithReferer(url: String, formBody: FormBody, refererUrl: String): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            referer = refererUrl
+            val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
+            val request = buildRequest(url).post(formBody).addHeader("Origin", origin).build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                lastUrl = response.request.url.toString()
+                this@HtmlClient.referer = lastUrl
+                val html = bytesToString(bytes)
+                checkAlert(html)?.let { throw AlertException(it.message) }
+                html
+            }
+        }
+    }
+
+    /** Atomic: set referer + post raw RequestBody under the same mutex lock */
+    suspend fun postStringWithReferer(url: String, body: okhttp3.RequestBody, refererUrl: String): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            referer = refererUrl
+            val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
+            val request = buildRequest(url).post(body).addHeader("Origin", origin).build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                lastUrl = response.request.url.toString()
+                this@HtmlClient.referer = lastUrl
+                val html = bytesToString(bytes)
+                checkAlert(html)?.let { throw AlertException(it.message) }
+                html
+            }
+        }
+    }
+
+    /** Atomic: set referer + post raw bytes under the same mutex lock, no alert check */
+    suspend fun postRawBytesWithReferer(url: String, rawBytes: ByteArray, refererUrl: String): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            referer = refererUrl
+            val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
+            val body = rawBytes.toRequestBody("application/x-www-form-urlencoded".toMediaType())
+            val request = buildRequest(url).post(body).addHeader("Origin", origin).build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                val code = response.code
+                val finalUrl = response.request.url.toString()
+                android.util.Log.d("HtmlClient", "POST raw: url=$finalUrl, code=$code, bodyLen=${bytes.size}, hasRedirect=${url != finalUrl}")
+                lastUrl = finalUrl
+                this@HtmlClient.referer = finalUrl
+                bytesToString(bytes)
             }
         }
     }
@@ -145,6 +261,7 @@ class HtmlClient @Inject constructor(
             val html = bytesToString(bytes)
             lastUrl = response.request.url.toString()
             referer = lastUrl
+            checkAlert(html)?.let { throw AlertException(it.message) }
             val doc = Jsoup.parse(html)
             extractViewState(doc)
             return doc
@@ -205,18 +322,60 @@ class HtmlClient @Inject constructor(
         return SelectOptions(values, selected)
     }
 
+    fun setReferer(url: String) {
+        referer = url
+    }
+
+    fun checkErrorPage(html: String): Response? {
+        if (html.contains("<title>ERROR - 出错啦！</title>") || html.contains("ERROR - 出错啦！")) {
+            val regex = Regex("""错误原因：(.*?)</""")
+            val match = regex.find(html)
+            if (match != null) {
+                return Response(false, -1, match.groupValues[1].trim())
+            }
+            return Response(false, -1, "教务系统异常：出错啦！")
+        }
+        return null
+    }
+
     fun checkAlert(html: String): Response? {
+        val regex = Regex("""(?is)(?:window\.)?alert\s*\(\s*(['"])(.*?)\1\s*\)""")
+        // 先在 raw HTML 中搜索（兼容非标准 script 标签或 script 内容解析差异）
+        val rawMatch = regex.find(html)
+        if (rawMatch != null && !isAlertInsideFunction(html, rawMatch.range.first)) {
+            return Response(false, -1, rawMatch.groupValues[2])
+        }
+        // 再在 Jsoup 解析的 script 标签内容中搜索（兼容 CDATA 等包装）
         val doc = Jsoup.parse(html)
-        val scripts = doc.select("script")
-        for (script in scripts) {
+        for (script in doc.select("script")) {
             val content = script.html()
-            val regex = Regex("""alert\(['"](.*?)['"]\)""")
             val match = regex.find(content)
             if (match != null) {
-                return Response(false, -1, match.groupValues[1])
+                // 需要在原始 HTML 中定位此 script 内的 alert
+                val scriptIdx = html.indexOf(content)
+                if (scriptIdx >= 0) {
+                    val absPos = scriptIdx + match.range.first
+                    if (isAlertInsideFunction(html, absPos)) continue
+                }
+                return Response(false, -1, match.groupValues[2])
             }
         }
         return null
+    }
+
+    /** 检查 alert 是否在 function 定义内部 (如 function Keykz() { alert(...) }) */
+    private fun isAlertInsideFunction(html: String, alertPos: Int): Boolean {
+        if (alertPos < 0) return false
+        val start = maxOf(0, alertPos - 400)
+        val before = html.substring(start, alertPos)
+        // 从 alert 位置向前找 function 关键字，确保没有被 } 闭合
+        val lastBrace = before.lastIndexOf('}')
+        val lastFunction = before.lastIndexOf("function")
+        return lastFunction >= 0 && lastFunction > lastBrace
+    }
+
+    fun throwIfAlert(html: String) {
+        checkAlert(html)?.let { throw AlertException(it.message) }
     }
 
     data class PostResult(val html: String, val url: String)
@@ -227,6 +386,7 @@ class HtmlClient @Inject constructor(
             client.newCall(request).execute().use { response ->
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 val html = bytesToString(bytes)
+                checkAlert(html)?.let { throw AlertException(it.message) }
                 val finalUrl = response.request.url.toString()
                 lastUrl = finalUrl
                 referer = finalUrl

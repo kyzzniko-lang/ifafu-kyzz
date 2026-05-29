@@ -3,6 +3,7 @@ package com.ifafu.kyzz.data.api
 import android.util.Log
 import com.ifafu.kyzz.data.model.CourseSelection
 import com.ifafu.kyzz.data.model.MakeupExam
+import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.HtmlParser
 import com.ifafu.kyzz.data.repository.UserRepository
@@ -41,11 +42,14 @@ class StudentQueryApi @Inject constructor(
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return QueryResult(false, "会话已过期，请重新登录")
                 }
+                htmlClient.throwIfAlert(retryHtml)
                 return parseCourseSelections(retryHtml)
             }
 
+            htmlClient.throwIfAlert(html)
             parseCourseSelections(html)
         } catch (e: CancellationException) { throw e }
+        catch (e: AlertException) { throw e }
         catch (e: Exception) {
             Log.e(TAG, "Failed to get course selections", e)
             QueryResult(false, "网络异常")
@@ -133,11 +137,14 @@ class StudentQueryApi @Inject constructor(
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return QueryResult(false, "会话已过期，请重新登录")
                 }
+                htmlClient.throwIfAlert(retryHtml)
                 return parseMakeupExams(retryHtml)
             }
 
+            htmlClient.throwIfAlert(html)
             parseMakeupExams(html)
         } catch (e: CancellationException) { throw e }
+        catch (e: AlertException) { throw e }
         catch (e: Exception) {
             Log.e(TAG, "Failed to get makeup exams", e)
             QueryResult(false, "网络异常")

@@ -6,6 +6,7 @@ import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Score
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.ui.base.ReloginViewModel
+import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
@@ -76,6 +77,8 @@ class ScoreViewModel @Inject constructor(
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: AlertException) {
+                _state.value = UiState.Error(e.message ?: "获取成绩失败")
             } catch (e: Exception) {
                 val cached = cacheManager.loadScores(userRepository.getUser().account)
                 if (cached != null && cached.isNotEmpty()) {

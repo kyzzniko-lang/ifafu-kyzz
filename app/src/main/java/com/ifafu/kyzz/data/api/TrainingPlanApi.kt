@@ -3,6 +3,7 @@ package com.ifafu.kyzz.data.api
 import android.util.Log
 import com.ifafu.kyzz.data.model.GradeExam
 import com.ifafu.kyzz.data.model.TrainingPlan
+import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.TrainingPlanParser
 import com.ifafu.kyzz.data.repository.UserRepository
@@ -33,10 +34,13 @@ class TrainingPlanApi @Inject constructor(
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return null
+                htmlClient.throwIfAlert(retryHtml)
                 return parser.parse(retryDoc)
             }
+            htmlClient.throwIfAlert(html)
             parser.parse(doc)
         } catch (e: CancellationException) { throw e }
+        catch (e: AlertException) { throw e }
         catch (e: Exception) {
             Log.e("TrainingPlanApi", "Failed to fetch training plan", e)
             null
@@ -56,10 +60,13 @@ class TrainingPlanApi @Inject constructor(
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return emptyList()
+                htmlClient.throwIfAlert(retryHtml)
                 return parser.parseGradeExams(retryDoc)
             }
+            htmlClient.throwIfAlert(html)
             parser.parseGradeExams(doc)
         } catch (e: CancellationException) { throw e }
+        catch (e: AlertException) { throw e }
         catch (e: Exception) {
             Log.e("TrainingPlanApi", "Failed to fetch grade exams", e)
             emptyList()

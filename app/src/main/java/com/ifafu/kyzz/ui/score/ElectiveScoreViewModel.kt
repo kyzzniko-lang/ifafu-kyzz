@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import com.ifafu.kyzz.data.api.ScoreApi
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Score
+import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
@@ -55,6 +56,8 @@ class ElectiveScoreViewModel @Inject constructor(
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: AlertException) {
+                _state.value = State.Error(e.message ?: "加载失败")
             } catch (e: Exception) {
                 // Fallback to stale cache on network error
                 val cached = cacheManager.loadScores(user.account)

@@ -2,6 +2,7 @@ package com.ifafu.kyzz.data.api
 
 import android.util.Log
 import com.ifafu.kyzz.data.model.StudentInfo
+import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.StudentInfoParser
 import com.ifafu.kyzz.data.repository.UserRepository
@@ -33,11 +34,14 @@ class StudentInfoApi @Inject constructor(
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return null
+                htmlClient.throwIfAlert(retryHtml)
                 return studentInfoParser.parseStudentInfo(retryDoc, user.account)
             }
 
+            htmlClient.throwIfAlert(html)
             studentInfoParser.parseStudentInfo(doc, number)
         } catch (e: CancellationException) { throw e }
+        catch (e: AlertException) { throw e }
         catch (e: Exception) {
             Log.e("StudentInfoApi", "Failed to fetch student info", e)
             null

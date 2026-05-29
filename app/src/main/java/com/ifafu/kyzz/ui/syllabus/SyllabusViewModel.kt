@@ -5,6 +5,7 @@ import com.ifafu.kyzz.data.api.SyllabusApi
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Syllabus
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.ui.base.ReloginViewModel
 import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -105,6 +106,8 @@ class SyllabusViewModel @Inject constructor(
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
+            } catch (e: AlertException) {
+                _state.value = UiState.Error(e.message ?: "获取课表失败")
             } catch (e: Exception) {
                 val cached = cacheManager.loadSyllabus(userRepository.getUser().account, yearTermKey)
                 if (cached != null && cached.courses.isNotEmpty()) {

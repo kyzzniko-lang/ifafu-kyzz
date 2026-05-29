@@ -18,11 +18,17 @@ import com.ifafu.kyzz.data.model.Exam
 import com.ifafu.kyzz.data.model.ExamProgress
 import com.ifafu.kyzz.databinding.FragmentExamBinding
 import com.ifafu.kyzz.ui.base.UiState
+import com.ifafu.kyzz.data.model.PetState
+import com.ifafu.kyzz.data.repository.PetRepository
+import com.ifafu.kyzz.ui.pet.PetLottieManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
 @AndroidEntryPoint
 class ExamFragment : Fragment() {
+
+    @Inject
+    lateinit var petRepository: PetRepository
 
     private var _binding: FragmentExamBinding? = null
     private val binding get() = _binding!!
@@ -77,6 +83,14 @@ class ExamFragment : Fragment() {
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
+        
+        val pet = petRepository.loadPet()
+        PetLottieManager.applyAnimation(
+            requireContext(),
+            binding.ivErrorPet,
+            PetState.SAD,
+            pet.petType
+        )
     }
 
     private fun showExams(exams: List<Exam>) {

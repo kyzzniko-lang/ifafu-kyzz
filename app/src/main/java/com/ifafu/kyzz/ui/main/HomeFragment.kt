@@ -157,7 +157,11 @@ class HomeFragment : Fragment() {
         val ctx = context ?: return
         val cached = com.ifafu.kyzz.ui.settings.UpdateChecker.loadCachedResult(ctx)
         if (cached != null && !com.ifafu.kyzz.ui.settings.UpdateChecker.isDismissed(ctx, cached.versionName)) {
-            showUpdateCard(cached)
+            if (com.ifafu.kyzz.ui.settings.UpdateChecker.isNewerThanCurrent(ctx, cached)) {
+                showUpdateCard(cached)
+            } else {
+                com.ifafu.kyzz.ui.settings.UpdateChecker.clearCachedResult(ctx)
+            }
         }
     }
 

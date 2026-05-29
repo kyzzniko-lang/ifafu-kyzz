@@ -21,10 +21,16 @@ import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Score
 import com.ifafu.kyzz.databinding.FragmentScoreBinding
 import com.ifafu.kyzz.ui.base.UiState
+import com.ifafu.kyzz.data.model.PetState
+import com.ifafu.kyzz.data.repository.PetRepository
+import com.ifafu.kyzz.ui.pet.PetLottieManager
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class ScoreFragment : Fragment() {
+
+    @Inject lateinit var petRepository: PetRepository
 
     private var _binding: FragmentScoreBinding? = null
     private val binding get() = _binding!!
@@ -136,6 +142,14 @@ class ScoreFragment : Fragment() {
         binding.recyclerView.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
+        
+        val pet = petRepository.loadPet()
+        PetLottieManager.applyAnimation(
+            requireContext(),
+            binding.ivErrorPet,
+            PetState.SAD,
+            pet.petType
+        )
     }
 
     private fun showScores(scores: List<Score>) {

@@ -90,7 +90,7 @@ object UpdateChecker {
         }.start()
     }
 
-    private fun getCurrentVersion(context: Context): String {
+    fun getCurrentVersion(context: Context): String {
         return try {
             val info = context.packageManager.getPackageInfo(context.packageName, 0)
             info.versionName ?: "0.0.0"
@@ -99,7 +99,7 @@ object UpdateChecker {
         }
     }
 
-    private fun isNewerVersion(latest: String, current: String): Boolean {
+    fun isNewerVersion(latest: String, current: String): Boolean {
         val latestParts = latest.split(".").map { it.takeWhile { c -> c.isDigit() }.toIntOrNull() ?: 0 }
         val currentParts = current.split(".").map { it.takeWhile { c -> c.isDigit() }.toIntOrNull() ?: 0 }
         val maxLen = maxOf(latestParts.size, currentParts.size)
@@ -110,6 +110,10 @@ object UpdateChecker {
             if (l < c) return false
         }
         return false
+    }
+
+    fun isNewerThanCurrent(context: Context, release: ReleaseInfo): Boolean {
+        return isNewerVersion(release.versionName, getCurrentVersion(context))
     }
 
     private val mirrors = listOf(

@@ -5,6 +5,7 @@ import com.ifafu.kyzz.data.api.TrainingPlanApi
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.TrainingPlan
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.ui.base.ReloginViewModel
 import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -66,6 +67,8 @@ class TrainingPlanViewModel @Inject constructor(
                 }
             } catch (e: CancellationException) {
                 throw e
+            } catch (e: AlertException) {
+                _state.value = UiState.Error(e.message ?: "获取培养计划失败")
             } catch (e: Exception) {
                 val cached = cacheManager.loadTrainingPlan(userRepository.getUser().account)
                 if (cached != null && cached.courses.isNotEmpty()) {

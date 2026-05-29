@@ -2,6 +2,7 @@ package com.ifafu.kyzz.data.api
 
 import android.util.Log
 import com.ifafu.kyzz.data.model.Syllabus
+import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.HtmlParser
 import com.ifafu.kyzz.data.parser.SyllabusParser
@@ -26,6 +27,9 @@ class SyllabusApi @Inject constructor(
 
     suspend fun getSyllabus(host: String, token: String, number: String, name: String): Syllabus? {
         return try {
+            val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
+            htmlClient.setReferer(mainUrl)
+
             val accessUrl = "${host}/(${token})/xskbcx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
             val doc = htmlClient.get(accessUrl)
             val html = doc.html()
@@ -36,15 +40,28 @@ class SyllabusApi @Inject constructor(
                 val retryUrl = "${host}/(${user.token})/xskbcx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
-                if (userApi.isSessionExpired(retryHtml)) return null
+                if (userApi.isSessionExpired(retryHtml)) {
+                    try {
+                        htmlClient.get("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
+                        htmlClient.get("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
+                    } catch (e: AlertException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // ignore
+                    }
+                    return null
+                }
+                htmlClient.throwIfAlert(retryHtml)
                 val syllabus = syllabusParser.parseSyllabus(retryDoc, user.account)
                 saveTermFirstDayIfNeeded(syllabus)
                 return syllabus
             }
+            htmlClient.throwIfAlert(html)
             val syllabus = syllabusParser.parseSyllabus(doc, number)
             saveTermFirstDayIfNeeded(syllabus)
             syllabus
         } catch (e: CancellationException) { throw e }
+        catch (e: AlertException) { throw e }
         catch (e: Exception) {
             Log.e("SyllabusApi", "Failed to fetch syllabus", e)
             null
@@ -56,6 +73,9 @@ class SyllabusApi @Inject constructor(
         year: String, term: String
     ): Syllabus? {
         return try {
+            val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
+            htmlClient.setReferer(mainUrl)
+
             var accessUrl = "${host}/(${token})/xskbcx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
             // 1. GET 获取 __VIEWSTATE
             var initialDoc = htmlClient.get(accessUrl)
@@ -67,7 +87,20 @@ class SyllabusApi @Inject constructor(
                 accessUrl = "${host}/(${user.token})/xskbcx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
                 initialDoc = htmlClient.get(accessUrl)
                 initialHtml = initialDoc.html()
+                if (userApi.isSessionExpired(initialHtml)) {
+                    try {
+                        htmlClient.get("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
+                        htmlClient.get("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
+                    } catch (e: AlertException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // ignore
+                    }
+                    return null
+                }
             }
+
+            htmlClient.throwIfAlert(initialHtml)
 
             // 2. POST 切换学年+学期（__EVENTTARGET=xnd），与浏览器抓包完全一致
             Log.d("SyllabusApi", "POST xnd=$year, xqd=$term")
@@ -89,11 +122,13 @@ class SyllabusApi @Inject constructor(
                 Log.e("SyllabusApi", "Session expired after POST!")
                 return null
             }
+            htmlClient.throwIfAlert(html)
             val syllabus = syllabusParser.parseSyllabus(doc, number)
             Log.d("SyllabusApi", "Parsed: courses=${syllabus.courses.size}")
             saveTermFirstDayIfNeeded(syllabus)
             syllabus
         } catch (e: CancellationException) { throw e }
+        catch (e: AlertException) { throw e }
         catch (e: Exception) {
             Log.e("SyllabusApi", "Failed to fetch syllabus with term", e)
             null

@@ -202,6 +202,8 @@ class UserApi @Inject constructor(
         // Check for JS redirect to login page
         if (Regex("""location\s*[=.]\s*["'][^"']{0,30}default[2]?\.aspx""").containsMatchIn(html)) return true
         if (Regex("""window\.location\s*=\s*["'][^"']{0,30}default[2]?\.aspx""").containsMatchIn(html)) return true
+        // ZF system throws "系统正忙" when session is lost and NullReferenceException occurs
+        if (html.contains("<title>ERROR - 出错啦！</title>") || html.contains("系统正忙")) return true
         return false
     }
 }

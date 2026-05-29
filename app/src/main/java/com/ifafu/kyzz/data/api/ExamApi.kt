@@ -2,6 +2,7 @@ package com.ifafu.kyzz.data.api
 
 import android.util.Log
 import com.ifafu.kyzz.data.model.ExamTable
+import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.ExamParser
 import com.ifafu.kyzz.data.repository.UserRepository
@@ -25,6 +26,9 @@ class ExamApi @Inject constructor(
 
     suspend fun getExamTable(host: String, token: String, number: String, name: String): ExamTable? {
         return try {
+            val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
+            htmlClient.setReferer(mainUrl)
+            
             val accessUrl = "${host}/(${token})/xskscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
             val doc = htmlClient.get(accessUrl)
             val html = doc.html()
@@ -39,18 +43,29 @@ class ExamApi @Inject constructor(
                 val user = userRepository.getUser()
                 Log.d(TAG, "Relogin ok, retrying with token=${user.token.take(10)}..., account=${user.account}, name=$name")
                 val retryUrl = "${host}/(${user.token})/xskscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
+                htmlClient.setReferer("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) {
                     Log.w(TAG, "Session still expired after relogin, retryUrl=$retryUrl")
-                    Log.w(TAG, "Retry HTML snippet: ${retryHtml.take(500)}")
+                    try {
+                        htmlClient.get("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
+                        htmlClient.get("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
+                    } catch (e: AlertException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // ignore
+                    }
                     return null
                 }
+                htmlClient.throwIfAlert(retryHtml)
                 return examParser.parseExamTable(retryDoc)
             }
 
+            htmlClient.throwIfAlert(html)
             examParser.parseExamTable(doc)
         } catch (e: CancellationException) { throw e }
+        catch (e: AlertException) { throw e }
         catch (e: Exception) {
             Log.e(TAG, "Failed to fetch exam table", e)
             null
