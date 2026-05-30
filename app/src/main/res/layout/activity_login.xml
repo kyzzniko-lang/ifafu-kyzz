@@ -100,7 +100,7 @@
                 android:hint="学号"
                 android:inputType="number"
                 android:padding="16dp"
-                android:textColor="@color/claude_text_primary"
+                android:textColor="#FFFFFF"
                 android:textColorHint="@color/claude_text_hint"
                 android:textSize="15sp" />
 
@@ -129,7 +129,7 @@
                 android:hint="密码"
                 android:inputType="textPassword"
                 android:padding="16dp"
-                android:textColor="@color/claude_text_primary"
+                android:textColor="#FFFFFF"
                 android:textColorHint="@color/claude_text_hint"
                 android:textSize="15sp" />
 
