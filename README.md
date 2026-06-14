@@ -49,6 +49,20 @@
 
 ## 更新日志
 
+### v2.4.0
+- 重制登录页 / 首页为 Claude 克制米白派风格（米白底、低饱和橙、Playfair serif 标题）
+- 新增 Playfair Display Italic 字体，首页问候语改为 italic 大字号艺术 serif
+- 新增学期推断器 `TermResolver`：按月份自动推断当前学年学期，避免服务端 select 默认 option 误判导致课表/考试显示错误学期内容
+- 课表 / 考试 API 改为优先用推断学期 POST 请求，空数据时抛 AlertException 提示用户
+- 修复登录验证码错误后无法登录的关键 bug：HtmlClient `postWithFollow` 抛 AlertException 被外层 catch 吞掉，导致验证码不刷新、autoCaptcha 一直是已被服务端消耗的旧值，用户多次点击都被服务端拒绝
+- 登录页新增验证码错误自动重试：识别为验证码错时，后台静默刷新验证码并重新识别提交，最多再试 2 次（共 3 次），其他错误（账号 / 密码错）立即提示
+- `UserApi.relogin()` 同步加上验证码错误判定：仅验证码错时才继续重试，密码错立即返回避免空耗 5 次
+- 首页天气模块去除 emoji，改为 "多云 · 24°C · 降雨60%" 形式；课程行天气标同步改为 "多云 · 24°C"
+- HtmlClient 多处 `.first()` → `.firstOrNull()` 加固，避免 Jsoup 1.18 NPE
+- CacheManager 反序列化失败添加日志、新增按学期分键的成绩缓存
+- 宠物状态衰减：使用 Asia/Shanghai 时区计算签到日期；时间倒退（用户改系统时间）时不衰减状态，避免数值异常
+- 桌面 Widget：新增显式 ACTION_UPDATE 广播 + AlarmManager 30 分钟轮询，避免 Android 限制下 widget 不刷新
+
 ### v2.3.2
 - 修复登录页面输入文字颜色与背景色相同导致看不见的问题
 

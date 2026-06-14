@@ -25,33 +25,32 @@ data class DailyWeather(
     val cachedAt: Long = System.currentTimeMillis()
 ) {
     companion object {
-        // WMO weather code → emoji + description
+        // WMO weather code → description
         private val codeMap = mapOf(
-            0 to Pair("☀️", "晴"),
-            1 to Pair("🌤️", "少云"),
-            2 to Pair("⛅", "多云"),
-            3 to Pair("☁️", "阴"),
-            45 to Pair("🌫️", "雾"),
-            48 to Pair("🌫️", "雾凇"),
-            51 to Pair("🌦️", "小雨"),
-            53 to Pair("🌦️", "中雨"),
-            55 to Pair("🌦️", "大雨"),
-            61 to Pair("🌧️", "小雨"),
-            63 to Pair("🌧️", "中雨"),
-            65 to Pair("🌧️", "大雨"),
-            71 to Pair("🌨️", "小雪"),
-            73 to Pair("🌨️", "中雪"),
-            75 to Pair("🌨️", "大雪"),
-            80 to Pair("🌧️", "阵雨"),
-            81 to Pair("🌧️", "中阵雨"),
-            82 to Pair("🌧️", "大阵雨"),
-            95 to Pair("⛈️", "雷暴"),
-            96 to Pair("⛈️", "雷暴+冰雹"),
-            99 to Pair("⛈️", "强雷暴")
+            0 to "晴",
+            1 to "少云",
+            2 to "多云",
+            3 to "阴",
+            45 to "雾",
+            48 to "雾凇",
+            51 to "小雨",
+            53 to "中雨",
+            55 to "大雨",
+            61 to "小雨",
+            63 to "中雨",
+            65 to "大雨",
+            71 to "小雪",
+            73 to "中雪",
+            75 to "大雪",
+            80 to "阵雨",
+            81 to "中阵雨",
+            82 to "大阵雨",
+            95 to "雷暴",
+            96 to "雷暴+冰雹",
+            99 to "强雷暴"
         )
 
-        fun weatherEmoji(code: Int): String = codeMap[code]?.first ?: "🌈"
-        fun weatherDesc(code: Int): String = codeMap[code]?.second ?: "未知"
+        fun weatherDesc(code: Int): String = codeMap[code] ?: "未知"
     }
 
     /** 获取最接近指定小时(如8点对应第1节课)的天气 */
@@ -66,7 +65,7 @@ data class DailyWeather(
             val mostCommonCode = hourly.groupBy { it.weatherCode }
                 .maxByOrNull { it.value.size }?.key ?: 0
             val maxPrecip = hourly.maxOfOrNull { it.precipProb } ?: 0
-            return "${weatherEmoji(mostCommonCode)} ${weatherDesc(mostCommonCode)}  ${avgTemp}°C" +
-                if (maxPrecip > 30) "  🌂${maxPrecip}%" else ""
+            return "${weatherDesc(mostCommonCode)} · ${avgTemp}°C" +
+                if (maxPrecip > 30) " · 降雨${maxPrecip}%" else ""
         }
 }

@@ -358,10 +358,8 @@ class HomeFragment : Fragment() {
                 text = buildString {
                     append(pw.label)
                     if (pw.weather != null) {
-                        val w = pw.weather
-                        append(" ")
-                        append(com.ifafu.kyzz.data.model.DailyWeather.weatherEmoji(w.weatherCode))
-                        append("${w.temp}°")
+                        append(" · ")
+                        append("${pw.weather.temp}°")
                     }
                 }
                 setTextAppearance(com.ifafu.kyzz.R.style.ClaudeCaption)
@@ -409,7 +407,7 @@ class HomeFragment : Fragment() {
         val upcoming = events.mapNotNull { event ->
             try {
                 val target = sdf.parse(event.date) ?: return@mapNotNull null
-                val days = ((target.time - now.time.time) / (24 * 60 * 60 * 1000)).toInt()
+                val days = ((target.time - now.time.time) / (24 * 60 * 60 * 1000L)).toInt()
                 event to days
             } catch (_: Exception) { null }
         }.sortedBy { it.second }.take(3)
@@ -487,7 +485,7 @@ class HomeFragment : Fragment() {
         return events.mapNotNull { event ->
             try {
                 val target = sdf.parse(event.date) ?: return@mapNotNull null
-                val days = ((target.time - now.time.time) / (24 * 60 * 60 * 1000)).toInt()
+                val days = ((target.time - now.time.time) / (24 * 60 * 60 * 1000L)).toInt()
                 event.name to days
             } catch (_: Exception) { null }
         }
@@ -1437,7 +1435,7 @@ class HomeFragment : Fragment() {
                 text = numberStr
                 textSize = 20f // Larger number for premium feel
                 setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.NORMAL) // Clean number font
+                typeface = resources.getFont(R.font.claude_serif)
                 setPadding(0, 0, 2, 0)
             })
         }
@@ -1547,7 +1545,7 @@ class HomeFragment : Fragment() {
             val courseStartHour = (sectionStartMinutes[course.begin] ?: 480) / 60
             val weather = dailyWeather?.getWeatherForHour(courseStartHour)
             if (weather != null) {
-                tvWeather.text = "${com.ifafu.kyzz.data.model.DailyWeather.weatherEmoji(weather.weatherCode)} ${weather.temp}°C"
+                tvWeather.text = "${com.ifafu.kyzz.data.model.DailyWeather.weatherDesc(weather.weatherCode)} · ${weather.temp}°C"
                 tvWeather.visibility = View.VISIBLE
             } else {
                 tvWeather.visibility = View.GONE

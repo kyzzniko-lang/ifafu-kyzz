@@ -4,6 +4,7 @@ import android.os.Bundle
 import android.os.CountDownTimer
 import android.widget.Toast
 import com.ifafu.kyzz.R
+import com.ifafu.kyzz.data.repository.PetRepository
 import com.ifafu.kyzz.databinding.ActivityPomodoroTimerBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import java.text.SimpleDateFormat
@@ -13,6 +14,8 @@ import java.util.Locale
 class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
 
     override fun createBinding() = ActivityPomodoroTimerBinding.inflate(layoutInflater)
+
+    private val petRepository by lazy { PetRepository(applicationContext) }
 
     private val prefs by lazy { getSharedPreferences("pomodoro_prefs", MODE_PRIVATE) }
 
@@ -30,13 +33,32 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
         super.onCreate(savedInstanceState)
         binding.toolbar.setNavigationOnClickListener { finish() }
 
+        // Restore timer state after rotation
+        if (savedInstanceState != null) {
+            isRunning = savedInstanceState.getBoolean("isRunning", false)
+            isBreak = savedInstanceState.getBoolean("isBreak", false)
+            remainingMillis = savedInstanceState.getLong("remainingMillis", FOCUS_DURATION)
+        }
+
         updateTodayCount()
         updateDisplay()
+
+        // If timer was running before rotation, restart it
+        if (isRunning) {
+            start()
+        }
 
         binding.btnStart.setOnClickListener {
             if (isRunning) pause() else start()
         }
         binding.btnReset.setOnClickListener { reset() }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean("isRunning", isRunning)
+        outState.putBoolean("isBreak", isBreak)
+        outState.putLong("remainingMillis", remainingMillis)
     }
 
     private fun start() {
@@ -95,11 +117,10 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
         prefs.edit().putInt("pomodoros_$today", count).apply()
         updateTodayCount()
 
-        // 宠物 +10 经验 (使用 PetRepository 保证数据一致性)
-        val petRepo = com.ifafu.kyzz.data.repository.PetRepository(applicationContext)
-        val pet = petRepo.loadPet()
+        // 宠物 +10 经验
+        val pet = petRepository.loadPet()
         pet.addExp(10)
-        petRepo.savePet(pet)
+        petRepository.savePet(pet)
 
         Toast.makeText(this, "完成一个番茄！宠物+10经验", Toast.LENGTH_SHORT).show()
     }

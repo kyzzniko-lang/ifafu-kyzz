@@ -5,7 +5,9 @@ import com.ifafu.kyzz.data.model.ExamTable
 import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.ExamParser
+import com.ifafu.kyzz.data.parser.HtmlParser
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.util.TermResolver
 import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import javax.inject.Inject
@@ -15,6 +17,7 @@ import javax.inject.Singleton
 class ExamApi @Inject constructor(
     private val htmlClient: HtmlClient,
     private val examParser: ExamParser,
+    private val htmlParser: HtmlParser,
     private val userApi: UserApi,
     private val reloginHelper: ReloginHelper,
     private val userRepository: UserRepository
@@ -28,7 +31,7 @@ class ExamApi @Inject constructor(
         return try {
             val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
             htmlClient.setReferer(mainUrl)
-            
+
             val accessUrl = "${host}/(${token})/xskscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
             val doc = htmlClient.get(accessUrl)
             val html = doc.html()
@@ -59,16 +62,59 @@ class ExamApi @Inject constructor(
                     return null
                 }
                 htmlClient.throwIfAlert(retryHtml)
-                return examParser.parseExamTable(retryDoc)
+                return postAndParseExamTable(retryUrl, retryDoc)
             }
 
             htmlClient.throwIfAlert(html)
-            examParser.parseExamTable(doc)
+            postAndParseExamTable(accessUrl, doc)
         } catch (e: CancellationException) { throw e }
         catch (e: AlertException) { throw e }
         catch (e: Exception) {
             Log.e(TAG, "Failed to fetch exam table", e)
             null
         }
+    }
+
+    private suspend fun postAndParseExamTable(accessUrl: String, getDoc: org.jsoup.nodes.Document): ExamTable {
+        val getHtml = getDoc.html()
+        val state = htmlClient.parseViewState(getHtml)
+
+        val yearResult = htmlParser.parseSearchOptions(getDoc, "id=\"xnd\"", "学年第")
+        val termResult = htmlParser.parseSearchOptions(getDoc, "学年第", "校区")
+        val serverYear = yearResult.options.getOrElse(yearResult.selectedIndex) { "" }
+        val serverTerm = termResult.options.getOrElse(termResult.selectedIndex) { "" }
+
+        // 优先使用日期推断的学期；服务器选项里不存在则回退服务器默认值
+        val inferred = TermResolver.inferCurrentTerm()
+        val picked = TermResolver.pickTerm(
+            inferred.year, inferred.term,
+            yearResult.options, termResult.options
+        )
+        val targetYear = picked?.year ?: serverYear
+        val targetTerm = picked?.term ?: serverTerm
+        val usedInferred = picked != null
+
+        Log.d(
+            TAG,
+            "POST xnd=$targetYear, xqd=$targetTerm (inferred=${inferred.year}-${inferred.term}, server=$serverYear-$serverTerm, usedInferred=$usedInferred)"
+        )
+        val formBody = htmlClient.buildFormBodyWithViewState(
+            "__EVENTTARGET" to "xqd",
+            "__EVENTARGUMENT" to "",
+            "xnd" to targetYear,
+            "xqd" to targetTerm,
+            state = state
+        )
+
+        val postDoc = htmlClient.post(accessUrl, formBody)
+        htmlClient.throwIfAlert(postDoc.html())
+        val examTable = examParser.parseExamTable(postDoc)
+
+        // 健壮性：若使用了推断学期且没有任何考试，提示用户
+        if (usedInferred && examTable.exams.isEmpty()) {
+            throw AlertException("当前学期（${inferred.display()}）暂无考试安排，请确认学校是否已发布或稍后重试")
+        }
+
+        return examTable
     }
 }

@@ -13,13 +13,17 @@ import androidx.core.app.NotificationCompat
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.api.ScoreApi
 import com.ifafu.kyzz.data.cache.CacheManager
-import com.ifafu.kyzz.data.model.Score
 import com.ifafu.kyzz.data.repository.UserRepository
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 class ScoreCheckReceiver : BroadcastReceiver() {
@@ -32,26 +36,27 @@ class ScoreCheckReceiver : BroadcastReceiver() {
         fun userRepository(): UserRepository
     }
 
+    private val receiverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onReceive(context: Context, intent: Intent?) {
         val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
         val shouldNotify = prefs.getBoolean("notify_score", true)
 
         if (shouldNotify) {
             val pendingResult = goAsync()
-            Thread {
+            receiverScope.launch {
                 try {
                     checkNewScores(context)
                 } finally {
                     pendingResult.finish()
                 }
-            }.start()
+            }
         }
 
-        // Always re-schedule for next day to keep the alarm chain alive
         scheduleNext(context)
     }
 
-    private fun checkNewScores(context: Context) {
+    private suspend fun checkNewScores(context: Context) {
         try {
             val appContext = context.applicationContext
             val entryPoint = EntryPointAccessors.fromApplication(
@@ -64,35 +69,21 @@ class ScoreCheckReceiver : BroadcastReceiver() {
             val user = userRepository.getUser()
             if (!user.isLogin || user.account.isEmpty()) return
 
-            // Load previous count from cache
             val lastCount = cacheManager.loadScores(user.account)?.size ?: 0
 
-            // Fetch fresh scores from network
-            val freshScores = runBlocking {
+            val freshScores = withContext(Dispatchers.IO) {
                 scoreApi.getAllScores(
                     userRepository.host, user.token, user.account, user.name
                 )
             }
 
             if (freshScores != null) {
-                // Save fresh scores to cache
                 cacheManager.saveScores(user.account, freshScores)
                 val currentCount = freshScores.size
 
                 if (lastCount > 0 && currentCount > lastCount) {
                     val newCount = currentCount - lastCount
                     val newScores = freshScores.takeLast(newCount)
-                    val names = newScores.joinToString("、") { it.courseName }
-                    showNotification(context, "有${newCount}门新成绩", names)
-                }
-            } else {
-                // Network failed, fall back to cached data for comparison
-                val cachedScores = cacheManager.loadScores(user.account)
-                val currentCount = cachedScores?.size ?: 0
-
-                if (lastCount > 0 && currentCount > lastCount) {
-                    val newCount = currentCount - lastCount
-                    val newScores = cachedScores!!.takeLast(newCount)
                     val names = newScores.joinToString("、") { it.courseName }
                     showNotification(context, "有${newCount}门新成绩", names)
                 }
@@ -116,7 +107,7 @@ class ScoreCheckReceiver : BroadcastReceiver() {
             val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pending)
         } catch (e: SecurityException) {
-            android.util.Log.w("ScoreCheckReceiver", "无精确闹钟权限", e)
+            Log.w("ScoreCheckReceiver", "无精确闹钟权限", e)
         }
     }
 

@@ -18,6 +18,7 @@ import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.api.StudentQueryApi
 import com.ifafu.kyzz.data.model.CourseSelection
 import com.ifafu.kyzz.data.repository.UserRepository
+import kotlinx.coroutines.CancellationException
 import com.ifafu.kyzz.databinding.ActivityCourseSelectionBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import com.ifafu.kyzz.ui.base.ReloginViewModel
@@ -245,14 +246,19 @@ class CourseSelectionViewModel @Inject constructor(
         }
         state.value = CourseSelectionActivity.State.Loading
         viewModelScope.launch {
-            val result = studentQueryApi.getCourseSelections(
-                userRepository.host, user.token, user.account, user.name
-            )
-            if (result.success && result.data != null) {
-                data.value = result.data!!
-                state.value = CourseSelectionActivity.State.Success
-            } else {
-                state.value = CourseSelectionActivity.State.Error(result.message)
+            try {
+                val result = studentQueryApi.getCourseSelections(
+                    userRepository.host, user.token, user.account, user.name
+                )
+                if (result.success && result.data != null) {
+                    data.value = result.data!!
+                    state.value = CourseSelectionActivity.State.Success
+                } else {
+                    state.value = CourseSelectionActivity.State.Error(result.message)
+                }
+            } catch (e: CancellationException) { throw e }
+            catch (e: Exception) {
+                state.value = CourseSelectionActivity.State.Error(e.message ?: "网络请求失败")
             }
         }
     }

@@ -90,7 +90,18 @@ class LoginViewModel @Inject constructor(
             _loginState.value = LoginState.Loading
             try {
                 val user = User()
-                val response = userApi.login(account, password, captcha, user)
+                var response = attemptLogin(account, password, captcha, user)
+
+                // 仅当用户未手动输入验证码、且失败原因是验证码错时，自动刷新重试最多 2 次
+                if (!response.success && manualCaptcha == null) {
+                    var attempt = 0
+                    while (!response.success && attempt < 2 && isCaptchaError(response.message)) {
+                        attempt++
+                        val freshCaptcha = refreshCaptchaForRetry() ?: break
+                        response = attemptLogin(account, password, freshCaptcha, user)
+                    }
+                }
+
                 if (response.success) {
                     userRepository.saveUser(user)
                     userRepository.savePassword(password)
@@ -103,6 +114,40 @@ class LoginViewModel @Inject constructor(
             } catch (e: Exception) {
                 _loginState.value = LoginState.Error(e.message ?: "登录失败")
             }
+        }
+    }
+
+    /** 包一层 try/catch 把 HtmlClient 抛出的 AlertException 转成 Response，方便统一判定 */
+    private suspend fun attemptLogin(
+        account: String,
+        password: String,
+        captcha: String,
+        user: User
+    ): com.ifafu.kyzz.data.model.Response {
+        return try {
+            userApi.login(account, password, captcha, user)
+        } catch (e: com.ifafu.kyzz.data.network.AlertException) {
+            com.ifafu.kyzz.data.model.Response(false, -1, e.message ?: "登录失败")
+        }
+    }
+
+    private fun isCaptchaError(message: String?): Boolean {
+        if (message == null) return false
+        return message.contains("验证码")
+    }
+
+    /** 刷新验证码并尝试本地识别，返回识别结果；若识别失败/网络失败返回 null。不更新 LiveData，避免 UI 闪烁 */
+    private suspend fun refreshCaptchaForRetry(): String? {
+        return try {
+            val bitmap = userApi.prepareLogin(userRepository.host) ?: return null
+            _captchaBitmap.value = bitmap
+            val recognized = if (zfVerify.initialized) zfVerify.recognize(bitmap) else ""
+            if (recognized.isBlank()) null else {
+                autoCaptcha = recognized
+                recognized
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 

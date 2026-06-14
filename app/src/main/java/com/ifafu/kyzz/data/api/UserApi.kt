@@ -172,7 +172,11 @@ class UserApi @Inject constructor(
                     continue
                 }
                 val freshUser = User(account = user.account, name = user.name)
-                val response = login(user.account, password, captcha, freshUser)
+                val response = try {
+                    login(user.account, password, captcha, freshUser)
+                } catch (e: com.ifafu.kyzz.data.network.AlertException) {
+                    Response(false, -1, e.message ?: "登录失败")
+                }
 
                 if (response.success) {
                     freshUser.institute = user.institute
@@ -185,6 +189,10 @@ class UserApi @Inject constructor(
                     return response
                 } else {
                     Log.w(TAG, "Relogin attempt $i: login failed - ${response.message}")
+                    // 验证码错才继续重试；账号/密码错立即返回，避免空耗
+                    if (response.message?.contains("验证码") != true) {
+                        return response
+                    }
                 }
             } catch (e: CancellationException) { throw e }
             catch (e: Exception) {

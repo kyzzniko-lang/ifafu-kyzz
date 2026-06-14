@@ -165,19 +165,33 @@ data class Pet(
 
     fun tick() {
         val now = System.currentTimeMillis()
+        if (now < lastTickTime) {
+            lastTickTime = now
+            return
+        }
         val hoursSinceLastTick = ((now - lastTickTime) / (1000 * 60 * 60)).toInt()
-        if (hoursSinceLastTick < 1) return // 最多每小时衰减一次
+        if (hoursSinceLastTick < 1) return
 
-        val hoursSinceLastFeed = ((now - lastFeedTime) / (1000 * 60 * 60)).toInt()
-        if (hoursSinceLastFeed > 4) {
-            val periods = ((hoursSinceLastFeed - 4) / 4).coerceIn(1, 30) // 最多衰减30次
-            hunger = (hunger - 5 * periods).coerceAtLeast(0)
+        if (now < lastFeedTime) {
+            lastFeedTime = now
+        } else {
+            val hoursSinceLastFeed = ((now - lastFeedTime) / (1000 * 60 * 60)).toInt()
+            if (hoursSinceLastFeed > 4) {
+                val periods = ((hoursSinceLastFeed - 4) / 4).coerceIn(1, 30)
+                hunger = (hunger - 5 * periods).coerceAtLeast(0)
+            }
         }
-        val hoursSinceLastInteract = ((now - lastInteractTime) / (1000 * 60 * 60)).toInt()
-        if (hoursSinceLastInteract > 8) {
-            val periods = ((hoursSinceLastInteract - 8) / 8).coerceIn(1, 30)
-            mood = (mood - 2 * periods).coerceAtLeast(0)
+
+        if (now < lastInteractTime) {
+            lastInteractTime = now
+        } else {
+            val hoursSinceLastInteract = ((now - lastInteractTime) / (1000 * 60 * 60)).toInt()
+            if (hoursSinceLastInteract > 8) {
+                val periods = ((hoursSinceLastInteract - 8) / 8).coerceIn(1, 30)
+                mood = (mood - 2 * periods).coerceAtLeast(0)
+            }
         }
+
         if (hunger < 30) {
             mood = (mood - 3).coerceAtLeast(0)
         }
@@ -185,13 +199,16 @@ data class Pet(
     }
 
     fun checkIn(): Boolean {
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-            .format(java.util.Date())
+        val chinaZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+            timeZone = chinaZone
+        }
+        val today = sdf.format(java.util.Date())
         if (lastCheckInDate == today) return false
         val yesterday = run {
-            val cal = java.util.Calendar.getInstance()
+            val cal = java.util.Calendar.getInstance().apply { timeZone = chinaZone }
             cal.add(java.util.Calendar.DAY_OF_YEAR, -1)
-            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(cal.time)
+            sdf.format(cal.time)
         }
         checkInStreak = if (lastCheckInDate == yesterday) checkInStreak + 1 else 1
         val bonus = when {
@@ -206,8 +223,11 @@ data class Pet(
     }
 
     fun isCheckedInToday(): Boolean {
-        val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-            .format(java.util.Date())
+        val chinaZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")
+        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
+            timeZone = chinaZone
+        }
+        val today = sdf.format(java.util.Date())
         return lastCheckInDate == today
     }
 

@@ -9,8 +9,10 @@ import com.ifafu.kyzz.data.model.PetState
 import com.ifafu.kyzz.data.repository.PetRepository
 import com.ifafu.kyzz.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.Calendar
 import javax.inject.Inject
 
@@ -139,7 +141,9 @@ class PetViewModel @Inject constructor(
         }
 
         _pet.value = pet
-        petRepository.savePet(pet)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { petRepository.savePet(pet) }
+        }
 
         // 3秒后隐藏气泡
         viewModelScope.launch {
@@ -378,15 +382,15 @@ class PetViewModel @Inject constructor(
         pet.state = PetState.EATING
         _bubbleText.value = getFeedResponse()
         _pet.value = pet
-        petRepository.savePet(pet)
         viewModelScope.launch {
+            withContext(Dispatchers.IO) { petRepository.savePet(pet) }
             delay(3000)
             _bubbleText.value = null
             // 吃完后恢复状态
             val current = _pet.value ?: return@launch
             updatePetState(current)
             _pet.value = current
-            petRepository.savePet(current)
+            withContext(Dispatchers.IO) { petRepository.savePet(current) }
         }
     }
 
@@ -459,15 +463,15 @@ class PetViewModel @Inject constructor(
         pet.state = PetState.HAPPY
         _bubbleText.value = getPlayResponse()
         _pet.value = pet
-        petRepository.savePet(pet)
         viewModelScope.launch {
+            withContext(Dispatchers.IO) { petRepository.savePet(pet) }
             delay(3000)
             _bubbleText.value = null
             // 玩完后恢复状态
             val current = _pet.value ?: return@launch
             updatePetState(current)
             _pet.value = current
-            petRepository.savePet(current)
+            withContext(Dispatchers.IO) { petRepository.savePet(current) }
         }
     }
 
@@ -579,7 +583,9 @@ class PetViewModel @Inject constructor(
         lastGradeAdvice = advice
         _bubbleText.value = advice
         _pet.value = pet
-        petRepository.savePet(pet)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { petRepository.savePet(pet) }
+        }
         viewModelScope.launch { delay(5000); _bubbleText.value = null }
     }
 
@@ -649,7 +655,9 @@ class PetViewModel @Inject constructor(
         }
         _bubbleText.value = msg
         _pet.value = pet
-        petRepository.savePet(pet)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { petRepository.savePet(pet) }
+        }
         viewModelScope.launch { delay(5000); _bubbleText.value = null }
     }
 
@@ -669,7 +677,9 @@ class PetViewModel @Inject constructor(
         pet.checkIn()
         _checkInResult.value = CheckInResult(pet.points - oldPoints, pet.checkInStreak, false)
         _pet.value = pet
-        petRepository.savePet(pet)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { petRepository.savePet(pet) }
+        }
     }
 
     fun dismissCheckInResult() {
@@ -904,7 +914,9 @@ class PetViewModel @Inject constructor(
             }
         }
         _pet.value = pet
-        petRepository.savePet(pet)
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) { petRepository.savePet(pet) }
+        }
         viewModelScope.launch { delay(3000); _bubbleText.value = null }
     }
 }

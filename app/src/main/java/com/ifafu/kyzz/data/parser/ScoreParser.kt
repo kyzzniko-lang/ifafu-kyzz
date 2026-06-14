@@ -36,7 +36,7 @@ class ScoreParser @Inject constructor(
     fun parseScores(doc: Document): List<Score> {
         val scores = mutableListOf<Score>()
 
-        val table = doc.select("table#Datagrid1").first()
+        val table = doc.select("table#Datagrid1").firstOrNull()
             ?: doc.select("table").firstOrNull { it.html().contains("补考备注") }
 
         if (table != null) {

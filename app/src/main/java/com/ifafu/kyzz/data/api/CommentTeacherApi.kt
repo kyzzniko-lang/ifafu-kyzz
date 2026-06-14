@@ -74,7 +74,7 @@ class CommentTeacherApi @Inject constructor(
             if (html.contains("JS1") || html.contains("DataGrid1:_ctl")) {
                 android.util.Log.d("CommentApi", "Direct eval page, parsing all courses from pjkc dropdown")
                 val pjkcDoc = Jsoup.parse(html)
-                val pjkcSelect = pjkcDoc.select("select[name=pjkc]").first()
+                val pjkcSelect = pjkcDoc.select("select[name=pjkc]").firstOrNull()
                 val basePath = "xsjxpj.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121401"
                 val teacherName = parseTeacherName(html)
                 if (pjkcSelect != null) {

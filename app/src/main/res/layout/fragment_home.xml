@@ -5,680 +5,648 @@
     android:layout_height="match_parent"
     android:background="@color/claude_bg">
 
-<androidx.coordinatorlayout.widget.CoordinatorLayout
-    android:layout_width="match_parent"
-    android:layout_height="match_parent">
-
-    <com.google.android.material.appbar.AppBarLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@android:color/transparent"
-        app:elevation="0dp">
-
-        <com.google.android.material.appbar.CollapsingToolbarLayout
-            android:layout_width="match_parent"
-            android:layout_height="210dp"
-            app:layout_scrollFlags="scroll|exitUntilCollapsed"
-            app:contentScrim="@color/claude_bg">
-
-            <FrameLayout
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:clipChildren="false"
-                android:clipToPadding="false">
-
-                <View
-                    android:id="@+id/headerBackground"
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:background="@drawable/bg_header_gradient" />
-
-                <View
-                    android:id="@+id/headerBottomArc"
-                    android:layout_width="match_parent"
-                    android:layout_height="24dp"
-                    android:layout_gravity="bottom" />
-
-                <ImageButton
-                    android:id="@+id/btnSettings"
-                    android:layout_width="40dp"
-                    android:layout_height="40dp"
-                    android:layout_gravity="top|end"
-                    android:layout_marginTop="44dp"
-                    android:layout_marginEnd="16dp"
-                    android:background="@drawable/bg_settings_btn"
-                    android:contentDescription="设置"
-                    android:padding="8dp"
-                    android:src="@drawable/ic_settings"
-                    app:tint="#D0FFFFFF"
-                    app:tintMode="src_in" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="match_parent"
-                    android:gravity="center_horizontal"
-                    android:orientation="vertical"
-                    android:paddingStart="32dp"
-                    android:paddingTop="40dp"
-                    android:paddingEnd="32dp"
-                    android:paddingBottom="20dp">
-
-                    <TextView
-                        android:id="@+id/tvAppName"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        style="@style/ClaudeDisplay.Light"
-                        android:text="@string/app_name"
-                        android:textSize="28sp"
-                        android:letterSpacing="0.08"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="#FFFFFF" />
-
-                    <View
-                        android:layout_width="40dp"
-                        android:layout_height="1.5dp"
-                        android:layout_marginTop="12dp"
-                        android:background="#30FFFFFF" />
-
-                    <TextView
-                        android:id="@+id/tvWelcome"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="14dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="#E8FFFFFF"
-                        android:textSize="16sp"
-                        android:letterSpacing="0.04" />
-
-                    <TextView
-                        android:id="@+id/tvDateInfo"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="6dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="#90FFFFFF"
-                        android:textSize="12sp"
-                        android:letterSpacing="0.08" />
-
-                </LinearLayout>
-
-            </FrameLayout>
-
-        </com.google.android.material.appbar.CollapsingToolbarLayout>
-
-    </com.google.android.material.appbar.AppBarLayout>
-
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
         android:id="@+id/swipeRefresh"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_marginTop="-16dp"
-        android:background="@color/claude_bg"
-        app:layout_behavior="@string/appbar_scrolling_view_behavior">
+        android:layout_height="match_parent">
 
-    <androidx.core.widget.NestedScrollView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:clipToPadding="false">
-
-        <LinearLayout
+        <androidx.core.widget.NestedScrollView
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:paddingStart="20dp"
-            android:paddingEnd="20dp"
-            android:paddingBottom="32dp">
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:scrollbars="none">
 
-            <!-- Quick info chips -->
-            <HorizontalScrollView
-                android:id="@+id/chipsContainer"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
-                android:layout_marginBottom="8dp"
-                android:scrollbars="none"
-                android:clipToPadding="false"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp">
+                android:orientation="vertical"
+                android:paddingHorizontal="28dp"
+                android:paddingTop="56dp"
+                android:paddingBottom="40dp">
 
+                <!-- Hidden legacy header anchors (kept for code compatibility) -->
+                <FrameLayout
+                    android:layout_width="0dp"
+                    android:layout_height="0dp">
+
+                    <View
+                        android:id="@+id/headerBackground"
+                        android:layout_width="0dp"
+                        android:layout_height="0dp" />
+
+                    <View
+                        android:id="@+id/headerBottomArc"
+                        android:layout_width="0dp"
+                        android:layout_height="0dp" />
+                </FrameLayout>
+
+                <!-- Top row: brand wordmark + settings -->
                 <LinearLayout
-                    android:layout_width="wrap_content"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
                     android:orientation="horizontal">
 
                     <TextView
-                        android:id="@+id/chipWeek"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:background="@drawable/bg_info_chip"
-                        android:gravity="center"
-                        android:paddingStart="14dp"
-                        android:paddingEnd="14dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="@color/claude_terracotta"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/chipCoursesCount"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:layout_marginStart="8dp"
-                        android:background="@drawable/bg_info_chip"
-                        android:gravity="center"
-                        android:paddingStart="14dp"
-                        android:paddingEnd="14dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="@color/claude_terracotta"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/chipExamCountdown"
-                        android:layout_width="wrap_content"
-                        android:layout_height="32dp"
-                        android:layout_marginStart="8dp"
-                        android:background="@drawable/bg_info_chip"
-                        android:gravity="center"
-                        android:paddingStart="14dp"
-                        android:paddingEnd="14dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="@color/claude_terracotta"
-                        android:textSize="12sp" />
-
-                </LinearLayout>
-            </HorizontalScrollView>
-
-            <!-- Update notification card -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardUpdate"
-                style="@style/ClaudeCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:layout_marginBottom="12dp"
-                android:visibility="gone"
-                app:strokeColor="@color/claude_terracotta"
-                app:strokeWidth="1dp"
-                app:cardBackgroundColor="#1AD4724A">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="18dp">
-
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:gravity="center_vertical">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:fontFamily="@font/claude_serif"
-                            android:text="发现新版本"
-                            android:textColor="@color/claude_terracotta"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/tvUpdateSize"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
-                            android:textColor="@color/claude_text_hint"
-                            android:textSize="11sp" />
-
-                    </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/tvUpdateVersion"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="@color/claude_text_secondary"
-                        android:textSize="12sp" />
-
-                    <TextView
-                        android:id="@+id/tvUpdateBody"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="4dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="@color/claude_text_tertiary"
-                        android:textSize="12sp"
-                        android:maxLines="2"
-                        android:ellipsize="end" />
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Weather card -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardWeather"
-                style="@style/ClaudeCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:layout_marginBottom="12dp"
-                android:visibility="gone">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="18dp">
-
-                    <TextView
-                        android:id="@+id/tvWeatherSummary"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
-                        android:textColor="@color/claude_terracotta"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
-
-                    <HorizontalScrollView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:scrollbars="none">
-
-                        <LinearLayout
-                            android:id="@+id/weatherPeriodContainer"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:orientation="horizontal" />
-
-                    </HorizontalScrollView>
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
-
-            <!-- Course progress bar -->
-            <LinearLayout
-                android:id="@+id/courseProgressContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:layout_marginTop="16dp"
-                android:visibility="gone">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:gravity="center_vertical">
-
-                    <ProgressBar
-                        android:id="@+id/courseProgressBar"
-                        style="@android:style/Widget.ProgressBar.Horizontal"
                         android:layout_width="0dp"
-                        android:layout_height="6dp"
-                        android:layout_weight="1"
-                        android:max="100"
-                        android:progress="0"
-                        android:progressTint="@color/claude_terracotta"
-                        android:progressBackgroundTint="@color/claude_border"
-                        android:layout_marginEnd="10dp" />
-
-                    <TextView
-                        android:id="@+id/courseProgressText"
-                        android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
+                        android:layout_weight="1"
                         android:fontFamily="@font/claude_serif"
-                        android:textColor="@color/claude_text_secondary"
+                        android:letterSpacing="0.32"
+                        android:text="iFAFU"
+                        android:textAllCaps="true"
+                        android:textColor="@color/claude_text_tertiary"
                         android:textSize="11sp" />
 
+                    <ImageButton
+                        android:id="@+id/btnSettings"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:contentDescription="设置"
+                        android:padding="6dp"
+                        android:src="@drawable/ic_settings"
+                        app:tint="@color/claude_text_secondary" />
+
                 </LinearLayout>
 
-            </LinearLayout>
-
-            <!-- Today courses section -->
-            <TextView
-                android:id="@+id/tvTodaySection"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:layout_marginBottom="14dp"
-                android:layout_marginTop="12dp"
-                android:visibility="gone"
-                style="@style/ClaudeOverline"
-                android:text="今日课程" />
-
-            <!-- Timeline courses container -->
-            <LinearLayout
-                android:id="@+id/timelineContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:visibility="gone" />
-
-            <!-- Empty state for no courses -->
-            <LinearLayout
-                android:id="@+id/emptyCoursesState"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:gravity="center"
-                android:paddingTop="24dp"
-                android:paddingBottom="24dp"
-                android:visibility="gone">
-
-                <com.airbnb.lottie.LottieAnimationView
-                    android:id="@+id/emptyLottie"
-                    android:layout_width="120dp"
-                    android:layout_height="120dp"
-                    app:lottie_autoPlay="true"
-                    app:lottie_loop="true"
-                    android:src="@drawable/bg_empty_state" />
-
+                <!-- Welcome (typewriter) -->
                 <TextView
+                    android:id="@+id/tvWelcome"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="36dp"
+                    android:fontFamily="@font/claude_serif"
+                    android:letterSpacing="-0.03"
+                    android:lineSpacingMultiplier="1.1"
+                    android:textColor="@color/claude_text_primary"
+                    android:textSize="42sp"
+                    android:textStyle="italic" />
+
+                <!-- Date line -->
+                <TextView
+                    android:id="@+id/tvDateInfo"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
                     android:fontFamily="@font/claude_serif"
-                    android:text="@string/empty_courses_title"
+                    android:letterSpacing="0.04"
                     android:textColor="@color/claude_text_secondary"
-                    android:textSize="15sp" />
+                    android:textSize="14sp" />
 
-                <TextView
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:fontFamily="@font/claude_serif"
-                    android:text="@string/empty_courses_subtitle"
-                    android:textColor="@color/claude_text_tertiary"
-                    android:textSize="13sp" />
-
-            </LinearLayout>
-
-            <!-- Exam countdown card -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardExamCountdown"
-                style="@style/ClaudeCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="14dp"
-                android:layout_marginBottom="12dp"
-                android:visibility="gone">
-
-                <LinearLayout
+                <!-- Quick info chips (text-only, document style) -->
+                <HorizontalScrollView
+                    android:id="@+id/chipsContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="18dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
-                        android:text="考试倒计时"
-                        android:textColor="@color/claude_terracotta"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
+                    android:layout_marginTop="22dp"
+                    android:clipToPadding="false"
+                    android:scrollbars="none">
 
                     <LinearLayout
-                        android:id="@+id/examCountdownContainer"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:orientation="horizontal">
+
+                        <TextView
+                            android:id="@+id/chipWeek"
+                            android:layout_width="wrap_content"
+                            android:layout_height="30dp"
+                            android:background="@drawable/bg_info_chip"
+                            android:fontFamily="@font/claude_serif"
+                            android:gravity="center"
+                            android:letterSpacing="0.02"
+                            android:paddingHorizontal="14dp"
+                            android:textColor="@color/claude_terracotta_700"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/chipCoursesCount"
+                            android:layout_width="wrap_content"
+                            android:layout_height="30dp"
+                            android:layout_marginStart="8dp"
+                            android:background="@drawable/bg_info_chip"
+                            android:fontFamily="@font/claude_serif"
+                            android:gravity="center"
+                            android:letterSpacing="0.02"
+                            android:paddingHorizontal="14dp"
+                            android:textColor="@color/claude_terracotta_700"
+                            android:textSize="12sp" />
+
+                        <TextView
+                            android:id="@+id/chipExamCountdown"
+                            android:layout_width="wrap_content"
+                            android:layout_height="30dp"
+                            android:layout_marginStart="8dp"
+                            android:background="@drawable/bg_info_chip"
+                            android:fontFamily="@font/claude_serif"
+                            android:gravity="center"
+                            android:letterSpacing="0.02"
+                            android:paddingHorizontal="14dp"
+                            android:textColor="@color/claude_terracotta_700"
+                            android:textSize="12sp" />
+
+                    </LinearLayout>
+                </HorizontalScrollView>
+
+                <!-- Hairline divider -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1px"
+                    android:layout_marginTop="32dp"
+                    android:background="@color/claude_terracotta_200" />
+
+                <!-- Update notification card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardUpdate"
+                    style="@style/ClaudeCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
+                    android:visibility="gone"
+                    app:cardBackgroundColor="@color/claude_bg_subtle"
+                    app:strokeColor="@color/claude_border"
+                    app:strokeWidth="1dp">
+
+                    <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:orientation="vertical"
-                        android:layout_marginTop="8dp" />
+                        android:padding="20dp">
 
-                </LinearLayout>
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical">
 
-            </com.google.android.material.card.MaterialCardView>
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:fontFamily="@font/claude_serif"
+                                android:letterSpacing="0.08"
+                                android:text="发现新版本"
+                                android:textAllCaps="true"
+                                android:textColor="@color/claude_terracotta"
+                                android:textSize="11sp" />
 
-            <!-- Countdown events card -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardCountdown"
-                style="@style/ClaudeCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:visibility="gone">
+                            <TextView
+                                android:id="@+id/tvUpdateSize"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/claude_serif"
+                                android:textColor="@color/claude_text_tertiary"
+                                android:textSize="11sp" />
 
-                <LinearLayout
+                        </LinearLayout>
+
+                        <TextView
+                            android:id="@+id/tvUpdateVersion"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="@font/claude_serif"
+                            android:textColor="@color/claude_text_primary"
+                            android:textSize="17sp" />
+
+                        <TextView
+                            android:id="@+id/tvUpdateBody"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="6dp"
+                            android:ellipsize="end"
+                            android:fontFamily="@font/claude_serif"
+                            android:lineSpacingMultiplier="1.45"
+                            android:maxLines="2"
+                            android:textColor="@color/claude_text_secondary"
+                            android:textSize="13sp" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Weather card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardWeather"
+                    style="@style/ClaudeCard"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="18dp">
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
-                        android:text="我的倒计时"
-                        android:textColor="@color/claude_terracotta"
-                        android:textSize="14sp"
-                        android:textStyle="bold" />
+                    android:layout_marginTop="14dp"
+                    android:visibility="gone">
 
                     <LinearLayout
-                        android:id="@+id/countdownContainer"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
-                        android:orientation="vertical" />
+                        android:orientation="vertical"
+                        android:padding="20dp">
 
-                </LinearLayout>
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/claude_serif"
+                            android:letterSpacing="0.08"
+                            android:text="天气"
+                            android:textAllCaps="true"
+                            android:textColor="@color/claude_terracotta"
+                            android:textSize="11sp" />
 
-            </com.google.android.material.card.MaterialCardView>
+                        <TextView
+                            android:id="@+id/tvWeatherSummary"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:fontFamily="@font/claude_serif"
+                            android:textColor="@color/claude_text_primary"
+                            android:textSize="17sp" />
 
-            <!-- Hot discussion card -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardHotDiscussion"
-                style="@style/ClaudeCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="12dp"
-                android:visibility="gone">
+                        <HorizontalScrollView
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="14dp"
+                            android:scrollbars="none">
 
+                            <LinearLayout
+                                android:id="@+id/weatherPeriodContainer"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:orientation="horizontal" />
+
+                        </HorizontalScrollView>
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Course progress -->
                 <LinearLayout
+                    android:id="@+id/courseProgressContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:layout_marginTop="20dp"
                     android:orientation="vertical"
-                    android:padding="18dp">
+                    android:visibility="gone">
 
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:gravity="center_vertical">
 
-                        <TextView
+                        <ProgressBar
+                            android:id="@+id/courseProgressBar"
+                            style="@android:style/Widget.ProgressBar.Horizontal"
                             android:layout_width="0dp"
-                            android:layout_height="wrap_content"
+                            android:layout_height="3dp"
+                            android:layout_marginEnd="12dp"
                             android:layout_weight="1"
+                            android:max="100"
+                            android:progress="0"
+                            android:progressBackgroundTint="@color/claude_border_light"
+                            android:progressTint="@color/claude_text_primary" />
+
+                        <TextView
+                            android:id="@+id/courseProgressText"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
                             android:fontFamily="@font/claude_serif"
-                            android:text="校园热议"
-                            android:textColor="@color/claude_terracotta"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
+                            android:letterSpacing="0.04"
+                            android:textColor="@color/claude_text_tertiary"
+                            android:textSize="11sp" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <!-- Today courses heading -->
+                <TextView
+                    android:id="@+id/tvTodaySection"
+                    style="@style/ClaudeOverline"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="32dp"
+                    android:layout_marginBottom="16dp"
+                    android:text="今日课程"
+                    android:textColor="@color/claude_terracotta"
+                    android:visibility="gone" />
+
+                <!-- Timeline -->
+                <LinearLayout
+                    android:id="@+id/timelineContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:visibility="gone" />
+
+                <!-- Empty state -->
+                <LinearLayout
+                    android:id="@+id/emptyCoursesState"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center"
+                    android:orientation="vertical"
+                    android:paddingVertical="32dp"
+                    android:visibility="gone">
+
+                    <com.airbnb.lottie.LottieAnimationView
+                        android:id="@+id/emptyLottie"
+                        android:layout_width="100dp"
+                        android:layout_height="100dp"
+                        android:alpha="0.85"
+                        app:lottie_autoPlay="true"
+                        app:lottie_loop="true"
+                        android:src="@drawable/bg_empty_state" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:letterSpacing="-0.01"
+                        android:text="@string/empty_courses_title"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="18sp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="6dp"
+                        android:fontFamily="@font/claude_serif"
+                        android:text="@string/empty_courses_subtitle"
+                        android:textColor="@color/claude_text_tertiary"
+                        android:textSize="13sp" />
+
+                </LinearLayout>
+
+                <!-- Exam countdown card -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardExamCountdown"
+                    style="@style/ClaudeCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="20dp">
 
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:fontFamily="@font/claude_serif"
-                            android:text="查看更多 ›"
-                            android:textColor="@color/claude_text_hint"
+                            android:letterSpacing="0.08"
+                            android:text="考试倒计时"
+                            android:textAllCaps="true"
+                            android:textColor="@color/claude_terracotta"
                             android:textSize="11sp" />
+
+                        <LinearLayout
+                            android:id="@+id/examCountdownContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:orientation="vertical" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Countdown events -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardCountdown"
+                    style="@style/ClaudeCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="20dp">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/claude_serif"
+                            android:letterSpacing="0.08"
+                            android:text="我的倒计时"
+                            android:textAllCaps="true"
+                            android:textColor="@color/claude_terracotta"
+                            android:textSize="11sp" />
+
+                        <LinearLayout
+                            android:id="@+id/countdownContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:orientation="vertical" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Hot discussion -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardHotDiscussion"
+                    style="@style/ClaudeCard"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="14dp"
+                    android:visibility="gone">
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="20dp">
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:gravity="center_vertical">
+
+                            <TextView
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:fontFamily="@font/claude_serif"
+                                android:letterSpacing="0.08"
+                                android:text="校园热议"
+                                android:textAllCaps="true"
+                                android:textColor="@color/claude_terracotta"
+                                android:textSize="11sp" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/claude_serif"
+                                android:text="查看更多 ›"
+                                android:textColor="@color/claude_text_secondary"
+                                android:textSize="12sp" />
+
+                        </LinearLayout>
+
+                        <LinearLayout
+                            android:id="@+id/hotDiscussionContainer"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:orientation="vertical" />
+
+                    </LinearLayout>
+
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Quick entry heading -->
+                <TextView
+                    android:id="@+id/tvQuickEntry"
+                    style="@style/ClaudeOverline"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="36dp"
+                    android:layout_marginBottom="16dp"
+                    android:text="快捷入口"
+                    android:textColor="@color/claude_terracotta" />
+
+                <LinearLayout
+                    android:id="@+id/gridContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+
+                    <LinearLayout
+                        android:id="@+id/gridSyllabus"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingVertical="20dp">
+
+                        <FrameLayout
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_grid_icon">
+
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_grid_syllabus"
+                                app:tint="@color/claude_terracotta" />
+
+                        </FrameLayout>
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:fontFamily="@font/claude_serif"
+                            android:gravity="center"
+                            android:text="@string/nav_grid_syllabus"
+                            android:textColor="@color/claude_text_primary"
+                            android:textSize="13sp" />
 
                     </LinearLayout>
 
                     <LinearLayout
-                        android:id="@+id/hotDiscussionContainer"
-                        android:layout_width="match_parent"
+                        android:id="@+id/gridElective"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
                         android:orientation="vertical"
-                        android:layout_marginTop="8dp" />
+                        android:paddingVertical="20dp">
 
-                </LinearLayout>
+                        <FrameLayout
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_grid_icon">
 
-            </com.google.android.material.card.MaterialCardView>
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_elective"
+                                app:tint="@color/claude_terracotta" />
 
-            <!-- Quick entry grid -->
-            <TextView
-                android:id="@+id/tvQuickEntry"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="4dp"
-                android:layout_marginBottom="14dp"
-                android:layout_marginTop="20dp"
-                style="@style/ClaudeOverline"
-                android:text="快捷入口" />
+                        </FrameLayout>
 
-            <LinearLayout
-                android:id="@+id/gridContainer"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:layout_marginBottom="6dp">
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:fontFamily="@font/claude_serif"
+                            android:gravity="center"
+                            android:text="@string/nav_elective"
+                            android:textColor="@color/claude_text_primary"
+                            android:textSize="13sp" />
 
-                <LinearLayout
-                    android:id="@+id/gridSyllabus"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical"
-                    android:padding="16dp"
-                    android:background="?attr/selectableItemBackground"
-                    android:clickable="true"
-                    android:focusable="true">
+                    </LinearLayout>
 
-                    <FrameLayout
-                        android:layout_width="52dp"
-                        android:layout_height="52dp">
-
-                        <View
-                            android:layout_width="52dp"
-                            android:layout_height="52dp"
-                            android:background="@drawable/bg_grid_icon" />
-
-                        <ImageView
-                            android:layout_width="26dp"
-                            android:layout_height="26dp"
-                            android:layout_gravity="center"
-                            android:src="@drawable/ic_grid_syllabus"
-                            app:tint="@color/claude_terracotta" />
-
-                    </FrameLayout>
-
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:id="@+id/gridToolbox"
+                        android:layout_width="0dp"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:text="@string/nav_grid_syllabus"
-                        android:textColor="@color/claude_text_primary"
-                        android:textSize="12sp"
-                        android:gravity="center" />
+                        android:layout_weight="1"
+                        android:background="?attr/selectableItemBackground"
+                        android:clickable="true"
+                        android:focusable="true"
+                        android:gravity="center"
+                        android:orientation="vertical"
+                        android:paddingVertical="20dp">
 
-                </LinearLayout>
+                        <FrameLayout
+                            android:layout_width="44dp"
+                            android:layout_height="44dp"
+                            android:background="@drawable/bg_grid_icon">
 
-                <LinearLayout
-                    android:id="@+id/gridElective"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical"
-                    android:padding="16dp"
-                    android:background="?attr/selectableItemBackground"
-                    android:clickable="true"
-                    android:focusable="true">
+                            <ImageView
+                                android:layout_width="22dp"
+                                android:layout_height="22dp"
+                                android:layout_gravity="center"
+                                android:src="@drawable/ic_toolbox"
+                                app:tint="@color/claude_terracotta" />
 
-                    <FrameLayout
-                        android:layout_width="52dp"
-                        android:layout_height="52dp">
+                        </FrameLayout>
 
-                        <View
-                            android:layout_width="52dp"
-                            android:layout_height="52dp"
-                            android:background="@drawable/bg_grid_icon" />
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="10dp"
+                            android:fontFamily="@font/claude_serif"
+                            android:gravity="center"
+                            android:text="KYZZ工具箱"
+                            android:textColor="@color/claude_text_primary"
+                            android:textSize="13sp" />
 
-                        <ImageView
-                            android:layout_width="26dp"
-                            android:layout_height="26dp"
-                            android:layout_gravity="center"
-                            android:src="@drawable/ic_elective"
-                            app:tint="@color/claude_terracotta" />
-
-                    </FrameLayout>
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:text="@string/nav_elective"
-                        android:textColor="@color/claude_text_primary"
-                        android:textSize="12sp"
-                        android:gravity="center" />
-
-                </LinearLayout>
-
-                <LinearLayout
-                    android:id="@+id/gridToolbox"
-                    android:layout_width="0dp"
-                    android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:gravity="center"
-                    android:orientation="vertical"
-                    android:padding="16dp"
-                    android:background="?attr/selectableItemBackground"
-                    android:clickable="true"
-                    android:focusable="true">
-
-                    <FrameLayout
-                        android:layout_width="52dp"
-                        android:layout_height="52dp">
-
-                        <View
-                            android:layout_width="52dp"
-                            android:layout_height="52dp"
-                            android:background="@drawable/bg_grid_icon" />
-
-                        <ImageView
-                            android:layout_width="26dp"
-                            android:layout_height="26dp"
-                            android:layout_gravity="center"
-                            android:src="@drawable/ic_toolbox"
-                            app:tint="@color/claude_terracotta" />
-
-                    </FrameLayout>
-
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:fontFamily="@font/claude_serif"
-                        android:text="KYZZ工具箱"
-                        android:textColor="@color/claude_text_primary"
-                        android:textSize="12sp"
-                        android:gravity="center" />
+                    </LinearLayout>
 
                 </LinearLayout>
 
             </LinearLayout>
 
-        </LinearLayout>
-
-    </androidx.core.widget.NestedScrollView>
+        </androidx.core.widget.NestedScrollView>
 
     </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
-</androidx.coordinatorlayout.widget.CoordinatorLayout>
-
-<!-- Pet floating widget (outside CoordinatorLayout for free drag) -->
-<include
-    android:id="@+id/petWidget"
-    layout="@layout/layout_pet"
-    android:layout_width="wrap_content"
-    android:layout_height="wrap_content"
-    android:layout_gravity="top|start"
-    android:layout_marginStart="20dp"
-    android:layout_marginBottom="24dp" />
+    <!-- Pet floating widget -->
+    <include
+        android:id="@+id/petWidget"
+        layout="@layout/layout_pet"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_marginStart="20dp"
+        android:layout_marginBottom="24dp" />
 
 </FrameLayout>

@@ -33,7 +33,7 @@ class ExamParser @Inject constructor(
     private fun parseExams(doc: Document): List<Exam> {
         val exams = mutableListOf<Exam>()
 
-        val table = doc.select("table#Datagrid1").first()
+        val table = doc.select("table#Datagrid1").firstOrNull()
             ?: doc.select("table").firstOrNull { it.html().contains("校区") && it.html().contains("考试时间") }
 
         if (table != null) {

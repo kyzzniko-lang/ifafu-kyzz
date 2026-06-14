@@ -32,6 +32,11 @@
     <color name="claude_shadow">#1A000000</color>
     <color name="claude_overlay">#33000000</color>
 
+    <!-- Charcoal ink for solid CTA buttons (used in document-style flows) -->
+    <color name="claude_ink">#1F1B17</color>
+    <color name="claude_ink_ripple">#33C97B5B</color>
+    <color name="claude_ink_disabled">#9C958E</color>
+
     <color name="claude_success">#2D7A4F</color>
     <color name="claude_error">#C53030</color>
     <color name="claude_warning">#B7791F</color>

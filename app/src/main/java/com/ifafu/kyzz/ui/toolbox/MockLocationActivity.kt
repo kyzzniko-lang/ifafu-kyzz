@@ -410,7 +410,7 @@ map.on('click',function(e){
             trajectoryDistance = calculateTotalDistance(waypoints)
             val loopDist = if (isLoopMode && count >= 2) haversine(waypoints.last(), waypoints.first()) else 0.0
             val lapDist = trajectoryDistance + loopDist
-            val speed = binding.etSpeed.text.toString().toDoubleOrNull() ?: 1.2
+            val speed = (binding.etSpeed.text.toString().toDoubleOrNull() ?: 1.2).coerceAtLeast(0.01)
             val lapDistKm = lapDist / 1000.0
             val lapTimeSec = (lapDist / speed).toInt()
             val lapTimeStr = if (lapTimeSec >= 60) {

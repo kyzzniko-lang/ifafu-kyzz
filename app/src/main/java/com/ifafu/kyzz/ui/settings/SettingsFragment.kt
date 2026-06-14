@@ -332,6 +332,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 .setMessage(R.string.confirm_logout)
                 .setPositiveButton(R.string.nav_logout) { _, _ ->
                     userRepository.clearUser()
+                    com.ifafu.kyzz.widget.iFAFUWidget.clearWidgetData(requireContext())
                     startActivity(android.content.Intent(requireContext(), com.ifafu.kyzz.ui.login.LoginActivity::class.java))
                     requireActivity().finish()
                 }

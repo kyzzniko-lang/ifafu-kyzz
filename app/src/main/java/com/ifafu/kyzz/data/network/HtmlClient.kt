@@ -84,8 +84,8 @@ class HtmlClient @Inject constructor(
                 val html = bytesToString(bytes)
                 checkAlert(html)?.let { throw AlertException(it.message) }
                 val doc = Jsoup.parse(html)
-                val vs = doc.select("input[name=__VIEWSTATE]").first()
-                val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").first()
+                val vs = doc.select("input[name=__VIEWSTATE]").firstOrNull()
+                val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").firstOrNull()
                 val state = ViewStateData(
                     viewState = vs?.attr("value")?.trim() ?: "",
                     viewStateGenerator = vsg?.attr("value")?.trim() ?: ""
@@ -273,16 +273,16 @@ class HtmlClient @Inject constructor(
     }
 
     private fun extractViewState(doc: Document) {
-        val vs = doc.select("input[name=__VIEWSTATE]").first()
-        val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").first()
+        val vs = doc.select("input[name=__VIEWSTATE]").firstOrNull()
+        val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").firstOrNull()
         viewState = vs?.attr("value")?.trim() ?: ""
         viewStateGenerator = vsg?.attr("value")?.trim() ?: ""
     }
 
     fun parseViewState(html: String): ViewStateData {
         val doc = Jsoup.parse(html)
-        val vs = doc.select("input[name=__VIEWSTATE]").first()
-        val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").first()
+        val vs = doc.select("input[name=__VIEWSTATE]").firstOrNull()
+        val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").firstOrNull()
         return ViewStateData(
             viewState = vs?.attr("value")?.trim() ?: "",
             viewStateGenerator = vsg?.attr("value")?.trim() ?: ""
@@ -313,8 +313,8 @@ class HtmlClient @Inject constructor(
 
     fun parseSelectOptions(html: String, selectId: String): SelectOptions {
         val doc = Jsoup.parse(html)
-        val select = doc.select("select[id=$selectId]").first()
-            ?: doc.select("select[name=$selectId]").first()
+        val select = doc.select("select[id=$selectId]").firstOrNull()
+            ?: doc.select("select[name=$selectId]").firstOrNull()
             ?: return SelectOptions(emptyList(), null)
         val options = select.select("option")
         val values = options.map { it.attr("value") }

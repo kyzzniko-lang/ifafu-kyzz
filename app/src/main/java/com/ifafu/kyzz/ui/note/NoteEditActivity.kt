@@ -245,6 +245,7 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
                 val result = withContext(Dispatchers.IO) {
                     chatApi.chat(userMsg, dummyPet, emptyList())
                 }
+                if (isFinishing) return@launch
                 if (result.isNotEmpty() && !result.startsWith("喵") && !result.startsWith("呜")) {
                     // 清理结果，只保留标签部分
                     val cleaned = result.replace(Regex("[「」\"\\[\\]]"), "")
@@ -254,23 +255,30 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
                 } else {
                     Toast.makeText(this@NoteEditActivity, "AI归类失败，请重试", Toast.LENGTH_SHORT).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(this@NoteEditActivity, "AI归类失败：${e.message}", Toast.LENGTH_LONG).show()
+            } catch (e: kotlinx.coroutines.CancellationException) { throw e }
+            catch (e: Exception) {
+                if (!isFinishing) {
+                    Toast.makeText(this@NoteEditActivity, "AI归类失败：${e.message}", Toast.LENGTH_LONG).show()
+                }
             } finally {
-                binding.btnAiCategory.isEnabled = true
-                binding.btnAiCategory.text = "AI归类"
+                if (!isFinishing) {
+                    binding.btnAiCategory.isEnabled = true
+                    binding.btnAiCategory.text = "AI归类"
+                }
             }
         }
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        // Remove listeners before releasing to prevent callbacks on destroyed binding
+        player?.setOnCompletionListener(null)
+        player?.release()
+        player = null
         if (isRecording) {
             try { recorder?.stop() } catch (_: Exception) {}
         }
         try { recorder?.release() } catch (_: Exception) {}
         recorder = null
-        try { player?.release() } catch (_: Exception) {}
-        player = null
+        super.onDestroy()
     }
 }

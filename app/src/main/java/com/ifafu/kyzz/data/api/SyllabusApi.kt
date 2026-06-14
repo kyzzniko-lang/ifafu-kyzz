@@ -7,6 +7,7 @@ import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.HtmlParser
 import com.ifafu.kyzz.data.parser.SyllabusParser
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.util.TermResolver
 import kotlinx.coroutines.CancellationException
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
@@ -30,17 +31,17 @@ class SyllabusApi @Inject constructor(
             val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
             htmlClient.setReferer(mainUrl)
 
-            val accessUrl = "${host}/(${token})/xskbcx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
-            val doc = htmlClient.get(accessUrl)
-            val html = doc.html()
+            var accessUrl = "${host}/(${token})/xskbcx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
+            var doc = htmlClient.get(accessUrl)
+            var html = doc.html()
             if (userApi.isSessionExpired(html)) {
                 val response = reloginHelper.relogin()
                 if (!response.success) return null
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xskbcx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
-                val retryDoc = htmlClient.get(retryUrl)
-                val retryHtml = retryDoc.html()
-                if (userApi.isSessionExpired(retryHtml)) {
+                accessUrl = "${host}/(${user.token})/xskbcx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
+                doc = htmlClient.get(accessUrl)
+                html = doc.html()
+                if (userApi.isSessionExpired(html)) {
                     try {
                         htmlClient.get("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
                         htmlClient.get("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
@@ -51,13 +52,46 @@ class SyllabusApi @Inject constructor(
                     }
                     return null
                 }
-                htmlClient.throwIfAlert(retryHtml)
-                val syllabus = syllabusParser.parseSyllabus(retryDoc, user.account)
-                saveTermFirstDayIfNeeded(syllabus)
-                return syllabus
             }
+
             htmlClient.throwIfAlert(html)
-            val syllabus = syllabusParser.parseSyllabus(doc, number)
+            val yearResult = htmlParser.parseSearchOptions(doc, "id=\"xnd\"", "学年第")
+            val termResult = htmlParser.parseSearchOptions(doc, "学年第", "校区")
+            val serverYear = yearResult.options.getOrElse(yearResult.selectedIndex) { "" }
+            val serverTerm = termResult.options.getOrElse(termResult.selectedIndex) { "" }
+
+            // 优先使用日期推断的学期；服务器选项里不存在则回退服务器默认值
+            val inferred = TermResolver.inferCurrentTerm()
+            val picked = TermResolver.pickTerm(
+                inferred.year, inferred.term,
+                yearResult.options, termResult.options
+            )
+            val targetYear = picked?.year ?: serverYear
+            val targetTerm = picked?.term ?: serverTerm
+            val usedInferred = picked != null
+
+            Log.d(
+                "SyllabusApi",
+                "POST xnd=$targetYear, xqd=$targetTerm (inferred=${inferred.year}-${inferred.term}, server=$serverYear-$serverTerm, usedInferred=$usedInferred)"
+            )
+            val state = htmlClient.parseViewState(html)
+            val formBody = htmlClient.buildFormBodyWithViewState(
+                "__EVENTTARGET" to "xqd",
+                "__EVENTARGUMENT" to "",
+                "xnd" to targetYear,
+                "xqd" to targetTerm,
+                state = state
+            )
+
+            val postDoc = htmlClient.post(accessUrl, formBody)
+            htmlClient.throwIfAlert(postDoc.html())
+            val syllabus = syllabusParser.parseSyllabus(postDoc, number)
+
+            // 健壮性：若使用了推断学期且没有任何课程/实践/实习/未排课，提示用户
+            if (usedInferred && syllabus.isEmpty()) {
+                throw AlertException("当前学期（${inferred.display()}）暂无课表数据，请确认学校是否已发布或稍后重试")
+            }
+
             saveTermFirstDayIfNeeded(syllabus)
             syllabus
         } catch (e: CancellationException) { throw e }
@@ -102,11 +136,11 @@ class SyllabusApi @Inject constructor(
 
             htmlClient.throwIfAlert(initialHtml)
 
-            // 2. POST 切换学年+学期（__EVENTTARGET=xnd），与浏览器抓包完全一致
+            // 2. POST 切换学期（__EVENTTARGET=xqd），与浏览器抓包完全一致
             Log.d("SyllabusApi", "POST xnd=$year, xqd=$term")
             val state = htmlClient.parseViewState(initialHtml)
             val formBody = htmlClient.buildFormBodyWithViewState(
-                "__EVENTTARGET" to "xnd",
+                "__EVENTTARGET" to "xqd",
                 "__EVENTARGUMENT" to "",
                 "xnd" to year,
                 "xqd" to term,
@@ -149,5 +183,12 @@ class SyllabusApi @Inject constructor(
         val termFirstDay = sdf.format(cal.time)
         Log.d("SyllabusApi", "Calculated termFirstDay=$termFirstDay from currentWeek=${syllabus.currentWeek}")
         userRepository.termFirstDay = termFirstDay
+    }
+
+    private fun Syllabus.isEmpty(): Boolean {
+        return courses.isEmpty() &&
+            practiceCourses.isEmpty() &&
+            internshipCourses.isEmpty() &&
+            unscheduledCourses.isEmpty()
     }
 }

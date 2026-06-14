@@ -79,8 +79,8 @@ class SyllabusParser @Inject constructor(
     private fun parseCourses(doc: Document, account: String, syllabus: Syllabus): List<Course> {
         val courses = mutableListOf<Course>()
 
-        val table = doc.select("table#kbtable").first()
-            ?: doc.select("table[id=xskb_form]").first()
+        val table = doc.select("table#kbtable").firstOrNull()
+            ?: doc.select("table[id=xskb_form]").firstOrNull()
             ?: doc.select("table").firstOrNull { it.html().contains("周") && it.html().contains("节") }
 
         Log.d("SyllabusParser", "Table found: ${table != null}")
