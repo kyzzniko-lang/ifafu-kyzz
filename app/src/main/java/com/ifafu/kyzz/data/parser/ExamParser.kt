@@ -15,16 +15,13 @@ class ExamParser @Inject constructor(
         val examTable = ExamTable()
         val html = doc.html()
 
-        val yearOptions = htmlParser.parseSearchOptions(doc, "id=\"xnd\"", "学年第")
+        val yearOptions = htmlParser.parseSearchOptions(doc, "id=\"xnd\"", "</select>")
         examTable.searchYearOptions = yearOptions.options.toMutableList()
         examTable.selectedYearOption = yearOptions.selectedIndex
 
-        val termStart = html.indexOf("学年第")
-        if (termStart >= 0) {
-            val termOptions = htmlParser.parseSearchOptions(doc, "学年第", "校区")
-            examTable.searchTermOptions = termOptions.options.toMutableList()
-            examTable.selectedTermOption = termOptions.selectedIndex
-        }
+        val termOptions = htmlParser.parseSearchOptions(doc, "id=\"xqd\"", "</select>").excludeTerms("3")
+        examTable.searchTermOptions = termOptions.options.toMutableList()
+        examTable.selectedTermOption = termOptions.selectedIndex
 
         examTable.exams = parseExams(doc)
         return examTable
@@ -33,7 +30,9 @@ class ExamParser @Inject constructor(
     private fun parseExams(doc: Document): List<Exam> {
         val exams = mutableListOf<Exam>()
 
-        val table = doc.select("table#Datagrid1").firstOrNull()
+        val table = doc.select("table#DataGrid1").firstOrNull()
+            ?: doc.select("table#Datagrid1").firstOrNull()
+            ?: doc.select("table[id~=(?i)^datagrid1$]").firstOrNull()
             ?: doc.select("table").firstOrNull { it.html().contains("校区") && it.html().contains("考试时间") }
 
         if (table != null) {

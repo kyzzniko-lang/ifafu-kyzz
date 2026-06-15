@@ -79,12 +79,11 @@ class ExamApi @Inject constructor(
         val getHtml = getDoc.html()
         val state = htmlClient.parseViewState(getHtml)
 
-        val yearResult = htmlParser.parseSearchOptions(getDoc, "id=\"xnd\"", "学年第")
-        val termResult = htmlParser.parseSearchOptions(getDoc, "学年第", "校区")
+        val yearResult = htmlParser.parseSearchOptions(getDoc, "id=\"xnd\"", "</select>")
+        val termResult = htmlParser.parseSearchOptions(getDoc, "id=\"xqd\"", "</select>").excludeTerms("3")
         val serverYear = yearResult.options.getOrElse(yearResult.selectedIndex) { "" }
         val serverTerm = termResult.options.getOrElse(termResult.selectedIndex) { "" }
 
-        // 优先使用日期推断的学期；服务器选项里不存在则回退服务器默认值
         val inferred = TermResolver.inferCurrentTerm()
         val picked = TermResolver.pickTerm(
             inferred.year, inferred.term,
@@ -94,23 +93,30 @@ class ExamApi @Inject constructor(
         val targetTerm = picked?.term ?: serverTerm
         val usedInferred = picked != null
 
-        Log.d(
-            TAG,
-            "POST xnd=$targetYear, xqd=$targetTerm (inferred=${inferred.year}-${inferred.term}, server=$serverYear-$serverTerm, usedInferred=$usedInferred)"
-        )
-        val formBody = htmlClient.buildFormBodyWithViewState(
-            "__EVENTTARGET" to "xqd",
-            "__EVENTARGUMENT" to "",
-            "xnd" to targetYear,
-            "xqd" to targetTerm,
-            state = state
-        )
+        val examTable = if (targetYear == serverYear && targetTerm == serverTerm) {
+            Log.d(TAG, "Target matches server default ($serverYear-$serverTerm), using GET response directly")
+            examParser.parseExamTable(getDoc)
+        } else {
+            val needYearChange = targetYear != serverYear
+            val eventTarget = if (needYearChange) "xnd" else "xqd"
 
-        val postDoc = htmlClient.post(accessUrl, formBody)
-        htmlClient.throwIfAlert(postDoc.html())
-        val examTable = examParser.parseExamTable(postDoc)
+            Log.d(
+                TAG,
+                "POST xnd=$targetYear, xqd=$targetTerm (inferred=${inferred.year}-${inferred.term}, server=$serverYear-$serverTerm, usedInferred=$usedInferred, needYearChange=$needYearChange, eventTarget=$eventTarget)"
+            )
+            val formBody = htmlClient.buildFormBodyWithViewState(
+                "__EVENTTARGET" to eventTarget,
+                "__EVENTARGUMENT" to "",
+                "xnd" to targetYear,
+                "xqd" to targetTerm,
+                state = state
+            )
 
-        // 健壮性：若使用了推断学期且没有任何考试，提示用户
+            val postDoc = htmlClient.post(accessUrl, formBody)
+            htmlClient.throwIfAlert(postDoc.html())
+            examParser.parseExamTable(postDoc)
+        }
+
         if (usedInferred && examTable.exams.isEmpty()) {
             throw AlertException("当前学期（${inferred.display()}）暂无考试安排，请确认学校是否已发布或稍后重试")
         }

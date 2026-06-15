@@ -18,16 +18,13 @@ class ScoreParser @Inject constructor(
         val yearLabel = if (html.contains("学年：")) "学年：" else "学年:"
         val termLabel = if (html.contains("学期：")) "学期：" else "学期:"
 
-        val yearOptions = htmlParser.parseSearchOptions(doc, yearLabel, termLabel)
+        val yearOptions = htmlParser.parseSearchOptions(doc, yearLabel, "</select>")
         scoreTable.searchYearOptions = yearOptions.options.toMutableList()
         scoreTable.defaultSelectedYear = yearOptions.selectedIndex
 
-        val termStart = html.indexOf(termLabel)
-        if (termStart >= 0) {
-            val termOptions = htmlParser.parseSearchOptions(doc, termLabel, "footbox")
-            scoreTable.searchTermOptions = termOptions.options.toMutableList()
-            scoreTable.defaultSelectedTerm = termOptions.selectedIndex
-        }
+        val termOptions = htmlParser.parseSearchOptions(doc, termLabel, "</select>").excludeTerms("3")
+        scoreTable.searchTermOptions = termOptions.options.toMutableList()
+        scoreTable.defaultSelectedTerm = termOptions.selectedIndex
 
         scoreTable.scores = parseScores(doc)
         return scoreTable
@@ -36,7 +33,8 @@ class ScoreParser @Inject constructor(
     fun parseScores(doc: Document): List<Score> {
         val scores = mutableListOf<Score>()
 
-        val table = doc.select("table#Datagrid1").firstOrNull()
+        val table = doc.select("table#DataGrid1").firstOrNull()
+            ?: doc.select("table#Datagrid1").firstOrNull()
             ?: doc.select("table").firstOrNull { it.html().contains("补考备注") }
 
         if (table != null) {

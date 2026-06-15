@@ -55,12 +55,11 @@ class SyllabusApi @Inject constructor(
             }
 
             htmlClient.throwIfAlert(html)
-            val yearResult = htmlParser.parseSearchOptions(doc, "id=\"xnd\"", "学年第")
-            val termResult = htmlParser.parseSearchOptions(doc, "学年第", "校区")
+            val yearResult = htmlParser.parseSearchOptions(doc, "id=\"xnd\"", "</select>")
+            val termResult = htmlParser.parseSearchOptions(doc, "id=\"xqd\"", "</select>").excludeTerms("3")
             val serverYear = yearResult.options.getOrElse(yearResult.selectedIndex) { "" }
             val serverTerm = termResult.options.getOrElse(termResult.selectedIndex) { "" }
 
-            // 优先使用日期推断的学期；服务器选项里不存在则回退服务器默认值
             val inferred = TermResolver.inferCurrentTerm()
             val picked = TermResolver.pickTerm(
                 inferred.year, inferred.term,
@@ -70,24 +69,29 @@ class SyllabusApi @Inject constructor(
             val targetTerm = picked?.term ?: serverTerm
             val usedInferred = picked != null
 
-            Log.d(
-                "SyllabusApi",
-                "POST xnd=$targetYear, xqd=$targetTerm (inferred=${inferred.year}-${inferred.term}, server=$serverYear-$serverTerm, usedInferred=$usedInferred)"
-            )
-            val state = htmlClient.parseViewState(html)
-            val formBody = htmlClient.buildFormBodyWithViewState(
-                "__EVENTTARGET" to "xqd",
-                "__EVENTARGUMENT" to "",
-                "xnd" to targetYear,
-                "xqd" to targetTerm,
-                state = state
-            )
+            val syllabus = if (targetYear == serverYear && targetTerm == serverTerm) {
+                Log.d("SyllabusApi", "Target matches server default ($serverYear-$serverTerm), using GET response directly")
+                syllabusParser.parseSyllabus(doc, number)
+            } else {
+                val needYearChange = targetYear != serverYear
+                val eventTarget = if (needYearChange) "xnd" else "xqd"
+                Log.d(
+                    "SyllabusApi",
+                    "POST xnd=$targetYear, xqd=$targetTerm (inferred=${inferred.year}-${inferred.term}, server=$serverYear-$serverTerm, usedInferred=$usedInferred, needYearChange=$needYearChange, eventTarget=$eventTarget)"
+                )
+                val state = htmlClient.parseViewState(html)
+                val formBody = htmlClient.buildFormBodyWithViewState(
+                    "__EVENTTARGET" to eventTarget,
+                    "__EVENTARGUMENT" to "",
+                    "xnd" to targetYear,
+                    "xqd" to targetTerm,
+                    state = state
+                )
+                val postDoc = htmlClient.post(accessUrl, formBody)
+                htmlClient.throwIfAlert(postDoc.html())
+                syllabusParser.parseSyllabus(postDoc, number)
+            }
 
-            val postDoc = htmlClient.post(accessUrl, formBody)
-            htmlClient.throwIfAlert(postDoc.html())
-            val syllabus = syllabusParser.parseSyllabus(postDoc, number)
-
-            // 健壮性：若使用了推断学期且没有任何课程/实践/实习/未排课，提示用户
             if (usedInferred && syllabus.isEmpty()) {
                 throw AlertException("当前学期（${inferred.display()}）暂无课表数据，请确认学校是否已发布或稍后重试")
             }
@@ -136,28 +140,39 @@ class SyllabusApi @Inject constructor(
 
             htmlClient.throwIfAlert(initialHtml)
 
-            // 2. POST 切换学期（__EVENTTARGET=xqd），与浏览器抓包完全一致
-            Log.d("SyllabusApi", "POST xnd=$year, xqd=$term")
-            val state = htmlClient.parseViewState(initialHtml)
-            val formBody = htmlClient.buildFormBodyWithViewState(
-                "__EVENTTARGET" to "xqd",
-                "__EVENTARGUMENT" to "",
-                "xnd" to year,
-                "xqd" to term,
-                state = state
-            )
+            val yearResult = htmlParser.parseSearchOptions(initialDoc, "id=\"xnd\"", "</select>")
+            val termResult = htmlParser.parseSearchOptions(initialDoc, "id=\"xqd\"", "</select>").excludeTerms("3")
+            val serverYear = yearResult.options.getOrElse(yearResult.selectedIndex) { "" }
+            val serverTerm = termResult.options.getOrElse(termResult.selectedIndex) { "" }
 
-            val doc = htmlClient.post(accessUrl, formBody)
-            val html = doc.html()
-            Log.d("SyllabusApi", "Response length=${html.length}")
-            val tableIdx = html.indexOf("kbtable")
-            Log.d("SyllabusApi", "kbtable index=$tableIdx")
-            if (userApi.isSessionExpired(html)) {
-                Log.e("SyllabusApi", "Session expired after POST!")
-                return null
+            val syllabus = if (year == serverYear && term == serverTerm) {
+                Log.d("SyllabusApi", "Target matches server default ($serverYear-$serverTerm), using GET response directly")
+                syllabusParser.parseSyllabus(initialDoc, number)
+            } else {
+                val needYearChange = year != serverYear
+                val eventTarget = if (needYearChange) "xnd" else "xqd"
+
+                Log.d("SyllabusApi", "POST xnd=$year, xqd=$term (server=$serverYear-$serverTerm, needYearChange=$needYearChange, eventTarget=$eventTarget)")
+                val state = htmlClient.parseViewState(initialHtml)
+                val formBody = htmlClient.buildFormBodyWithViewState(
+                    "__EVENTTARGET" to eventTarget,
+                    "__EVENTARGUMENT" to "",
+                    "xnd" to year,
+                    "xqd" to term,
+                    state = state
+                )
+
+                val doc = htmlClient.post(accessUrl, formBody)
+                val html = doc.html()
+                Log.d("SyllabusApi", "Response length=${html.length}")
+                if (userApi.isSessionExpired(html)) {
+                    Log.e("SyllabusApi", "Session expired after POST!")
+                    return null
+                }
+                htmlClient.throwIfAlert(html)
+                syllabusParser.parseSyllabus(doc, number)
             }
-            htmlClient.throwIfAlert(html)
-            val syllabus = syllabusParser.parseSyllabus(doc, number)
+
             Log.d("SyllabusApi", "Parsed: courses=${syllabus.courses.size}")
             saveTermFirstDayIfNeeded(syllabus)
             syllabus

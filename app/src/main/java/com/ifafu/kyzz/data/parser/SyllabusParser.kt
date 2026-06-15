@@ -21,16 +21,13 @@ class SyllabusParser @Inject constructor(
         val syllabus = Syllabus()
         val html = doc.html()
 
-        val yearOptions = htmlParser.parseSearchOptions(doc, "id=\"xnd\"", "学年第")
+        val yearOptions = htmlParser.parseSearchOptions(doc, "id=\"xnd\"", "</select>")
         syllabus.searchYearOptions = yearOptions.options.toMutableList()
         syllabus.selectedYearOption = yearOptions.selectedIndex
 
-        val termStart = html.indexOf("学年第")
-        if (termStart >= 0) {
-            val termOptions = htmlParser.parseSearchOptions(doc, "学年第", "id=\"xqd\"")
-            syllabus.searchTermOptions = termOptions.options.toMutableList()
-            syllabus.selectedTermOption = termOptions.selectedIndex
-        }
+        val termOptions = htmlParser.parseSearchOptions(doc, "id=\"xqd\"", "</select>").excludeTerms("3")
+        syllabus.searchTermOptions = termOptions.options.toMutableList()
+        syllabus.selectedTermOption = termOptions.selectedIndex
 
         syllabus.currentWeek = parseCurrentWeek(html)
 
@@ -80,8 +77,12 @@ class SyllabusParser @Inject constructor(
         val courses = mutableListOf<Course>()
 
         val table = doc.select("table#kbtable").firstOrNull()
+            ?: doc.select("table#Table1").firstOrNull()
             ?: doc.select("table[id=xskb_form]").firstOrNull()
-            ?: doc.select("table").firstOrNull { it.html().contains("周") && it.html().contains("节") }
+            ?: doc.select("table").firstOrNull {
+                val t = it.text()
+                t.contains("星期一") && t.contains("星期日") && t.contains("第1节")
+            }
 
         Log.d("SyllabusParser", "Table found: ${table != null}")
         if (table != null) {

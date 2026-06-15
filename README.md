@@ -49,6 +49,19 @@
 
 ## 更新日志
 
+### v2.5.0
+- **修复 2025-2026 学年课表/考试空白页面的关键 bug**
+  - 根因：服务器 GET 默认返回当前学期数据时，代码仍做一次无意义的 POST 回发（EVENTTARGET=xqd），ASP.NET 对此回发返回空数据 → 页面空白
+  - 修复：当目标学期与服务器 selected 默认一致时，直接复用 GET 响应解析，不再 POST
+- 修复考试表格 CSS 选择器大小写：`Datagrid1` → `DataGrid1`（CSS 区分大小写，永远匹配不到）
+- 修复课表主表选择器：新增 `table#Table1` 匹配 + 文本特征 fallback
+- 修复选项解析边界：`parseSearchOptions` 的 endTag 从 startTag 之后搜索，避免向前误匹配
+- 修复课表页无"校区"字样导致学期选项解析失败：统一改用 `id="xnd"/id="xqd"` + `</select>` 边界
+- 过滤空的 option value（考试页首项 `<option value=""></option>`）
+- 条件化 `__VIEWSTATEGENERATOR` 发送：HTML 中不存在此字段时不再发送空值
+- POST 请求自动添加 `Origin` header，防止 WAF 拦截
+- 过滤第三学期选项（学校设置错误，不显示学期"3"）
+
 ### v2.4.0
 - 重制登录页 / 首页为 Claude 克制米白派风格（米白底、低饱和橙、Playfair serif 标题）
 - 新增 Playfair Display Italic 字体，首页问候语改为 italic 大字号艺术 serif

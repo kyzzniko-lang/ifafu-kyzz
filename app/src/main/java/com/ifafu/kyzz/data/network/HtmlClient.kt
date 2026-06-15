@@ -109,7 +109,8 @@ class HtmlClient @Inject constructor(
 
     suspend fun post(url: String, formBody: FormBody): Document = withContext(Dispatchers.IO) {
         mutex.withLock {
-            val request = buildRequest(url).post(formBody).build()
+            val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
+            val request = buildRequest(url).post(formBody).addHeader("Origin", origin).build()
             execute(request)
         }
     }
@@ -131,7 +132,9 @@ class HtmlClient @Inject constructor(
     fun buildFormBodyWithViewState(vararg pairs: Pair<String, String>, state: ViewStateData): FormBody {
         val builder = FormBody.Builder(gbkCharset)
             .add("__VIEWSTATE", state.viewState)
-            .add("__VIEWSTATEGENERATOR", state.viewStateGenerator)
+        if (state.viewStateGenerator.isNotEmpty()) {
+            builder.add("__VIEWSTATEGENERATOR", state.viewStateGenerator)
+        }
         for ((key, value) in pairs) {
             builder.add(key, value)
         }
@@ -290,9 +293,12 @@ class HtmlClient @Inject constructor(
     }
 
     fun buildViewStateFormBody(state: ViewStateData): FormBody.Builder {
-        return FormBody.Builder(gbkCharset)
+        val builder = FormBody.Builder(gbkCharset)
             .add("__VIEWSTATE", state.viewState)
-            .add("__VIEWSTATEGENERATOR", state.viewStateGenerator)
+        if (state.viewStateGenerator.isNotEmpty()) {
+            builder.add("__VIEWSTATEGENERATOR", state.viewStateGenerator)
+        }
+        return builder
     }
 
     fun buildFormBody(vararg pairs: Pair<String, String>): FormBody {
@@ -304,9 +310,12 @@ class HtmlClient @Inject constructor(
     }
 
     fun buildViewStateFormBody(): FormBody.Builder {
-        return FormBody.Builder(gbkCharset)
+        val builder = FormBody.Builder(gbkCharset)
             .add("__VIEWSTATE", viewState)
-            .add("__VIEWSTATEGENERATOR", viewStateGenerator)
+        if (viewStateGenerator.isNotEmpty()) {
+            builder.add("__VIEWSTATEGENERATOR", viewStateGenerator)
+        }
+        return builder
     }
 
     data class SelectOptions(val options: List<String>, val selectedValue: String?)

@@ -15,18 +15,27 @@ class HtmlParser @Inject constructor() {
     fun parseSearchOptions(doc: Document, startTag: String, endTag: String): ParsedOptions {
         val html = doc.html()
         val startIdx = html.indexOf(startTag)
-        val endIdx = html.indexOf(endTag)
-        if (startIdx < 0 || endIdx < 0 || startIdx >= endIdx) return ParsedOptions()
-
-        val options = mutableListOf<String>()
-        var selectedIndex = 0
+        if (startIdx < 0) return ParsedOptions()
+        val endIdx = html.indexOf(endTag, startIdx + startTag.length)
+        if (endIdx < 0 || startIdx >= endIdx) return ParsedOptions()
 
         val optionRegex = Regex("""<option(\s+[Ss][Ee][Ll][Ee][Cc][Tt][Ee][Dd](?:="[^"]*")?)?\s+value="([^"]*)">""")
+        val rawOptions = mutableListOf<Pair<String, Boolean>>()
         optionRegex.findAll(html.substring(startIdx, endIdx)).forEach { match ->
-            options.add(match.groupValues[2])
-            if (match.groupValues[1].isNotEmpty()) {
-                selectedIndex = options.size - 1
+            val value = match.groupValues[2]
+            val isSelected = match.groupValues[1].isNotEmpty()
+            rawOptions.add(value to isSelected)
+        }
+
+        val options = rawOptions.map { it.first }.filter { it.isNotEmpty() }.toMutableList()
+        var selectedIndex = 0
+        var filteredIndex = 0
+        for ((value, isSelected) in rawOptions) {
+            if (value.isEmpty()) continue
+            if (isSelected) {
+                selectedIndex = filteredIndex
             }
+            filteredIndex++
         }
 
         return ParsedOptions(options, selectedIndex)
@@ -36,18 +45,26 @@ class HtmlParser @Inject constructor() {
         val html = element.html()
         val startIdx = html.indexOf(startTag)
         if (startIdx < 0) return ParsedOptions()
-        val endIdx = if (endTag != null) html.indexOf(endTag) else html.length
+        val endIdx = if (endTag != null) html.indexOf(endTag, startIdx + startTag.length) else html.length
         if (endIdx < 0 || startIdx >= endIdx) return ParsedOptions()
 
-        val options = mutableListOf<String>()
-        var selectedIndex = 0
-
         val optionRegex = Regex("""<option(\s+[Ss][Ee][Ll][Ee][Cc][Tt][Ee][Dd](?:="[^"]*")?)?\s+value="([^"]*)">""")
+        val rawOptions = mutableListOf<Pair<String, Boolean>>()
         optionRegex.findAll(html.substring(startIdx, endIdx)).forEach { match ->
-            options.add(match.groupValues[2])
-            if (match.groupValues[1].isNotEmpty()) {
-                selectedIndex = options.size - 1
+            val value = match.groupValues[2]
+            val isSelected = match.groupValues[1].isNotEmpty()
+            rawOptions.add(value to isSelected)
+        }
+
+        val options = rawOptions.map { it.first }.filter { it.isNotEmpty() }.toMutableList()
+        var selectedIndex = 0
+        var filteredIndex = 0
+        for ((value, isSelected) in rawOptions) {
+            if (value.isEmpty()) continue
+            if (isSelected) {
+                selectedIndex = filteredIndex
             }
+            filteredIndex++
         }
 
         return ParsedOptions(options, selectedIndex)
@@ -56,5 +73,16 @@ class HtmlParser @Inject constructor() {
     data class ParsedOptions(
         val options: List<String> = emptyList(),
         val selectedIndex: Int = 0
-    )
+    ) {
+        fun excludeTerms(vararg terms: String): ParsedOptions {
+            val selectedValue = options.getOrElse(selectedIndex) { "" }
+            val filtered = options.filter { it !in terms }
+            val newIndex = if (selectedValue in terms) {
+                filtered.indexOfFirst { it.isNotEmpty() }.coerceAtLeast(0)
+            } else {
+                filtered.indexOf(selectedValue).coerceAtLeast(0)
+            }
+            return ParsedOptions(filtered, newIndex)
+        }
+    }
 }
