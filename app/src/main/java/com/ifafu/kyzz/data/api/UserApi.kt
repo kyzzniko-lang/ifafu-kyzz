@@ -8,6 +8,7 @@ import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.data.util.ZFVerify
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -163,12 +164,15 @@ class UserApi @Inject constructor(
                 val captchaBitmap = prepareLogin(userRepository.host)
                 if (captchaBitmap == null) {
                     Log.w(TAG, "Relogin attempt $i: prepareLogin returned null, sessionToken=$sessionToken, loginUrl=$loginUrl")
+                    // 指数退避：避免验证码页面连续请求过快
+                    delay(500L * (1 shl (i - 1)).coerceAtMost(8))
                     continue
                 }
 
                 val captcha = zfVerify.recognize(captchaBitmap)
                 if (captcha.isEmpty()) {
                     Log.w(TAG, "Relogin attempt $i: captcha recognition returned empty")
+                    delay(500L * (1 shl (i - 1)).coerceAtMost(8))
                     continue
                 }
                 val freshUser = User(account = user.account, name = user.name)

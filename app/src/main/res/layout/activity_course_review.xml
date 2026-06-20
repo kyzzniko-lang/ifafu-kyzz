@@ -66,7 +66,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_gravity="center"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:text="此功能为课程匿名评价功能\n可以自由畅言，其他人也能看到你的发言哦"
             android:textAlignment="center"
             android:textColor="@color/claude_text_tertiary"

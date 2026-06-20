@@ -39,7 +39,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:text="选择校区或点击地图标记查看位置"
             android:textColor="@color/claude_text_hint"
             android:textSize="13sp" />
@@ -48,7 +48,7 @@
             android:id="@+id/btnSwitchCampus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:paddingHorizontal="12dp"
             android:paddingVertical="4dp"
             android:text="切换校区"

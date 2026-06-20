@@ -61,7 +61,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
+                            android:fontFamily="sans-serif"
                             android:text="总学分"
                             android:textColor="@color/claude_text_secondary"
                             android:textSize="11sp" />
@@ -85,7 +85,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
+                            android:fontFamily="sans-serif"
                             android:text="平均分"
                             android:textColor="@color/claude_text_secondary"
                             android:textSize="11sp" />
@@ -109,7 +109,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
+                            android:fontFamily="sans-serif"
                             android:text="平均绩点"
                             android:textColor="@color/claude_text_secondary"
                             android:textSize="11sp" />

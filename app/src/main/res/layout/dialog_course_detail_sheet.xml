@@ -18,7 +18,7 @@
         android:id="@+id/tvSheetTitle"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:fontFamily="@font/claude_serif"
+        android:fontFamily="sans-serif"
         android:paddingHorizontal="20dp"
         android:text="课程详情"
         android:textColor="@color/claude_text_secondary"
@@ -65,7 +65,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:text="教师"
                 android:textColor="@color/claude_text_hint"
                 android:textSize="14sp" />
@@ -75,7 +75,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:gravity="end"
                 android:textColor="@color/claude_text_primary"
                 android:textSize="14sp" />
@@ -90,7 +90,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:text="地点"
                 android:textColor="@color/claude_text_hint"
                 android:textSize="14sp" />
@@ -100,7 +100,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:gravity="end"
                 android:textColor="@color/claude_text_primary"
                 android:textSize="14sp" />
@@ -115,7 +115,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:text="时间"
                 android:textColor="@color/claude_text_hint"
                 android:textSize="14sp" />
@@ -125,7 +125,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:gravity="end"
                 android:textColor="@color/claude_text_primary"
                 android:textSize="14sp" />
@@ -147,7 +147,7 @@
             <TextView
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:paddingBottom="8dp"
                 android:text="考试信息"
                 android:textColor="@color/claude_terracotta"
@@ -163,7 +163,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:text="日期"
                     android:textColor="@color/claude_text_hint"
                     android:textSize="13sp" />
@@ -173,7 +173,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:gravity="end"
                     android:textColor="@color/claude_text_primary"
                     android:textSize="13sp" />
@@ -188,7 +188,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:text="时间"
                     android:textColor="@color/claude_text_hint"
                     android:textSize="13sp" />
@@ -198,7 +198,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:gravity="end"
                     android:textColor="@color/claude_text_primary"
                     android:textSize="13sp" />
@@ -212,7 +212,7 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:text="地点"
                     android:textColor="@color/claude_text_hint"
                     android:textSize="13sp" />
@@ -222,7 +222,7 @@
                     android:layout_width="0dp"
                     android:layout_height="wrap_content"
                     android:layout_weight="1"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:gravity="end"
                     android:textColor="@color/claude_text_primary"
                     android:textSize="13sp" />

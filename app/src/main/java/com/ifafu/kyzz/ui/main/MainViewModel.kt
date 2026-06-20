@@ -66,8 +66,7 @@ class MainViewModel @Inject constructor(
         val firstDay = userRepository.termFirstDay
         if (firstDay.isEmpty()) return 0
         return try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            val parsed = sdf.parse(firstDay) ?: return 0
+            val parsed = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(firstDay) ?: return 0
             val termStart = Calendar.getInstance().apply {
                 time = parsed
                 set(Calendar.HOUR_OF_DAY, 0)
@@ -82,7 +81,7 @@ class MainViewModel @Inject constructor(
                 set(Calendar.MILLISECOND, 0)
             }
             val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
-            (diffDays / 7) + 1
+            ((diffDays / 7) + 1).coerceAtLeast(0)
         } catch (_: Exception) { 0 }
     }
 
@@ -106,7 +105,19 @@ class MainViewModel @Inject constructor(
             val currentWeek = calculateCurrentWeek()
             val maxCourseWeek = if (syllabus.courses.isNotEmpty()) syllabus.courses.maxOf { it.weekEnd } else 20
             if (currentWeek > maxCourseWeek + 4) {
-                fetchSyllabusAndShow()
+                // 暑假/寒假期间，课表已结束，不显示课程也不反复请求网络
+                // 只有在课表缓存过期（30天）时才尝试刷新，以检测新学期课表是否已发布
+                val isCacheExpired = cacheManager.isCacheStale(user.account, "syllabus", 30L * 24 * 60 * 60 * 1000)
+                if (isCacheExpired) {
+                    fetchSyllabusAndShow()
+                } else {
+                    _todayCourses.postValue(emptyList())
+                }
+                return@launch
+            }
+            // 学期开始前（termFirstDay在未来），同样不显示课程
+            if (currentWeek <= 0) {
+                _todayCourses.postValue(emptyList())
                 return@launch
             }
             computeTodayCourses(syllabus)
@@ -137,8 +148,7 @@ class MainViewModel @Inject constructor(
         if (firstDay.isEmpty()) { _todayCourses.postValue(emptyList()); return }
 
         try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-            val parsed = sdf.parse(firstDay)
+            val parsed = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(firstDay)
             if (parsed == null) {
                 _todayCourses.postValue(emptyList())
                 return
@@ -158,7 +168,12 @@ class MainViewModel @Inject constructor(
             }
             val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
             val currentWeek = (diffDays / 7) + 1
-            _currentWeek.postValue(currentWeek)
+            _currentWeek.postValue(currentWeek.coerceAtLeast(0))
+            // 学期开始前或假期中，不显示课程
+            if (currentWeek <= 0) {
+                _todayCourses.postValue(emptyList())
+                return
+            }
             val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
             val todayDay = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
 
@@ -208,14 +223,21 @@ class MainViewModel @Inject constructor(
     }
 
     private fun findNextExam(exams: List<com.ifafu.kyzz.data.model.Exam>) {
-        val datePatterns = listOf(
-            SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()),
-            SimpleDateFormat("yyyy/M/d", Locale.getDefault()),
-            SimpleDateFormat("yyyy.MM.dd", Locale.getDefault()),
-            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()),
-            SimpleDateFormat("yyyy年M月d日", Locale.getDefault()),
-            SimpleDateFormat("yyyy年MM月dd日", Locale.getDefault())
+        // 每次调用创建新的 SimpleDateFormat 实例，确保线程安全
+        fun dateFormats() = listOf(
+            SimpleDateFormat("yyyy-MM-dd", Locale.US),
+            SimpleDateFormat("yyyy/M/d", Locale.US),
+            SimpleDateFormat("yyyy.MM.dd", Locale.US),
+            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US),
+            SimpleDateFormat("yyyy年M月d日", Locale.US),
+            SimpleDateFormat("yyyy年MM月dd日", Locale.US)
         )
+
+        val nowCal = Calendar.getInstance()
+        val todayDay = Calendar.getInstance().apply {
+            set(nowCal.get(Calendar.YEAR), nowCal.get(Calendar.MONTH), nowCal.get(Calendar.DAY_OF_MONTH), 0, 0, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
 
         val next = exams.filter { it.datetime.isNotEmpty() }.mapNotNull { exam ->
             try {
@@ -224,7 +246,7 @@ class MainViewModel @Inject constructor(
                     .replace("～", "~").replace("至", "~")
                 val datePart = raw.split("(", "~", " ").first().trim()
                 var parsed: java.util.Date? = null
-                for (fmt in datePatterns) {
+                for (fmt in dateFormats()) {
                     try { parsed = fmt.parse(datePart); break } catch (_: Exception) {}
                 }
                 if (parsed == null) {
@@ -234,17 +256,13 @@ class MainViewModel @Inject constructor(
                 val parsedTime = parsed.time
 
                 val examCal = Calendar.getInstance().apply { time = parsed }
-                val nowCal = Calendar.getInstance()
                 val examDay = Calendar.getInstance().apply {
                     set(examCal.get(Calendar.YEAR), examCal.get(Calendar.MONTH), examCal.get(Calendar.DAY_OF_MONTH), 0, 0, 0)
                     set(Calendar.MILLISECOND, 0)
                 }
-                val todayDay = Calendar.getInstance().apply {
-                    set(nowCal.get(Calendar.YEAR), nowCal.get(Calendar.MONTH), nowCal.get(Calendar.DAY_OF_MONTH), 0, 0, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }
                 val dayDiff = ((examDay.timeInMillis - todayDay.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
-                if (dayDiff >= -1) Triple(exam, dayDiff, parsedTime) else null
+                // 只显示未来7天内的考试（-1 表示考试当天仍可显示），过滤掉远未来的旧学期考试
+                if (dayDiff >= -1 && dayDiff <= 60) Triple(exam, dayDiff, parsedTime) else null
             } catch (e: Exception) {
                 android.util.Log.w("MainViewModel", "Error parsing exam: ${e.message}")
                 null

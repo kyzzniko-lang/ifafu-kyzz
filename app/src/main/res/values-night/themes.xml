@@ -16,5 +16,14 @@
         <item name="android:textColorPrimary">@color/claude_text_primary</item>
         <item name="android:textColorSecondary">@color/claude_text_secondary</item>
         <item name="android:textColorHint">@color/claude_text_hint</item>
+        <item name="android:windowAnimationStyle">@style/ClaudeWindowAnimation</item>
+        <item name="android:fontFamily">@font/claude_serif</item>
+    </style>
+
+    <style name="ClaudeWindowAnimation" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/slide_in_right</item>
+        <item name="android:activityOpenExitAnimation">@anim/slide_out_left</item>
+        <item name="android:activityCloseEnterAnimation">@anim/slide_in_left</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_out_right</item>
     </style>
 </resources>

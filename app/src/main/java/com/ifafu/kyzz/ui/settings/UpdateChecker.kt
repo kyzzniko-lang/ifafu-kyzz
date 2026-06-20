@@ -12,6 +12,10 @@ import android.os.Environment
 import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
@@ -21,6 +25,8 @@ object UpdateChecker {
 
     private const val REPO = "kyzzniko-lang/ifafu-kyzz"
     private const val API_URL = "https://api.github.com/repos/$REPO/releases/latest"
+
+    private val checkScope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
 
     data class ReleaseInfo(
         @SerializedName("tag_name") val tagName: String,
@@ -38,7 +44,8 @@ object UpdateChecker {
     }
 
     fun checkForUpdate(context: Context, callback: (ReleaseInfo?) -> Unit) {
-        Thread {
+        val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        checkScope.launch {
             try {
                 val client = OkHttpClient.Builder()
                     .connectTimeout(15, TimeUnit.SECONDS)
@@ -61,14 +68,14 @@ object UpdateChecker {
                     android.util.Log.i("UpdateChecker", "Response code: ${response.code}")
                     if (!response.isSuccessful) {
                         android.util.Log.w("UpdateChecker", "Non-success: ${response.code}")
-                        android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
-                        return@Thread
+                        mainHandler.post { callback(null) }
+                        return@launch
                     }
 
                     val body = response.body?.string() ?: run {
                         android.util.Log.w("UpdateChecker", "Empty body")
-                        android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
-                        return@Thread
+                        mainHandler.post { callback(null) }
+                        return@launch
                     }
 
                     val release = Gson().fromJson(body, ReleaseInfo::class.java)
@@ -78,16 +85,18 @@ object UpdateChecker {
                     android.util.Log.i("UpdateChecker", "Remote: ${release.versionName}, Local: $currentVersion, isNewer: $isNewer, hasApk: $hasApk, APK: ${release.apkAsset?.name}")
 
                     if (isNewer && hasApk) {
-                        android.os.Handler(android.os.Looper.getMainLooper()).post { callback(release) }
+                        mainHandler.post { callback(release) }
                     } else {
-                        android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
+                        mainHandler.post { callback(null) }
                     }
                 }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                // 协程取消，不回调
             } catch (e: Exception) {
                 android.util.Log.e("UpdateChecker", "Check failed: ${e.javaClass.simpleName}: ${e.message}")
-                android.os.Handler(android.os.Looper.getMainLooper()).post { callback(null) }
+                mainHandler.post { callback(null) }
             }
-        }.start()
+        }
     }
 
     fun getCurrentVersion(context: Context): String {

@@ -19,7 +19,7 @@
             android:id="@+id/tvAccount"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:textColor="@color/claude_text_primary"
             android:textSize="15sp" />
 
@@ -28,7 +28,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="2dp"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:textColor="@color/claude_text_hint"
             android:textSize="12sp" />
 

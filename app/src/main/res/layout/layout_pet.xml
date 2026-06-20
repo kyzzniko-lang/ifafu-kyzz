@@ -25,7 +25,7 @@
             android:id="@+id/tvBubbleText"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:textColor="#333333"
             android:textSize="12sp"
             android:maxWidth="160dp" />
@@ -40,7 +40,7 @@
         android:layout_gravity="center_horizontal"
         android:layout_marginBottom="65dp"
         android:background="@drawable/bg_pet_status"
-        android:fontFamily="@font/claude_serif"
+        android:fontFamily="sans-serif"
         android:textColor="@color/claude_text_secondary"
         android:textSize="10sp"
         android:visibility="gone" />
@@ -61,7 +61,7 @@
             android:id="@+id/tvPetLevel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:textSize="10sp"
             android:textColor="@color/claude_text_secondary"
             android:text="Lv.1 小奶猫" />
@@ -112,7 +112,7 @@
             android:id="@+id/tvCheckIn"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:textSize="9sp"
             android:textColor="@color/claude_terracotta"
             android:visibility="gone" />

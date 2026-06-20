@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Claude Display 字体: 用于纯英文 / 大字号艺术标题（如 "iFAFU" wordmark、登录页大标题）。
+    拉丁字符 Playfair Display 衬线呈现；中文字符回退到 Noto Serif SC，保持衬线风格统一。
+-->
+<font-family xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+    <font
+        android:font="@font/playfair_display"
+        android:fontStyle="normal"
+        android:fontWeight="400"
+        app:font="@font/playfair_display"
+        app:fontStyle="normal"
+        app:fontWeight="400" />
+    <font
+        android:font="@font/playfair_display"
+        android:fontStyle="normal"
+        android:fontWeight="700"
+        app:font="@font/playfair_display"
+        app:fontStyle="normal"
+        app:fontWeight="700" />
+    <font
+        android:font="@font/playfair_display_italic"
+        android:fontStyle="italic"
+        android:fontWeight="400"
+        app:font="@font/playfair_display_italic"
+        app:fontStyle="italic"
+        app:fontWeight="400" />
+    <font
+        android:font="@font/playfair_display_italic"
+        android:fontStyle="italic"
+        android:fontWeight="700"
+        app:font="@font/playfair_display_italic"
+        app:fontStyle="italic"
+        app:fontWeight="700" />
+</font-family>

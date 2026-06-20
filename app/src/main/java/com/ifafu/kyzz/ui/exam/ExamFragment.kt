@@ -294,9 +294,11 @@ class ExamFragment : Fragment() {
                         val currentStatus = progressMap[exam.id]?.status ?: 0
                         val newStatus = (currentStatus + 1) % 3
                         progressMap[exam.id] = ExamProgress(exam.id, newStatus)
-                        // Save to cache
+                        // Save to cache: merge with existing progress to preserve entries from other semesters
                         val account = viewModel.getUser()?.account ?: return@setOnClickListener
-                        cacheManager.saveExamProgress(account, progressMap.values.toList())
+                        val existing = cacheManager.loadExamProgress(account).associateBy { it.examId }.toMutableMap()
+                        existing[exam.id] = ExamProgress(exam.id, newStatus)
+                        cacheManager.saveExamProgress(account, existing.values.toList())
                         // Update tag display
                         text = when (newStatus) {
                             1 -> "复习中"

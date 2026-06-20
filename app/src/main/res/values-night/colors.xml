@@ -1,45 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="claude_terracotta">#E8926A</color>
+    <color name="claude_terracotta">#E8A07A</color>
     <color name="claude_terracotta_dark">#D4724A</color>
-    <color name="claude_terracotta_light">#F0A882</color>
+    <color name="claude_terracotta_light">#F0B08A</color>
     <color name="claude_terracotta_50">#2A1F1A</color>
     <color name="claude_terracotta_100">#3A2A20</color>
     <color name="claude_terracotta_200">#4A3528</color>
     <color name="claude_terracotta_300">#6A4A38</color>
     <color name="claude_terracotta_400">#B87A58</color>
-    <color name="claude_terracotta_500">#E8926A</color>
+    <color name="claude_terracotta_500">#E8A07A</color>
     <color name="claude_terracotta_600">#D4724A</color>
     <color name="claude_terracotta_700">#B85A38</color>
     <color name="claude_terracotta_800">#9A4830</color>
     <color name="claude_terracotta_900">#7A3828</color>
 
-    <color name="claude_bg">#1A1715</color>
-    <color name="claude_bg_elevated">#252220</color>
-    <color name="claude_bg_subtle">#2A2725</color>
-    <color name="claude_bg_hover">#333028</color>
+    <color name="claude_bg">#1F1E1D</color>
+    <color name="claude_bg_elevated">#282624</color>
+    <color name="claude_bg_subtle">#2F2D2A</color>
+    <color name="claude_bg_hover">#3A3733</color>
 
-    <color name="claude_text_primary">#EDEBE8</color>
-    <color name="claude_text_secondary">#A09A94</color>
-    <color name="claude_text_tertiary">#706A64</color>
-    <color name="claude_text_inverse">#1A1715</color>
-    <color name="claude_text_hint">#605A54</color>
+    <color name="claude_text_primary">#F2EFE9</color>
+    <color name="claude_text_secondary">#A8A29A</color>
+    <color name="claude_text_tertiary">#787268</color>
+    <color name="claude_text_inverse">#1F1E1D</color>
+    <color name="claude_text_hint">#605A52</color>
 
     <color name="claude_border">#3A3632</color>
     <color name="claude_border_light">#302C28</color>
-    <color name="claude_divider">#352F2A</color>
+    <color name="claude_divider">#34302C</color>
 
     <color name="claude_shadow">#33000000</color>
     <color name="claude_overlay">#66000000</color>
 
-    <color name="claude_success">#4CAF7A</color>
-    <color name="claude_error">#EF5350</color>
-    <color name="claude_warning">#FFB74D</color>
+    <color name="claude_success">#6FCB8C</color>
+    <color name="claude_error">#EF6F6F</color>
+    <color name="claude_warning">#E8B26A</color>
 
     <color name="white">#FFFFFF</color>
     <color name="black">#000000</color>
     <color name="transparent">#00000000</color>
 
     <color name="claude_offline_banner_bg">#3A2A20</color>
-    <color name="claude_offline_banner_text">#E8926A</color>
+    <color name="claude_offline_banner_text">#E8A07A</color>
+
+    <color name="claude_ink">#1A1715</color>
+    <color name="claude_ink_disabled">#605A52</color>
 </resources>

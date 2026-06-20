@@ -7,6 +7,11 @@
     android:orientation="vertical"
     android:fitsSystemWindows="true">
 
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="0.5dp"
+        android:background="@color/claude_divider" />
+
     <androidx.fragment.app.FragmentContainerView
         android:id="@+id/nav_host_fragment"
         android:name="androidx.navigation.fragment.NavHostFragment"
@@ -21,7 +26,11 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@color/claude_bg_elevated"
+        app:itemActiveIndicatorStyle="@style/ClaudeNavPillIndicator"
+        app:itemIconSize="20dp"
         app:itemIconTint="@color/bottom_nav_color"
+        app:itemTextAppearanceActive="@style/ClaudeNavLabelActive"
+        app:itemTextAppearanceInactive="@style/ClaudeNavLabelInactive"
         app:itemTextColor="@color/bottom_nav_color"
         app:labelVisibilityMode="labeled"
         app:menu="@menu/bottom_nav_menu" />

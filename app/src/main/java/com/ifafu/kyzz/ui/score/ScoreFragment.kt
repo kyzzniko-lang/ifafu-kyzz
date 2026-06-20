@@ -169,7 +169,7 @@ class ScoreFragment : Fragment() {
             binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
             layoutManagerSet = true
         }
-        binding.recyclerView.adapter = ScoreAdapter(items, validScores)
+        binding.recyclerView.adapter = ScoreAdapter(items)
     }
 
     private fun updateStats(scores: List<Score>) {
@@ -228,8 +228,7 @@ class ScoreFragment : Fragment() {
     }
 
     inner class ScoreAdapter(
-        private val items: List<Any>,
-        private val validScores: List<Score>
+        private val items: List<Any>
     ) : androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
 
         private val TYPE_TREND = 0
@@ -284,7 +283,9 @@ class ScoreFragment : Fragment() {
                     textSize = 14f
                 })
                 val trendView = GpaTrendView(requireContext())
-                trendView.setData(items[position] as List<GpaTrendView.Point>)
+                @Suppress("UNCHECKED_CAST")
+                val points = items[position] as List<GpaTrendView.Point>
+                trendView.setData(points)
                 holder.content.addView(trendView)
             } else if (holder is ScoreVH) {
                 val score = items[position] as Score

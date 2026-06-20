@@ -66,7 +66,7 @@ class HtmlClient @Inject constructor(
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
                 val html = bytesToString(bytes)
-                checkAlert(html)?.let { throw AlertException(it.message) }
+                checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
         }
@@ -82,7 +82,7 @@ class HtmlClient @Inject constructor(
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
                 val html = bytesToString(bytes)
-                checkAlert(html)?.let { throw AlertException(it.message) }
+                checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 val doc = Jsoup.parse(html)
                 val vs = doc.select("input[name=__VIEWSTATE]").firstOrNull()
                 val vsg = doc.select("input[name=__VIEWSTATEGENERATOR]").firstOrNull()
@@ -123,7 +123,7 @@ class HtmlClient @Inject constructor(
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
                 val html = bytesToString(bytes)
-                checkAlert(html)?.let { throw AlertException(it.message) }
+                checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
         }
@@ -199,7 +199,7 @@ class HtmlClient @Inject constructor(
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
                 val html = bytesToString(bytes)
-                checkAlert(html)?.let { throw AlertException(it.message) }
+                checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
         }
@@ -216,7 +216,7 @@ class HtmlClient @Inject constructor(
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
                 val html = bytesToString(bytes)
-                checkAlert(html)?.let { throw AlertException(it.message) }
+                checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
         }
@@ -233,7 +233,7 @@ class HtmlClient @Inject constructor(
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
                 val html = bytesToString(bytes)
-                checkAlert(html)?.let { throw AlertException(it.message) }
+                checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
         }
@@ -260,16 +260,21 @@ class HtmlClient @Inject constructor(
 
     private fun execute(request: Request): Document {
         client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) {
+                throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
+            }
             val bytes = response.body?.bytes() ?: ByteArray(0)
             val html = bytesToString(bytes)
             lastUrl = response.request.url.toString()
             referer = lastUrl
-            checkAlert(html)?.let { throw AlertException(it.message) }
+            checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
             val doc = Jsoup.parse(html)
             extractViewState(doc)
             return doc
         }
     }
+
+    class HttpException(val statusCode: Int, override val message: String) : Exception(message)
 
     fun extractViewState(html: String) {
         extractViewState(Jsoup.parse(html))
@@ -384,7 +389,7 @@ class HtmlClient @Inject constructor(
     }
 
     fun throwIfAlert(html: String) {
-        checkAlert(html)?.let { throw AlertException(it.message) }
+        checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
     }
 
     data class PostResult(val html: String, val url: String)
@@ -393,9 +398,12 @@ class HtmlClient @Inject constructor(
         mutex.withLock {
             val request = buildRequest(url).post(formBody).build()
             client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
+                }
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 val html = bytesToString(bytes)
-                checkAlert(html)?.let { throw AlertException(it.message) }
+                checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 val finalUrl = response.request.url.toString()
                 lastUrl = finalUrl
                 referer = finalUrl

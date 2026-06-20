@@ -17,6 +17,7 @@
         <item name="android:textColorSecondary">@color/claude_text_secondary</item>
         <item name="android:textColorHint">@color/claude_text_hint</item>
         <item name="android:windowAnimationStyle">@style/ClaudeWindowAnimation</item>
+        <item name="android:fontFamily">@font/claude_serif</item>
     </style>
 
     <style name="ClaudeWindowAnimation" parent="@android:style/Animation.Activity">
@@ -26,12 +27,14 @@
         <item name="android:activityCloseExitAnimation">@anim/slide_out_right</item>
     </style>
 
+    <!-- Display: serif italic, hero sizes (greetings, app title, big numbers) -->
     <style name="ClaudeDisplay">
-        <item name="android:fontFamily">@font/claude_serif</item>
+        <item name="android:fontFamily">@font/claude_display</item>
         <item name="android:textSize">32sp</item>
         <item name="android:textColor">@color/claude_text_primary</item>
-        <item name="android:letterSpacing">-0.02</item>
-        <item name="android:lineSpacingMultiplier">1.2</item>
+        <item name="android:textStyle">italic</item>
+        <item name="android:letterSpacing">-0.03</item>
+        <item name="android:lineSpacingMultiplier">1.15</item>
     </style>
 
     <style name="ClaudeDisplay.Light">
@@ -46,6 +49,7 @@
         <item name="android:lineSpacingMultiplier">1.3</item>
     </style>
 
+    <!-- Page-level title: serif (e.g. "课程表" toolbar header) -->
     <style name="ClaudeTitle">
         <item name="android:fontFamily">@font/claude_serif</item>
         <item name="android:textSize">20sp</item>
@@ -59,7 +63,7 @@
 
     <style name="ClaudeSubtitle">
         <item name="android:fontFamily">@font/claude_serif</item>
-        <item name="android:textSize">16sp</item>
+        <item name="android:textSize">15sp</item>
         <item name="android:textColor">@color/claude_text_secondary</item>
         <item name="android:letterSpacing">0.01</item>
     </style>
@@ -68,12 +72,13 @@
         <item name="android:textColor">#B3FFFFFF</item>
     </style>
 
+    <!-- Body text: Noto Serif SC for a refined editorial feel -->
     <style name="ClaudeBody">
         <item name="android:fontFamily">@font/claude_serif</item>
         <item name="android:textSize">15sp</item>
         <item name="android:textColor">@color/claude_text_primary</item>
         <item name="android:letterSpacing">0.01</item>
-        <item name="android:lineSpacingMultiplier">1.5</item>
+        <item name="android:lineSpacingMultiplier">1.45</item>
     </style>
 
     <style name="ClaudeBody.Secondary">
@@ -87,72 +92,78 @@
         <item name="android:letterSpacing">0.02</item>
     </style>
 
+    <!-- Overline: small caps label with wide letter-spacing -->
     <style name="ClaudeOverline">
         <item name="android:fontFamily">@font/claude_serif</item>
         <item name="android:textSize">11sp</item>
         <item name="android:textColor">@color/claude_text_tertiary</item>
-        <item name="android:letterSpacing">0.08</item>
+        <item name="android:letterSpacing">0.1</item>
         <item name="android:textAllCaps">true</item>
     </style>
 
+    <!-- Accent overline: uses terracotta for active section headers -->
+    <style name="ClaudeOverline.Accent" parent="ClaudeOverline">
+        <item name="android:textColor">@color/claude_terracotta</item>
+    </style>
+
+    <!-- Pill button (terracotta, secondary action) -->
     <style name="ClaudeButton" parent="Widget.Material3.Button">
         <item name="android:fontFamily">@font/claude_serif</item>
-        <item name="android:textSize">15sp</item>
-        <item name="android:letterSpacing">0.02</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0.01</item>
         <item name="android:textAllCaps">false</item>
         <item name="android:textColor">@color/white</item>
         <item name="backgroundTint">@color/claude_terracotta</item>
         <item name="cornerRadius">100dp</item>
-        <item name="android:minHeight">48dp</item>
+        <item name="android:minHeight">44dp</item>
         <item name="android:insetTop">4dp</item>
         <item name="android:insetBottom">4dp</item>
         <item name="elevation">0dp</item>
     </style>
 
-    <!-- Solid ink button: terracotta fill, no shadow — used for primary CTA -->
+    <!-- Primary CTA: deep ink black (Claude-style solid dark button) -->
     <style name="ClaudeButton.Solid" parent="Widget.Material3.Button">
         <item name="android:fontFamily">@font/claude_serif</item>
-        <item name="android:textSize">16sp</item>
-        <item name="android:letterSpacing">0.08</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:letterSpacing">0.01</item>
         <item name="android:textAllCaps">false</item>
-        <item name="android:textStyle">bold</item>
         <item name="android:textColor">@color/white</item>
-        <item name="backgroundTint">@color/claude_terracotta</item>
+        <item name="backgroundTint">@color/claude_ink</item>
         <item name="cornerRadius">10dp</item>
         <item name="android:minHeight">52dp</item>
         <item name="android:insetTop">0dp</item>
         <item name="android:insetBottom">0dp</item>
         <item name="elevation">0dp</item>
-        <item name="rippleColor">@color/claude_terracotta_700</item>
+        <item name="rippleColor">#33FFFFFF</item>
     </style>
 
     <style name="ClaudeButton.Outlined" parent="Widget.Material3.Button.OutlinedButton">
         <item name="android:fontFamily">@font/claude_serif</item>
-        <item name="android:textSize">15sp</item>
-        <item name="android:letterSpacing">0.02</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:letterSpacing">0.01</item>
         <item name="android:textAllCaps">false</item>
-        <item name="android:textColor">@color/claude_terracotta</item>
+        <item name="android:textColor">@color/claude_text_primary</item>
         <item name="strokeColor">@color/claude_border</item>
         <item name="strokeWidth">1dp</item>
         <item name="cornerRadius">100dp</item>
-        <item name="android:minHeight">48dp</item>
+        <item name="android:minHeight">44dp</item>
         <item name="elevation">0dp</item>
     </style>
 
     <style name="ClaudeButton.Text" parent="Widget.Material3.Button.TextButton">
         <item name="android:fontFamily">@font/claude_serif</item>
-        <item name="android:textSize">15sp</item>
+        <item name="android:textSize">14sp</item>
         <item name="android:textAllCaps">false</item>
         <item name="android:textColor">@color/claude_terracotta</item>
         <item name="cornerRadius">100dp</item>
     </style>
 
     <style name="ClaudeCard">
-        <item name="cardCornerRadius">16dp</item>
+        <item name="cardCornerRadius">14dp</item>
         <item name="cardBackgroundColor">@color/claude_bg_elevated</item>
         <item name="cardElevation">0dp</item>
-        <item name="strokeColor">@color/claude_border</item>
-        <item name="strokeWidth">1dp</item>
+        <item name="strokeColor">@color/claude_border_light</item>
+        <item name="strokeWidth">0dp</item>
         <item name="contentPadding">0dp</item>
     </style>
 
@@ -175,7 +186,7 @@
 
     <!-- Document-style input: hairline underline only, hints rendered as separate labels above -->
     <style name="ClaudeInputUnderline" parent="Widget.Material3.TextInputLayout.OutlinedBox">
-        <item name="boxBackgroundColor">@android:color/transparent</item>
+        <item name="boxBackgroundColor">@color/claude_input_bg</item>
         <item name="boxStrokeColor">@color/claude_input_stroke</item>
         <item name="boxStrokeWidth">1dp</item>
         <item name="boxStrokeWidthFocused">1.5dp</item>
@@ -189,7 +200,7 @@
     </style>
 
     <style name="ClaudeChip" parent="Widget.Material3.Chip.Suggestion">
-        <item name="android:fontFamily">@font/claude_serif</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
         <item name="chipCornerRadius">100dp</item>
         <item name="chipStrokeColor">@color/claude_border</item>
         <item name="chipStrokeWidth">1dp</item>
@@ -201,5 +212,96 @@
         <item name="chipBackgroundColor">@color/claude_terracotta</item>
         <item name="android:textColor">@color/white</item>
         <item name="chipStrokeWidth">0dp</item>
+    </style>
+
+    <!-- Simple bottom nav with soft warm indicator -->
+    <style name="ClaudeNavPillIndicator" parent="Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">#12D4724A</item>
+    </style>
+
+    <style name="ClaudeNavPillShape" parent="ShapeAppearance.Material3.Corner.Full">
+        <item name="cornerSize">18dp</item>
+    </style>
+
+    <style name="ClaudeNavLabelActive" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/claude_terracotta</item>
+        <item name="android:letterSpacing">0.03</item>
+    </style>
+
+    <style name="ClaudeNavLabelInactive" parent="TextAppearance.Material3.LabelMedium">
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/claude_text_tertiary</item>
+        <item name="android:letterSpacing">0.02</item>
+    </style>
+
+    <!--
+        Hero greetings / display headings.
+        Latin chars use Playfair Display Italic (luxe artistic serif).
+        CJK chars fall back to Noto Serif SC. Use sparingly, max 1-2 per screen.
+    -->
+    <style name="ClaudeGreeting" parent="TextAppearance.Material3.DisplaySmall">
+        <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:textSize">46sp</item>
+        <item name="android:textColor">@color/claude_text_primary</item>
+        <item name="android:textStyle">italic</item>
+        <item name="android:letterSpacing">-0.04</item>
+        <item name="android:lineSpacingMultiplier">1.02</item>
+    </style>
+
+    <style name="ClaudeAppTitle" parent="TextAppearance.Material3.HeadlineLarge">
+        <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:textSize">42sp</item>
+        <item name="android:textColor">@color/claude_text_primary</item>
+        <item name="android:textStyle">italic</item>
+        <item name="android:letterSpacing">-0.04</item>
+        <item name="android:lineSpacingMultiplier">1.02</item>
+    </style>
+
+    <!-- Wordmark: small uppercase brand label "iFAFU" with wide tracking -->
+    <style name="ClaudeWordmark">
+        <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/claude_text_tertiary</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.36</item>
+    </style>
+
+    <!-- CJK hero greeting: bold Noto Serif SC, no italic (CJK has no true italic). -->
+    <style name="ClaudeGreetingCJK" parent="TextAppearance.Material3.DisplaySmall">
+        <item name="android:fontFamily">@font/claude_serif</item>
+        <item name="android:textSize">40sp</item>
+        <item name="android:textColor">@color/claude_text_primary</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:letterSpacing">-0.02</item>
+        <item name="android:lineSpacingMultiplier">1.1</item>
+    </style>
+
+    <!-- Decorative drop-cap for serif body openings -->
+    <style name="ClaudeDropCap">
+        <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:textSize">56sp</item>
+        <item name="android:textColor">@color/claude_terracotta</item>
+        <item name="android:textStyle">italic</item>
+        <item name="android:letterSpacing">-0.04</item>
+        <item name="android:includeFontPadding">false</item>
+    </style>
+
+    <style name="ClaudeSectionHeader" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">11sp</item>
+        <item name="android:textColor">@color/claude_terracotta</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.1</item>
+    </style>
+
+    <style name="ClaudeTimelineNumber" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:textSize">30sp</item>
+        <item name="android:textColor">@color/claude_terracotta</item>
+        <item name="android:textStyle">italic</item>
+        <item name="android:letterSpacing">-0.03</item>
     </style>
 </resources>

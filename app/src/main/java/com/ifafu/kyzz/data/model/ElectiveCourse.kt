@@ -20,14 +20,26 @@ data class ElectiveCourse(
 )
 
 data class ElectiveCourseList(
-    var courses: MutableList<ElectiveCourse> = mutableListOf(),
-    var electived: MutableList<ElectiveCourse> = mutableListOf(),
+    var courses: List<ElectiveCourse> = emptyList(),
+    var electived: List<ElectiveCourse> = emptyList(),
     var curPage: Int = 1,
     var pageSize: Int = 1,
     var filter: ElectiveFilter = ElectiveFilter(),
     var viewState: String = "",
     var viewStateGenerator: String = ""
-)
+) {
+    /** 线程安全地更新课程列表 */
+    @Synchronized
+    fun updateCourses(newCourses: List<ElectiveCourse>) {
+        courses = newCourses
+    }
+
+    /** 线程安全地更新已选课程列表 */
+    @Synchronized
+    fun updateElectived(newElectived: List<ElectiveCourse>) {
+        electived = newElectived
+    }
+}
 
 data class ElectiveFilter(
     var courseNature: MutableList<String> = mutableListOf(),

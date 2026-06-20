@@ -44,7 +44,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:text="工具箱说明"
                         android:textColor="@color/claude_terracotta"
                         android:textSize="18sp" />
@@ -53,7 +53,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:lineSpacingExtra="4dp"
                         android:text="此工具箱用于帮抢选修课或者抢体育课等作用而创建，因为学校的缘故，学校还未开放选课接口，本功能还未实现，教师评价功能也存在上述的问题，请耐心等待软件更新。需要增加什么功能可以在意见箱里面反馈，会尽力更新创建。"
                         android:textColor="@color/claude_text_secondary"
@@ -79,7 +79,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:text="意见箱"
                         android:textColor="@color/claude_terracotta"
                         android:textSize="18sp" />
@@ -104,7 +104,7 @@
                             android:id="@+id/etTitle"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
+                            android:fontFamily="sans-serif"
                             android:inputType="text"
                             android:maxLines="1"
                             android:textSize="14sp" />
@@ -124,7 +124,7 @@
                             android:id="@+id/etContent"
                             android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
+                            android:fontFamily="sans-serif"
                             android:gravity="top"
                             android:inputType="textMultiLine"
                             android:minLines="4"
@@ -192,7 +192,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
+                            android:fontFamily="sans-serif"
                             android:text="虚拟定位"
                             android:textColor="@color/claude_text_primary"
                             android:textSize="15sp" />
@@ -256,7 +256,7 @@
                         <TextView
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:fontFamily="@font/claude_serif"
+                            android:fontFamily="sans-serif"
                             android:text="抢选修课"
                             android:textColor="@color/claude_text_primary"
                             android:textSize="15sp" />

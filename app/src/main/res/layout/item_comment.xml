@@ -27,7 +27,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:textColor="@color/claude_terracotta"
                 android:textSize="15sp"
                 android:textStyle="bold" />
@@ -36,7 +36,7 @@
                 android:id="@+id/tvTime"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:textColor="@color/claude_text_tertiary"
                 android:textSize="12sp" />
 
@@ -58,7 +58,7 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:lineSpacingExtra="4dp"
             android:textColor="@color/claude_text_primary"
             android:textSize="15sp" />

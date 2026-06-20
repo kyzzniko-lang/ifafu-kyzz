@@ -93,7 +93,8 @@ class SyllabusParser @Inject constructor(
             var currentSection = 0
 
             // Track rowspan occupancy: rowspanOccupied[col] = remaining rows occupied
-            var rowspanOccupied = IntArray(7) { 0 }
+            // 动态大小，最大支持 8 列（含周六/周日排课）
+            var rowspanOccupied = IntArray(8) { 0 }
 
             for (row in rows) {
                 // Decrement all occupied counters
@@ -120,10 +121,10 @@ class SyllabusParser @Inject constructor(
                 var colIndex = 0
                 for (cell in courseCells) {
                     // Skip columns occupied by rowspan from previous rows
-                    while (colIndex < 7 && rowspanOccupied[colIndex] > 0) {
+                    while (colIndex < rowspanOccupied.size && rowspanOccupied[colIndex] > 0) {
                         colIndex++
                     }
-                    if (colIndex >= 7) break
+                    if (colIndex >= rowspanOccupied.size) break
 
                     val weekDay = colIndex + 1
                     val rowspan = cell.attr("rowspan").toIntOrNull() ?: 1
@@ -178,7 +179,7 @@ class SyllabusParser @Inject constructor(
             var timeIndex = -1
             for (i in parts.indices) {
                 if (parts[i].contains("周") && parts[i].contains("节")) {
-                    val parsed = parseCourseTime(course, parts[i])
+                    val parsed = parseCourseTime(course, parts[i], cellWeekDay)
                     if (parsed) {
                         timeIndex = i
                         break
@@ -256,10 +257,14 @@ class SyllabusParser @Inject constructor(
             Log.d("SyllabusParser", "  Course: ${course.name}, weekDay=${course.weekDay}, begin=${course.begin}, end=${course.end}, teacher=${course.teacher}, address=${course.address}")
 
             if (course.name.isNotEmpty() && course.weekDay > 0) {
-                if (syllabus.campus == 0 && course.address.contains("旗教")) {
-                    syllabus.campus = 1
+                // 去重：同名同天同节次同周范围的课程只保留一条
+                val isDuplicate = courses.any { it.name == course.name && it.weekDay == course.weekDay && it.begin == course.begin && it.weekBegin == course.weekBegin && it.weekEnd == course.weekEnd }
+                if (!isDuplicate) {
+                    if (syllabus.campus == 0 && course.address.contains("旗教")) {
+                        syllabus.campus = 1
+                    }
+                    courses.add(course)
                 }
-                courses.add(course)
             }
         }
     }
@@ -301,10 +306,10 @@ class SyllabusParser @Inject constructor(
         }
     }
 
-    private fun parseCourseTime(course: Course, timeString: String): Boolean {
+    private fun parseCourseTime(course: Course, timeString: String, cellWeekDay: Int = 0): Boolean {
         val weekMap = mapOf(
             "一" to 1, "二" to 2, "三" to 3, "四" to 4,
-            "五" to 5, "六" to 6, "日" to 7
+            "五" to 5, "六" to 6, "日" to 7, "天" to 7
         )
         val pattern = Regex("周(.)(上午|下午|晚上)?第(\\d+)(([,，\\-]\\d+)*)节\\{第(\\d+)-(\\d+)周(\\|(.)周)?\\}")
         val match = pattern.find(timeString)
@@ -314,7 +319,18 @@ class SyllabusParser @Inject constructor(
         }
         Log.d("SyllabusParser", "    -> parseCourseTime MATCH: groups=${match.groupValues}")
         course.timeString = timeString
-        course.weekDay = weekMap[match.groupValues[1]] ?: 1
+        val parsedWeekDay = weekMap[match.groupValues[1]]
+        if (parsedWeekDay != null) {
+            course.weekDay = parsedWeekDay
+        } else if (cellWeekDay > 0) {
+            // 正则匹配到的字符不在映射中，使用列位置确定的星期
+            Log.w("SyllabusParser", "Unrecognized weekday char '${match.groupValues[1]}', falling back to cellWeekDay=$cellWeekDay")
+            course.weekDay = cellWeekDay
+        } else {
+            // 无法确定星期，跳过此课程
+            Log.w("SyllabusParser", "Unrecognized weekday char '${match.groupValues[1]}' and no cellWeekDay, skipping course")
+            return false
+        }
 
         course.begin = match.groupValues[3].toIntOrNull() ?: 1
         val extraSections = match.groupValues[4]

@@ -93,7 +93,8 @@ class SyllabusApi @Inject constructor(
             }
 
             if (usedInferred && syllabus.isEmpty()) {
-                throw AlertException("当前学期（${inferred.display()}）暂无课表数据，请确认学校是否已发布或稍后重试")
+                // 当前学期暂无课表（大四实习/毕业学期等），返回空课表而非抛异常
+                Log.i("SyllabusApi", "当前学期（${inferred.display()}）暂无课表数据，返回空课表")
             }
 
             saveTermFirstDayIfNeeded(syllabus)

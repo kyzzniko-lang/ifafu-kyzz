@@ -14,6 +14,6 @@
         android:text="离线模式 · 显示缓存数据"
         android:textColor="@color/claude_offline_banner_text"
         android:textSize="13sp"
-        android:fontFamily="@font/claude_serif" />
+        android:fontFamily="sans-serif" />
 
 </LinearLayout>

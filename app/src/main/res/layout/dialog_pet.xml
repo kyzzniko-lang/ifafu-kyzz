@@ -22,7 +22,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:fontFamily="@font/claude_serif"
+        android:fontFamily="sans-serif"
         android:textColor="@color/claude_text_primary"
         android:textSize="20sp"
         android:textStyle="bold" />
@@ -32,7 +32,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
-        android:fontFamily="@font/claude_serif"
+        android:fontFamily="sans-serif"
         android:textColor="@color/claude_terracotta"
         android:textSize="13sp" />
 
@@ -54,7 +54,7 @@
                 android:layout_width="48dp"
                 android:layout_height="wrap_content"
                 android:text="心情"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:textColor="@color/claude_text_secondary"
                 android:textSize="12sp" />
 
@@ -73,7 +73,7 @@
                 android:layout_width="36dp"
                 android:layout_height="wrap_content"
                 android:gravity="end"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:textColor="@color/claude_text_secondary"
                 android:textSize="11sp" />
 
@@ -90,7 +90,7 @@
                 android:layout_width="48dp"
                 android:layout_height="wrap_content"
                 android:text="饱食"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:textColor="@color/claude_text_secondary"
                 android:textSize="12sp" />
 
@@ -109,7 +109,7 @@
                 android:layout_width="36dp"
                 android:layout_height="wrap_content"
                 android:gravity="end"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:textColor="@color/claude_text_secondary"
                 android:textSize="11sp" />
 
@@ -125,7 +125,7 @@
                 android:layout_width="48dp"
                 android:layout_height="wrap_content"
                 android:text="经验"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:textColor="@color/claude_text_secondary"
                 android:textSize="12sp" />
 
@@ -144,7 +144,7 @@
                 android:layout_width="36dp"
                 android:layout_height="wrap_content"
                 android:gravity="end"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:textColor="@color/claude_text_secondary"
                 android:textSize="11sp" />
 

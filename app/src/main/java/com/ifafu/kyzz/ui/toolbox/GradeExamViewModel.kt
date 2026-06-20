@@ -69,7 +69,8 @@ class GradeExamViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: AlertException) {
-                _state.value = UiState.Error(e.message ?: "获取等级考试失败")
+                val msg = if (e.isSessionExpired) "会话已过期，请重新登录" else (e.message ?: "获取等级考试失败")
+                _state.value = UiState.Error(msg)
             } catch (e: Exception) {
                 val cached = cacheManager.loadGradeExams(userRepository.getUser().account)
                 if (cached != null && cached.isNotEmpty()) {

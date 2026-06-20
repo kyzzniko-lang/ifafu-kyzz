@@ -63,7 +63,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:text="此功能为校园匿名讨论功能\n可以自由畅言，其他人也能看到你的发言哦"
                 android:textAlignment="center"
                 android:textColor="@color/claude_text_tertiary"
@@ -88,7 +88,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:textAppearance="@style/ClaudeBody.Secondary"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:text="加载失败" />
 
                 <com.google.android.material.button.MaterialButton
@@ -108,7 +108,7 @@
                 android:layout_gravity="center"
                 android:text="暂无评论，快来抢沙发吧"
                 android:textAppearance="@style/ClaudeBody.Secondary"
-                android:fontFamily="@font/claude_serif"
+                android:fontFamily="sans-serif"
                 android:visibility="gone" />
 
         </FrameLayout>
@@ -144,7 +144,7 @@
                     android:id="@+id/etComment"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:inputType="textMultiLine"
                     android:maxLines="3"
                     android:padding="12dp"

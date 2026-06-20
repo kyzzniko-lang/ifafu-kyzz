@@ -107,7 +107,8 @@ class SyllabusViewModel @Inject constructor(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: AlertException) {
-                _state.value = UiState.Error(e.message ?: "获取课表失败")
+                val msg = if (e.isSessionExpired) "会话已过期，请重新登录" else (e.message ?: "获取课表失败")
+                _state.value = UiState.Error(msg)
             } catch (e: Exception) {
                 val cached = cacheManager.loadSyllabus(userRepository.getUser().account, yearTermKey)
                 if (cached != null && cached.courses.isNotEmpty()) {
@@ -169,7 +170,7 @@ class SyllabusViewModel @Inject constructor(
      * Detect if cached syllabus belongs to a different semester.
      * Two checks:
      * 1. Cache age > 30 days → stale
-     * 2. Current week calculated from termFirstDay exceeds the course range (max week + 4 buffer) → stale
+     * 2. Current week calculated from termFirstDay exceeds the course range (max week + 4 buffer) → stale (仅对当前学期)
      */
     private fun isCacheStale(cached: Syllabus): Boolean {
         val account = userRepository.getUser().account
@@ -177,7 +178,8 @@ class SyllabusViewModel @Inject constructor(
         if (cacheManager.isCacheStale(account, "syllabus", 30L * 24 * 60 * 60 * 1000)) {
             return true
         }
-        // Check 2: semester boundary — if current week is far beyond course range, cache is from old semester
+        // Check 2: semester boundary — 仅对当前学期检查，历史学期的缓存不应因当前周数判断为过期
+        if (!isCurrentTerm) return false
         val firstDay = userRepository.termFirstDay
         if (firstDay.isNotEmpty()) {
             try {

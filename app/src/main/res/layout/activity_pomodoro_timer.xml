@@ -33,7 +33,7 @@
             android:id="@+id/tvStatus"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:text="准备开始"
             android:textColor="@color/claude_terracotta"
             android:textSize="16sp" />
@@ -115,7 +115,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:text="今日番茄"
                         android:textColor="@color/claude_text_secondary"
                         android:textSize="12sp" />
@@ -141,7 +141,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:text="宠物经验/次"
                         android:textColor="@color/claude_text_secondary"
                         android:textSize="12sp" />
@@ -156,7 +156,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="24dp"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:text="每完成一个番茄（25分钟），宠物获得10点经验"
             android:textColor="@color/claude_text_hint"
             android:textSize="12sp" />

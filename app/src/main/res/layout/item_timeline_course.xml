@@ -19,7 +19,7 @@
             android:id="@+id/tvTimeStart"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:textColor="@color/claude_text_primary"
             android:textSize="13sp"
             android:textStyle="bold" />
@@ -28,7 +28,7 @@
             android:id="@+id/tvTimeEnd"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:textColor="@color/claude_text_hint"
             android:textSize="10sp" />
 
@@ -74,10 +74,11 @@
             android:id="@+id/cardCourse"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            app:cardCornerRadius="12dp"
+            app:cardCornerRadius="16dp"
             app:cardElevation="0dp"
-            app:strokeWidth="1dp"
-            app:strokeColor="@color/claude_border"
+            app:cardBackgroundColor="@color/claude_bg_elevated"
+            app:strokeWidth="0.5dp"
+            app:strokeColor="@color/claude_border_light"
             xmlns:app="http://schemas.android.com/apk/res-auto">
 
             <LinearLayout
@@ -96,7 +97,7 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:textColor="@color/claude_text_primary"
                         android:textSize="14sp"
                         android:textStyle="bold" />
@@ -106,7 +107,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="8dp"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:textColor="@color/claude_terracotta"
                         android:textSize="12sp"
                         android:gravity="end" />
@@ -120,17 +121,18 @@
                     android:gravity="center_vertical">
 
                     <ImageView
-                        android:layout_width="12dp"
-                        android:layout_height="12dp"
-                        android:src="@android:drawable/ic_menu_mapmode"
-                        android:alpha="0.5" />
+                        android:layout_width="13dp"
+                        android:layout_height="13dp"
+                        android:src="@drawable/ic_location_pin"
+                        android:alpha="0.6"
+                        app:tint="@color/claude_text_secondary" />
 
                     <TextView
                         android:id="@+id/tvCourseLocation"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="4dp"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:textColor="@color/claude_text_secondary"
                         android:textSize="12sp" />
 
@@ -143,17 +145,18 @@
                     android:gravity="center_vertical">
 
                     <ImageView
-                        android:layout_width="12dp"
-                        android:layout_height="12dp"
-                        android:src="@android:drawable/ic_menu_myplaces"
-                        android:alpha="0.5" />
+                        android:layout_width="13dp"
+                        android:layout_height="13dp"
+                        android:src="@drawable/ic_teacher_profile"
+                        android:alpha="0.6"
+                        app:tint="@color/claude_text_secondary" />
 
                     <TextView
                         android:id="@+id/tvCourseTeacher"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="4dp"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:textColor="@color/claude_text_secondary"
                         android:textSize="12sp" />
 
@@ -164,7 +167,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="6dp"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:textSize="11sp" />
 
             </LinearLayout>

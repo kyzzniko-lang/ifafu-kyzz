@@ -148,7 +148,7 @@ data class Pet(
         mood = (mood + 10).coerceAtMost(100)
         lastFeedTime = System.currentTimeMillis()
         feedCount--
-        lastFeedRecoverTime = System.currentTimeMillis()
+        // 不要重置 lastFeedRecoverTime，保留部分充能恢复进度
         addExp(5)
     }
 
@@ -159,7 +159,7 @@ data class Pet(
         hunger = (hunger - 10).coerceAtLeast(0)
         lastPlayTime = System.currentTimeMillis()
         playCount--
-        lastPlayRecoverTime = System.currentTimeMillis()
+        // 不要重置 lastPlayRecoverTime，保留部分充能恢复进度
         addExp(10)
     }
 

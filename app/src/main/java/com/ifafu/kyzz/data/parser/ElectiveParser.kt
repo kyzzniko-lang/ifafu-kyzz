@@ -20,8 +20,8 @@ class ElectiveParser @Inject constructor(
     }
 
     fun parseCourseList(doc: Document, courseList: ElectiveCourseList) {
-        courseList.courses.clear()
-        courseList.electived.clear()
+        val coursesBuilder = mutableListOf<ElectiveCourse>()
+        val electivedBuilder = mutableListOf<ElectiveCourse>()
 
         val tables = doc.select("table")
         Log.d(TAG, "Found ${tables.size} tables in document")
@@ -102,9 +102,9 @@ class ElectiveParser @Inject constructor(
 
                 if (course.name.isNotBlank()) {
                     if (isAlreadySelected) {
-                        courseList.electived.add(course)
+                        electivedBuilder.add(course)
                     } else {
-                        courseList.courses.add(course)
+                        coursesBuilder.add(course)
                     }
                 }
             }
@@ -118,6 +118,10 @@ class ElectiveParser @Inject constructor(
             courseList.curPage = pageMatch.groupValues[1].toIntOrNull() ?: 1
             courseList.pageSize = pageMatch.groupValues[2].toIntOrNull() ?: 1
         }
+
+        // 一次性赋值，避免并发读写
+        courseList.updateCourses(coursesBuilder)
+        courseList.updateElectived(electivedBuilder)
 
         Log.d(TAG, "Parsed ${courseList.courses.size} available, ${courseList.electived.size} selected courses")
     }

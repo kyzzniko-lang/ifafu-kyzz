@@ -1,10 +1,12 @@
 package com.ifafu.kyzz.ui.login
 
+import android.animation.ValueAnimator
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.ImageButton
 import android.widget.TextView
@@ -26,11 +28,15 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
 
     private var accountAdapter: AccountAdapter? = null
 
+    private var glowAnimator1: ValueAnimator? = null
+    private var glowAnimator2: ValueAnimator? = null
+
     override fun createBinding(): ActivityLoginBinding = ActivityLoginBinding.inflate(layoutInflater)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        setupAmbientGlow()
         setupInputAnimations()
         setupAccountSelector()
         loadSavedCredentials()
@@ -73,20 +79,45 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
         }
     }
 
-    private fun setupInputAnimations() {
-        val focusListener = View.OnFocusChangeListener { view, hasFocus ->
-            val scale = if (hasFocus) 1.02f else 1f
-            val alpha = if (hasFocus) 1f else 0.9f
-            view.animate()
-                .scaleX(scale).scaleY(scale)
-                .alpha(alpha)
-                .setDuration(200)
-                .setInterpolator(OvershootInterpolator(2f))
-                .start()
+    private fun setupAmbientGlow() {
+        binding.ambientGlow?.let { glow ->
+            glowAnimator1 = ValueAnimator.ofFloat(0.3f, 0.5f, 0.3f).apply {
+                duration = 4000
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = AccelerateDecelerateInterpolator()
+                addUpdateListener { glow.alpha = it.animatedValue as Float }
+                start()
+            }
         }
+        binding.ambientGlow2?.let { glow ->
+            glowAnimator2 = ValueAnimator.ofFloat(0.2f, 0.35f, 0.2f).apply {
+                duration = 5000
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = AccelerateDecelerateInterpolator()
+                addUpdateListener { glow.alpha = it.animatedValue as Float }
+                start()
+            }
+        }
+    }
 
-        binding.etAccount.onFocusChangeListener = focusListener
-        binding.etPassword.onFocusChangeListener = focusListener
+    private fun setupInputAnimations() {
+        binding.etAccount.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+            animateInputLayout(binding.tilAccount, hasFocus)
+        }
+        binding.etPassword.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+            animateInputLayout(binding.tilPassword, hasFocus)
+        }
+    }
+
+    private fun animateInputLayout(view: View, hasFocus: Boolean) {
+        val scale = if (hasFocus) 1.02f else 1f
+        val alpha = if (hasFocus) 1f else 0.9f
+        view.animate()
+            .scaleX(scale).scaleY(scale)
+            .alpha(alpha)
+            .setDuration(200)
+            .setInterpolator(OvershootInterpolator(2f))
+            .start()
     }
 
     private fun setupAccountSelector() {
@@ -232,5 +263,11 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
         }
 
         override fun getItemCount() = accounts.size
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        glowAnimator1?.cancel()
+        glowAnimator2?.cancel()
     }
 }

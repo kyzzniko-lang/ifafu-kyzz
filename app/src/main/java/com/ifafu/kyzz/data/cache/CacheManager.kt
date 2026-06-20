@@ -22,6 +22,7 @@ class CacheManager @Inject constructor(
     private val prefs: SharedPreferences =
         context.getSharedPreferences("ifafu_cache", Context.MODE_PRIVATE)
     private val gson = Gson()
+    private val cacheLock = Any()
 
     companion object {
         private const val TAG = "CacheManager"
@@ -126,24 +127,27 @@ class CacheManager @Inject constructor(
         prefs.getLong("exams_${account}_ts", 0L)
 
     fun clearCache(account: String) {
-        prefs.edit().apply {
-            remove("syllabus_$account"); remove("syllabus_${account}_ts")
+        synchronized(cacheLock) {
+            val keysToRemove = mutableListOf<String>()
             for ((key, _) in prefs.all) {
-                if (key.startsWith("syllabus_${account}_") && key != "syllabus_${account}_ts") {
-                    remove(key)
+                when {
+                    key == "syllabus_$account" || key == "syllabus_${account}_ts" -> keysToRemove.add(key)
+                    key.startsWith("syllabus_${account}_") -> keysToRemove.add(key)
+                    key == "scores_${account}_ts" -> keysToRemove.add(key)
+                    key.startsWith("scores_${account}_") && key.endsWith("_ts") -> keysToRemove.add(key)
+                    key == "exams_$account" || key == "exams_${account}_ts" -> keysToRemove.add(key)
+                    key == "student_info_$account" || key == "student_info_${account}_ts" -> keysToRemove.add(key)
+                    key == "training_plan_$account" || key == "training_plan_${account}_ts" -> keysToRemove.add(key)
+                    key == "grade_exams_$account" || key == "grade_exams_${account}_ts" -> keysToRemove.add(key)
+                    key == "exam_progress_$account" -> keysToRemove.add(key)
                 }
             }
-            remove("scores_$account"); remove("scores_${account}_ts")
-            for ((key, _) in prefs.all) {
-                if (key.startsWith("scores_${account}_") && key != "scores_${account}_ts") {
+            prefs.edit().apply {
+                for (key in keysToRemove) {
                     remove(key)
                 }
+                apply()
             }
-            remove("exams_$account"); remove("exams_${account}_ts")
-            remove("student_info_$account"); remove("student_info_${account}_ts")
-            remove("training_plan_$account"); remove("training_plan_${account}_ts")
-            remove("grade_exams_$account"); remove("grade_exams_${account}_ts")
-            apply()
         }
     }
 

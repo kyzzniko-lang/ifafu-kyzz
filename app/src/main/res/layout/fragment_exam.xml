@@ -78,7 +78,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:text="访问受阻"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:textSize="22sp"
                         android:textColor="@color/claude_text_primary"
                         android:textStyle="bold"
@@ -90,7 +90,7 @@
                         android:layout_height="wrap_content"
                         android:gravity="center"
                         android:lineSpacingExtra="6dp"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:textSize="15sp"
                         android:textColor="@color/claude_text_secondary" />
 
@@ -102,7 +102,7 @@
                         app:cornerRadius="24dp"
                         android:text="我知道了，重试"
                         android:textColor="@color/claude_bg"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         app:backgroundTint="@color/claude_terracotta"
                         app:elevation="0dp"
                         android:insetTop="0dp"

@@ -670,16 +670,41 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         for (course in allCourses.distinctBy { "${it.name}_${it.weekDay}_${it.begin}" }) {
             val dayOffset = course.weekDay - 1
             val eventCal = start.clone() as Calendar
-            eventCal.add(Calendar.DAY_OF_YEAR, (course.weekBegin - 1) * 7 + dayOffset)
+
+            // 计算首次上课的周次：单周从第一个奇数周开始，双周从第一个偶数周开始
+            val firstActiveWeek = when (course.oddOrTwice) {
+                1 -> { // 单周：找第一个奇数周
+                    var w = course.weekBegin
+                    if (w % 2 == 0) w + 1 else w
+                }
+                2 -> { // 双周：找第一个偶数周
+                    var w = course.weekBegin
+                    if (w % 2 == 1) w + 1 else w
+                }
+                else -> course.weekBegin
+            }
+            eventCal.add(Calendar.DAY_OF_YEAR, (firstActiveWeek - 1) * 7 + dayOffset)
             val times = exportTimeMap[course.begin] ?: exportTimeMap[1]!!
             val endTime = exportTimeMap[course.end.coerceAtMost(12)]?.second ?: times.second
             val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
             val byDay = weekDays.getOrElse(course.weekDay) { "MO" }
-            val totalWeeks = course.weekEnd - course.weekBegin + 1
+
+            // 准确计算实际上课次数
+            val actualCount = when (course.oddOrTwice) {
+                1 -> { // 单周：数奇数周的数量
+                    (firstActiveWeek..course.weekEnd step 2).count()
+                }
+                2 -> { // 双周：数偶数周的数量
+                    (firstActiveWeek..course.weekEnd step 2).count()
+                }
+                else -> course.weekEnd - course.weekBegin + 1
+            }
+            // 跳过不可能上课的课程（如奇偶周过滤后无有效周次）
+            if (actualCount <= 0 || firstActiveWeek > course.weekEnd) continue
             val rrule = when (course.oddOrTwice) {
-                1 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=${(totalWeeks + 1) / 2};BYDAY=$byDay"
-                2 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=${totalWeeks / 2 + 1};BYDAY=$byDay"
-                else -> "FREQ=WEEKLY;COUNT=$totalWeeks;BYDAY=$byDay"
+                1 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=$actualCount;BYDAY=$byDay"
+                2 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=$actualCount;BYDAY=$byDay"
+                else -> "FREQ=WEEKLY;COUNT=$actualCount;BYDAY=$byDay"
             }
             sb.appendLine("BEGIN:VEVENT")
             sb.appendLine("DTSTART:${dateStr}T${times.first}00")
@@ -809,6 +834,8 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             startActivity(android.content.Intent.createChooser(intent, "分享课表"))
         } catch (e: Exception) {
             Toast.makeText(this, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+        } catch (e: OutOfMemoryError) {
+            Toast.makeText(this, "分享失败: 课表数据过大", Toast.LENGTH_SHORT).show()
         }
     }
 

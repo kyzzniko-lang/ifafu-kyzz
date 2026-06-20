@@ -48,8 +48,12 @@ class ExamViewModel @Inject constructor(
             if (!isStale) {
                 val cached = cacheManager.loadExamTable(user.account)
                 if (cached != null && cached.exams.isNotEmpty()) {
-                    _state.value = UiState.Success(cached)
-                    return
+                    // 检测缓存中的考试是否都已过期（属于旧学期）
+                    if (!isAllExamsExpired(cached.exams)) {
+                        _state.value = UiState.Success(cached)
+                        return
+                    }
+                    // 缓存中的考试全部过期，强制刷新
                 }
             }
         }
@@ -75,7 +79,8 @@ class ExamViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: AlertException) {
-                _state.value = UiState.Error(e.message ?: "获取考试信息失败")
+                val msg = if (e.isSessionExpired) "会话已过期，请重新登录" else (e.message ?: "获取考试信息失败")
+                _state.value = UiState.Error(msg)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load exams", e)
                 val cached = cacheManager.loadExamTable(userRepository.getUser().account)
@@ -86,5 +91,43 @@ class ExamViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    /**
+     * 检测考试列表中的所有考试是否都已过期（考试日期都在3天前或更早）。
+     * 用于判断缓存是否属于旧学期。
+     */
+    private fun isAllExamsExpired(exams: List<com.ifafu.kyzz.data.model.Exam>): Boolean {
+        if (exams.isEmpty()) return true
+        val datePatterns = listOf(
+            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()),
+            java.text.SimpleDateFormat("yyyy/M/d", java.util.Locale.getDefault()),
+            java.text.SimpleDateFormat("yyyy.MM.dd", java.util.Locale.getDefault()),
+            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()),
+            java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.getDefault()),
+            java.text.SimpleDateFormat("yyyy年MM月dd日", java.util.Locale.getDefault())
+        )
+        val now = java.util.Calendar.getInstance()
+        for (exam in exams) {
+            if (exam.datetime.isEmpty()) continue
+            try {
+                val raw = exam.datetime
+                    .replace("（", "(").replace("）", ")")
+                    .replace("～", "~").replace("至", "~")
+                val datePart = raw.split("(", "~", " ").first().trim()
+                for (fmt in datePatterns) {
+                    try {
+                        val parsed = fmt.parse(datePart) ?: continue
+                        val examCal = java.util.Calendar.getInstance().apply { time = parsed }
+                        val diffMs = now.timeInMillis - examCal.timeInMillis
+                        val diffDays = diffMs / (24 * 60 * 60 * 1000L)
+                        // 只要有一场考试在3天内或未来，就不算全部过期
+                        if (diffDays < 3) return false
+                        break
+                    } catch (_: Exception) { continue }
+                }
+            } catch (_: Exception) { continue }
+        }
+        return true
     }
 }

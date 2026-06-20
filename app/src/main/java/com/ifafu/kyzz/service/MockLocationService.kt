@@ -103,13 +103,14 @@ class MockLocationService : Service() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-        createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
-
         removeTestProviderNetwork()
         addTestProviderNetwork()
+
         removeTestProviderGPS()
         addTestProviderGPS()
+
+        createNotificationChannel()
+        startForeground(NOTIFICATION_ID, buildNotification())
 
         initLocationHandler()
     }
@@ -165,16 +166,18 @@ class MockLocationService : Service() {
         getSharedPreferences("ifafu_user", MODE_PRIVATE).edit()
             .putFloat("mock_location_lat", latitude.toFloat())
             .putFloat("mock_location_lng", longitude.toFloat())
+            .putString("mock_location_mode", mode)
             .apply()
 
         updateNotification(latitude, longitude)
-        showOverlay()
+        try {
+            showOverlay()
+        } catch (e: Exception) {
+            android.util.Log.w("MockLocation", "Overlay failed, service continues without it", e)
+        }
         isRunning = true
-        getSharedPreferences("ifafu_user", MODE_PRIVATE).edit()
-            .putBoolean("mock_location_running", true)
-            .apply()
 
-        return START_STICKY
+        return super.onStartCommand(intent, flags, startId)
     }
 
     override fun onDestroy() {
@@ -183,8 +186,10 @@ class MockLocationService : Service() {
         trajectoryWaypoints = emptyList()
         pendingTrajectory = null
         removeOverlay()
-        locationHandler.removeCallbacksAndMessages(null)
-        locationThread.quitSafely()
+        if (::locationThread.isInitialized) {
+            locationHandler.removeCallbacksAndMessages(null)
+            locationThread.quitSafely()
+        }
 
         removeTestProviderNetwork()
         removeTestProviderGPS()
@@ -359,16 +364,16 @@ class MockLocationService : Service() {
                 LocationManager.GPS_PROVIDER, LocationProvider.AVAILABLE, null, System.currentTimeMillis()
             )
         } catch (e: Exception) {
-            e.printStackTrace()
+            android.util.Log.e("MockLocation", "addTestProviderGPS failed", e)
         }
     }
 
     private fun removeTestProviderGPS() {
         try {
-            if (locationManager.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
-                locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false)
-                locationManager.removeTestProvider(LocationManager.GPS_PROVIDER)
-            }
+            locationManager.setTestProviderEnabled(LocationManager.GPS_PROVIDER, false)
+        } catch (_: Exception) {}
+        try {
+            locationManager.removeTestProvider(LocationManager.GPS_PROVIDER)
         } catch (_: Exception) {}
     }
 
@@ -405,8 +410,15 @@ class MockLocationService : Service() {
                 }
             }
             locationManager.setTestProviderLocation(LocationManager.GPS_PROVIDER, loc)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            if (!gpsLocationFailed) {
+                gpsLocationFailed = true
+                android.util.Log.e("MockLocation", "setLocationGPS failed", e)
+            }
+        }
     }
+
+    private var gpsLocationFailed = false
 
     private fun updateDrift() {
         // Random walk with spring-back for smooth natural jitter (~±8m radius)
@@ -471,15 +483,17 @@ class MockLocationService : Service() {
             locationManager.setTestProviderStatus(
                 LocationManager.NETWORK_PROVIDER, LocationProvider.AVAILABLE, null, System.currentTimeMillis()
             )
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            android.util.Log.e("MockLocation", "addTestProviderNetwork failed", e)
+        }
     }
 
     private fun removeTestProviderNetwork() {
         try {
-            if (locationManager.isProviderEnabled(LocationManager.NETWORK_PROVIDER)) {
-                locationManager.setTestProviderEnabled(LocationManager.NETWORK_PROVIDER, false)
-                locationManager.removeTestProvider(LocationManager.NETWORK_PROVIDER)
-            }
+            locationManager.setTestProviderEnabled(LocationManager.NETWORK_PROVIDER, false)
+        } catch (_: Exception) {}
+        try {
+            locationManager.removeTestProvider(LocationManager.NETWORK_PROVIDER)
         } catch (_: Exception) {}
     }
 
@@ -504,8 +518,15 @@ class MockLocationService : Service() {
                 elapsedRealtimeNanos = SystemClock.elapsedRealtimeNanos() + nanoJitter
             }
             locationManager.setTestProviderLocation(LocationManager.NETWORK_PROVIDER, loc)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            if (!networkLocationFailed) {
+                networkLocationFailed = true
+                android.util.Log.e("MockLocation", "setLocationNetwork failed", e)
+            }
+        }
     }
+
+    private var networkLocationFailed = false
 
     // ==================== Overlay ====================
 

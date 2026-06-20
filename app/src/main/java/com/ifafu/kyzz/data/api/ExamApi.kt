@@ -118,7 +118,8 @@ class ExamApi @Inject constructor(
         }
 
         if (usedInferred && examTable.exams.isEmpty()) {
-            throw AlertException("当前学期（${inferred.display()}）暂无考试安排，请确认学校是否已发布或稍后重试")
+            // 当前学期暂无考试（大四实习/毕业学期等），返回空考试表而非抛异常
+            Log.i(TAG, "当前学期（${inferred.display()}）暂无考试安排，返回空考试表")
         }
 
         return examTable

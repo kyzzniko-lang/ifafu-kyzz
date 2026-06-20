@@ -36,7 +36,7 @@
             android:textColor="@color/claude_text_secondary"
             android:textSize="13sp"
             android:lineSpacingMultiplier="1.4"
-            android:fontFamily="@font/claude_serif" />
+            android:fontFamily="sans-serif" />
 
     </com.google.android.material.card.MaterialCardView>
 

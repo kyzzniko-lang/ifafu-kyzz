@@ -7,6 +7,8 @@ import com.ifafu.kyzz.BuildConfig
 import com.ifafu.kyzz.data.model.Comment
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -31,6 +33,7 @@ class GitHubIssuesApi @Inject constructor(
 
     private val gson = Gson()
     private val JSON = "application/json; charset=utf-8".toMediaType()
+    private val likeMutex = Mutex()
 
     private fun isConfigured(): Boolean = TOKEN.isNotBlank()
 
@@ -269,53 +272,64 @@ class GitHubIssuesApi @Inject constructor(
 
     suspend fun likeComment(commentId: String, userId: String): Comment? = withContext(Dispatchers.IO) {
         if (!isConfigured()) return@withContext null
-        try {
-            // 1. 读取当前 comment body
-            val getUrl = "$BASE/issues/comments/$commentId"
-            val getRequest = Request.Builder().url(getUrl).apply {
-                authHeaders().forEach { (k, v) -> header(k, v) }
-            }.get().build()
+        // 使用 Mutex 防止同一客户端并发点赞导致竞态
+        likeMutex.withLock {
+            try {
+                // 1. 读取当前 comment body
+                val getUrl = "$BASE/issues/comments/$commentId"
+                val getRequest = Request.Builder().url(getUrl).apply {
+                    authHeaders().forEach { (k, v) -> header(k, v) }
+                }.get().build()
 
-            val currentBody = client.newCall(getRequest).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                val json = JsonParser.parseString(response.body?.string() ?: return@withContext null).asJsonObject
-                json.get("body")?.asString ?: return@withContext null
+                val currentBody = client.newCall(getRequest).execute().use { response ->
+                    if (!response.isSuccessful) null
+                    else {
+                        val bodyStr = response.body?.string()
+                        if (bodyStr == null) null
+                        else {
+                            val json = JsonParser.parseString(bodyStr).asJsonObject
+                            json.get("body")?.asString
+                        }
+                    }
+                }
+
+                if (currentBody == null) return@withLock null
+
+                val data = JsonParser.parseString(currentBody).asJsonObject
+                val likesArr = data.getAsJsonArray("likes") ?: com.google.gson.JsonArray()
+                val likes = likesArr.map { it.asString }.toMutableList()
+
+                if (userId in likes) {
+                    likes.remove(userId)
+                } else {
+                    likes.add(userId)
+                }
+                data.add("likes", gson.toJsonTree(likes))
+
+                // 2. PATCH 更新
+                val patchBody = gson.toJson(mapOf("body" to data.toString()))
+                val patchRequest = Request.Builder().url(getUrl).apply {
+                    authHeaders().forEach { (k, v) -> header(k, v) }
+                }.patch(patchBody.toRequestBody(JSON)).build()
+
+                client.newCall(patchRequest).execute().use { response ->
+                    if (!response.isSuccessful) null
+                    else Comment(
+                        objectId = commentId,
+                        content = data.get("content")?.asString ?: "",
+                        nickname = data.get("nickname")?.asString ?: "",
+                        authorId = data.get("authorId")?.asString ?: "",
+                        createdAt = "",
+                        tag = data.get("tag")?.asString ?: "",
+                        likes = likes
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                Log.e(TAG, "likeComment error", e)
+                null
             }
-
-            val data = JsonParser.parseString(currentBody).asJsonObject
-            val likesArr = data.getAsJsonArray("likes") ?: com.google.gson.JsonArray()
-            val likes = likesArr.map { it.asString }.toMutableList()
-
-            if (userId in likes) {
-                likes.remove(userId)
-            } else {
-                likes.add(userId)
-            }
-            data.add("likes", gson.toJsonTree(likes))
-
-            // 2. PATCH 更新
-            val patchBody = gson.toJson(mapOf("body" to data.toString()))
-            val patchRequest = Request.Builder().url(getUrl).apply {
-                authHeaders().forEach { (k, v) -> header(k, v) }
-            }.patch(patchBody.toRequestBody(JSON)).build()
-
-            client.newCall(patchRequest).execute().use { response ->
-                if (!response.isSuccessful) return@withContext null
-                Comment(
-                    objectId = commentId,
-                    content = data.get("content")?.asString ?: "",
-                    nickname = data.get("nickname")?.asString ?: "",
-                    authorId = data.get("authorId")?.asString ?: "",
-                    createdAt = "",
-                    tag = data.get("tag")?.asString ?: "",
-                    likes = likes
-                )
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            Log.e(TAG, "likeComment error", e)
-            null
         }
     }
 }

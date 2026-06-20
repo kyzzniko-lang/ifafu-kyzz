@@ -43,7 +43,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:text="使用说明"
                         android:textColor="@color/claude_text_primary"
                         android:textSize="15sp"
@@ -95,7 +95,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:text="校区位置"
                         android:textColor="@color/claude_text_hint"
                         android:textSize="12sp" />
@@ -190,7 +190,7 @@
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
                             android:layout_weight="1"
-                            android:fontFamily="@font/claude_serif"
+                            android:fontFamily="sans-serif"
                             android:text="轨迹模式"
                             android:textColor="@color/claude_text_primary"
                             android:textSize="15sp"
@@ -468,7 +468,7 @@
                     <TextView
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="@font/claude_serif"
+                        android:fontFamily="sans-serif"
                         android:text="后台保活设置"
                         android:textColor="@color/claude_text_primary"
                         android:textSize="15sp"

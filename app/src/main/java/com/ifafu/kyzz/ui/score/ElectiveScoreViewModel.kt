@@ -57,7 +57,8 @@ class ElectiveScoreViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: AlertException) {
-                _state.value = State.Error(e.message ?: "加载失败")
+                val msg = if (e.isSessionExpired) "会话已过期，请重新登录" else (e.message ?: "加载失败")
+                _state.value = State.Error(msg)
             } catch (e: Exception) {
                 // Fallback to stale cache on network error
                 val cached = cacheManager.loadScores(user.account)

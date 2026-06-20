@@ -9,7 +9,7 @@
     <TextView
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:fontFamily="@font/claude_serif"
+        android:fontFamily="sans-serif"
         android:text="设置昵称"
         android:textAppearance="@style/ClaudeTitle"
         android:textColor="@color/claude_text_primary" />
@@ -18,7 +18,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
-        android:fontFamily="@font/claude_serif"
+        android:fontFamily="sans-serif"
         android:text="其他同学只会看到你的昵称，不会显示真实信息"
         android:textAppearance="@style/ClaudeCaption"
         android:textColor="@color/claude_text_secondary" />
@@ -36,7 +36,7 @@
             android:id="@+id/etNickname"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:inputType="text"
             android:maxLength="12"
             android:padding="16dp"

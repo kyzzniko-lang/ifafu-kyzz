@@ -78,7 +78,8 @@ class ScoreViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: AlertException) {
-                _state.value = UiState.Error(e.message ?: "获取成绩失败")
+                val msg = if (e.isSessionExpired) "会话已过期，请重新登录" else (e.message ?: "获取成绩失败")
+                _state.value = UiState.Error(msg)
             } catch (e: Exception) {
                 val cached = cacheManager.loadScores(userRepository.getUser().account)
                 if (cached != null && cached.isNotEmpty()) {

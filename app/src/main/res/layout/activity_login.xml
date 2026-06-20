@@ -1,55 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="@color/claude_bg"
+    android:background="@drawable/bg_login_decorative"
     android:fitsSystemWindows="true"
-    android:orientation="vertical">
+    android:clipChildren="false"
+    android:clipToPadding="false">
+
+    <View
+        android:id="@+id/ambientGlow"
+        android:layout_width="300dp"
+        android:layout_height="300dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="-80dp"
+        android:layout_marginEnd="-80dp"
+        android:alpha="0.4"
+        android:background="@drawable/bg_ambient_glow" />
+
+    <View
+        android:id="@+id/ambientGlow2"
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:layout_gravity="bottom|start"
+        android:layout_marginStart="-60dp"
+        android:layout_marginBottom="100dp"
+        android:alpha="0.25"
+        android:background="@drawable/bg_ambient_glow_secondary" />
 
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
         android:fillViewport="true"
-        android:scrollbars="none">
+        android:scrollbars="none"
+        android:clipChildren="false"
+        android:clipToPadding="false">
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:gravity="center_horizontal"
             android:orientation="vertical"
-            android:paddingHorizontal="36dp"
-            android:paddingTop="96dp"
-            android:paddingBottom="48dp">
+            android:paddingHorizontal="32dp"
+            android:paddingTop="56dp"
+            android:paddingBottom="36dp"
+            android:clipChildren="false"
+            android:clipToPadding="false">
 
-            <!-- Wordmark / brand line -->
             <TextView
                 android:id="@+id/ivLogo"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:alpha="0"
-                android:fontFamily="@font/claude_serif"
-                android:letterSpacing="0.32"
+                android:fontFamily="@font/claude_display"
+                android:letterSpacing="0.36"
                 android:text="iFAFU"
                 android:textAllCaps="true"
                 android:textColor="@color/claude_text_tertiary"
                 android:textSize="11sp" />
 
-            <!-- App title -->
             <TextView
                 android:id="@+id/tvTitle"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="32dp"
+                android:layout_marginTop="20dp"
                 android:alpha="0"
-                android:fontFamily="@font/claude_serif"
-                android:letterSpacing="-0.02"
-                android:lineSpacingMultiplier="1.1"
+                android:fontFamily="@font/claude_display"
+                android:letterSpacing="-0.045"
+                android:lineSpacingMultiplier="1.0"
                 android:text="@string/app_name"
                 android:textColor="@color/claude_text_primary"
-                android:textSize="40sp" />
+                android:textSize="56sp"
+                android:textStyle="italic" />
 
-            <!-- Subtitle -->
             <TextView
                 android:id="@+id/tvSubtitle"
                 android:layout_width="wrap_content"
@@ -60,21 +83,13 @@
                 android:letterSpacing="0.01"
                 android:text="@string/login_subtitle"
                 android:textColor="@color/claude_text_secondary"
-                android:textSize="15sp" />
+                android:textSize="14sp" />
 
-            <!-- Hairline divider -->
-            <View
-                android:layout_width="match_parent"
-                android:layout_height="1px"
-                android:layout_marginTop="56dp"
-                android:background="@color/claude_divider" />
-
-            <!-- Account selector (multi-account) -->
             <LinearLayout
                 android:id="@+id/accountSelectorLayout"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp"
+                android:layout_marginTop="20dp"
                 android:alpha="0"
                 android:orientation="vertical"
                 android:visibility="gone">
@@ -82,9 +97,9 @@
                 <TextView
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:layout_marginBottom="10dp"
+                    android:layout_marginBottom="12dp"
                     android:fontFamily="@font/claude_serif"
-                    android:letterSpacing="0.08"
+                    android:letterSpacing="0.1"
                     android:text="选择账号"
                     android:textAllCaps="true"
                     android:textColor="@color/claude_text_tertiary"
@@ -98,19 +113,23 @@
 
             </LinearLayout>
 
-            <!-- Account label -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1px"
+                android:layout_marginTop="24dp"
+                android:background="@color/claude_divider" />
+
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="28dp"
+                android:layout_marginTop="24dp"
                 android:fontFamily="@font/claude_serif"
-                android:letterSpacing="0.08"
+                android:letterSpacing="0.1"
                 android:text="学号"
                 android:textAllCaps="true"
                 android:textColor="@color/claude_text_tertiary"
                 android:textSize="11sp" />
 
-            <!-- Account input (thin outlined, document feel) -->
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/tilAccount"
                 style="@style/ClaudeInputUnderline"
@@ -124,32 +143,31 @@
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etAccount"
+                    style="@style/Widget.Material3.TextInputEditText.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@android:color/transparent"
                     android:fontFamily="@font/claude_serif"
                     android:inputType="number"
-                    android:paddingVertical="14dp"
-                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="12dp"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
                     android:textColor="@color/claude_text_primary"
                     android:textColorHint="@color/claude_text_hint"
-                    android:textSize="16sp" />
+                    android:textSize="17sp" />
 
             </com.google.android.material.textfield.TextInputLayout>
 
-            <!-- Password label -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="20dp"
+                android:layout_marginTop="16dp"
                 android:fontFamily="@font/claude_serif"
-                android:letterSpacing="0.08"
+                android:letterSpacing="0.1"
                 android:text="密码"
                 android:textAllCaps="true"
                 android:textColor="@color/claude_text_tertiary"
                 android:textSize="11sp" />
 
-            <!-- Password input -->
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/tilPassword"
                 style="@style/ClaudeInputUnderline"
@@ -165,25 +183,30 @@
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etPassword"
+                    style="@style/Widget.Material3.TextInputEditText.OutlinedBox"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:background="@android:color/transparent"
                     android:fontFamily="@font/claude_serif"
                     android:inputType="textPassword"
-                    android:paddingVertical="14dp"
-                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="12dp"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
                     android:textColor="@color/claude_text_primary"
                     android:textColorHint="@color/claude_text_hint"
-                    android:textSize="16sp" />
+                    android:textSize="17sp" />
 
             </com.google.android.material.textfield.TextInputLayout>
 
-            <!-- Login button -->
             <FrameLayout
                 android:layout_width="match_parent"
                 android:layout_height="52dp"
-                android:layout_marginTop="40dp"
+                android:layout_marginTop="32dp"
                 android:alpha="0">
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="@drawable/bg_button_shimmer" />
 
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnLogin"
@@ -202,7 +225,6 @@
 
             </FrameLayout>
 
-            <!-- Error message -->
             <TextView
                 android:id="@+id/tvError"
                 android:layout_width="match_parent"
@@ -215,15 +237,14 @@
                 android:textSize="13sp"
                 android:visibility="gone" />
 
-            <!-- Footer hint -->
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="48dp"
+                android:layout_marginTop="32dp"
                 android:alpha="0"
                 android:fontFamily="@font/claude_serif"
                 android:gravity="center"
-                android:letterSpacing="0.04"
+                android:letterSpacing="0.02"
                 android:text="登录即表示同意相关服务条款"
                 android:textColor="@color/claude_text_tertiary"
                 android:textSize="11sp" />
@@ -232,4 +253,4 @@
 
     </ScrollView>
 
-</LinearLayout>
+</FrameLayout>

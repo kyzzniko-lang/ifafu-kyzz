@@ -36,18 +36,18 @@ class ScoreCheckReceiver : BroadcastReceiver() {
         fun userRepository(): UserRepository
     }
 
-    private val receiverScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
-
     override fun onReceive(context: Context, intent: Intent?) {
         val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
         val shouldNotify = prefs.getBoolean("notify_score", true)
 
         if (shouldNotify) {
             val pendingResult = goAsync()
-            receiverScope.launch {
+            val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+            scope.launch {
                 try {
                     checkNewScores(context)
                 } finally {
+                    scope.cancel()
                     pendingResult.finish()
                 }
             }
@@ -69,7 +69,8 @@ class ScoreCheckReceiver : BroadcastReceiver() {
             val user = userRepository.getUser()
             if (!user.isLogin || user.account.isEmpty()) return
 
-            val lastCount = cacheManager.loadScores(user.account)?.size ?: 0
+            val cachedScores = cacheManager.loadScores(user.account)
+            val lastCount = cachedScores?.size ?: 0
 
             val freshScores = withContext(Dispatchers.IO) {
                 scoreApi.getAllScores(
@@ -81,11 +82,17 @@ class ScoreCheckReceiver : BroadcastReceiver() {
                 cacheManager.saveScores(user.account, freshScores)
                 val currentCount = freshScores.size
 
+                // 只有当之前有缓存数据（非首次加载）且新数据更多时才通知
+                // 避免学期变更后缓存被清除导致的误报
                 if (lastCount > 0 && currentCount > lastCount) {
                     val newCount = currentCount - lastCount
-                    val newScores = freshScores.takeLast(newCount)
-                    val names = newScores.joinToString("、") { it.courseName }
-                    showNotification(context, "有${newCount}门新成绩", names)
+                    // 通过比较课程名确认是真正的新成绩，而非缓存恢复
+                    val cachedNames = cachedScores?.map { it.courseName to it.year to it.term }?.toSet() ?: emptySet()
+                    val trulyNew = freshScores.filter { (it.courseName to it.year to it.term) !in cachedNames }
+                    if (trulyNew.isNotEmpty()) {
+                        val names = trulyNew.joinToString("、") { it.courseName }
+                        showNotification(context, "有${trulyNew.size}门新成绩", names)
+                    }
                 }
             }
         } catch (e: Exception) {

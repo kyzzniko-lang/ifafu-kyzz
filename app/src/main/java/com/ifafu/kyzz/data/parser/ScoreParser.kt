@@ -120,9 +120,10 @@ class ScoreParser @Inject constructor(
             "及格", "合格" -> 65f
             "不及格", "差", "不合格" -> 50f
             "免修", "免考" -> -1f
+            "缺考", "作弊", "取消", "违纪" -> -2f  // 特殊标记，不影响GPA
             else -> {
-                android.util.Log.w("ScoreParser", "Unknown grade: '$grade', defaulting to 0")
-                0f
+                android.util.Log.w("ScoreParser", "Unknown grade: '$grade', defaulting to -2 (excluded from GPA)")
+                -2f  // 使用-2标记未知成绩，GPA计算时应跳过
             }
         }
     }

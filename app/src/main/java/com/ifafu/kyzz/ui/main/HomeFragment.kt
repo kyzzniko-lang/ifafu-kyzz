@@ -248,6 +248,32 @@ class HomeFragment : Fragment() {
         binding.chipsContainer.alpha = 0f
         binding.chipsContainer.translationY = 20f
         binding.chipsContainer.animate().alpha(1f).translationY(0f).setDuration(500).setStartDelay(200).start()
+
+        setupHomeAmbientGlow()
+    }
+
+    private var homeGlowAnimator1: ValueAnimator? = null
+    private var homeGlowAnimator2: ValueAnimator? = null
+
+    private fun setupHomeAmbientGlow() {
+        binding.ambientGlowTop?.let { glow ->
+            homeGlowAnimator1 = ValueAnimator.ofFloat(0.25f, 0.4f, 0.25f).apply {
+                duration = 4500
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = AccelerateDecelerateInterpolator()
+                addUpdateListener { glow.alpha = it.animatedValue as Float }
+                start()
+            }
+        }
+        binding.ambientGlowBottom?.let { glow ->
+            homeGlowAnimator2 = ValueAnimator.ofFloat(0.15f, 0.28f, 0.15f).apply {
+                duration = 5500
+                repeatCount = ValueAnimator.INFINITE
+                interpolator = AccelerateDecelerateInterpolator()
+                addUpdateListener { glow.alpha = it.animatedValue as Float }
+                start()
+            }
+        }
     }
 
     private fun loadHotDiscussion() {
@@ -1063,7 +1089,7 @@ class HomeFragment : Fragment() {
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): androidx.recyclerview.widget.RecyclerView.ViewHolder {
             val dp = resources.displayMetrics.density
-            val margin = (8 * dp).toInt()
+            val isUser = viewType == TYPE_USER
 
             val container = FrameLayout(parent.context).apply {
                 layoutParams = androidx.recyclerview.widget.RecyclerView.LayoutParams(
@@ -1077,26 +1103,21 @@ class HomeFragment : Fragment() {
                     FrameLayout.LayoutParams.WRAP_CONTENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    if (viewType == TYPE_USER) {
-                        gravity = android.view.Gravity.END
-                        marginStart = margin * 4
+                    gravity = if (isUser) android.view.Gravity.END else android.view.Gravity.START
+                    if (isUser) {
+                        marginStart = (48 * dp).toInt()
                     } else {
-                        gravity = android.view.Gravity.START
-                        marginEnd = margin * 4
+                        marginEnd = (48 * dp).toInt()
                     }
-                    topMargin = margin / 2
-                    bottomMargin = margin / 2
+                    topMargin = (10 * dp).toInt()
+                    bottomMargin = (10 * dp).toInt()
                 }
-                maxWidth = (260 * dp).toInt()
-                setPadding(margin, margin / 2, margin, margin / 2)
-                textSize = 14f
-                typeface = resources.getFont(R.font.claude_serif)
-                background = if (viewType == TYPE_USER) {
-                    resources.getDrawable(R.drawable.bg_chat_msg_user, null)
-                } else {
-                    resources.getDrawable(R.drawable.bg_chat_msg_pet, null)
-                }
+                maxWidth = (280 * dp).toInt()
+                textSize = 15f
+                setLineSpacing(0f, 1.55f)
+                typeface = android.graphics.Typeface.SANS_SERIF
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
+                setPadding(0, 0, 0, 0)
             }
             container.addView(textView)
             return object : androidx.recyclerview.widget.RecyclerView.ViewHolder(container) {}
@@ -1716,6 +1737,10 @@ class HomeFragment : Fragment() {
         bubbleAnimator = null
         pulseAnimator?.cancel()
         pulseAnimator = null
+        homeGlowAnimator1?.cancel()
+        homeGlowAnimator1 = null
+        homeGlowAnimator2?.cancel()
+        homeGlowAnimator2 = null
         _binding = null
     }
 }

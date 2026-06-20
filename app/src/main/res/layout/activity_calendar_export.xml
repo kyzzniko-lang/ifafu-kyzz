@@ -51,7 +51,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:fontFamily="@font/claude_serif"
+                    android:fontFamily="sans-serif"
                     android:text="门课程待导入"
                     android:textColor="@color/claude_text_secondary"
                     android:textSize="14sp" />
@@ -65,7 +65,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:text="将课表导出为 .ics 文件，可用系统日历打开"
             android:textColor="@color/claude_text_hint"
             android:textSize="13sp" />

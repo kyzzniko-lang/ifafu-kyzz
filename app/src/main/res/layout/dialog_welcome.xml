@@ -17,7 +17,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:letterSpacing="-0.02"
             android:text="iFAFU"
             android:textColor="@color/white"
@@ -27,7 +27,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="4dp"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:text="校园助手"
             android:textColor="#B3FFFFFF"
             android:textSize="13sp" />
@@ -46,7 +46,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:lineSpacingMultiplier="1.5"
             android:text="此应用借鉴了FAFU18届学长的开源项目，由24届网络工程KYZZ进行重写得到。"
             android:textColor="@color/claude_text_primary"
@@ -62,7 +62,7 @@
         <TextView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:fontFamily="@font/claude_serif"
+            android:fontFamily="sans-serif"
             android:lineSpacingMultiplier="1.5"
             android:text="感谢开源社区的贡献以及学长的开源项目，本程序也会秉承着开源精神在GitHub开源，所有人都能免费使用。"
             android:textColor="@color/claude_text_secondary"

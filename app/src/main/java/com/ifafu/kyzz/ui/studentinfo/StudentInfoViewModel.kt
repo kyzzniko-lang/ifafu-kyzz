@@ -64,7 +64,8 @@ class StudentInfoViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: AlertException) {
-                _state.value = UiState.Error(e.message ?: "获取信息失败")
+                val msg = if (e.isSessionExpired) "会话已过期，请重新登录" else (e.message ?: "获取信息失败")
+                _state.value = UiState.Error(msg)
             } catch (e: Exception) {
                 val cached = cacheManager.loadStudentInfo(userRepository.getUser().account)
                 if (cached != null) {

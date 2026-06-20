@@ -50,22 +50,5 @@ class BootReceiver : BroadcastReceiver() {
         } catch (e: SecurityException) {
             Log.w("BootReceiver", "无精确闹钟权限，跳过成绩检查", e)
         }
-
-        // Restart mock location if it was running before reboot
-        try {
-            if (prefs.getBoolean("mock_location_running", false)) {
-                val lat = prefs.getFloat("mock_location_lat", 0f).toDouble()
-                val lng = prefs.getFloat("mock_location_lng", 0f).toDouble()
-                if (lat != 0.0 && lng != 0.0) {
-                    val mockIntent = Intent(context, MockLocationService::class.java).apply {
-                        putExtra(MockLocationService.EXTRA_LATITUDE, lat)
-                        putExtra(MockLocationService.EXTRA_LONGITUDE, lng)
-                    }
-                    ContextCompat.startForegroundService(context, mockIntent)
-                }
-            }
-        } catch (e: Exception) {
-            Log.w("BootReceiver", "重启虚拟定位失败", e)
-        }
     }
 }

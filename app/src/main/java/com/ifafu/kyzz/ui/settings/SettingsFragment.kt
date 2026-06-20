@@ -69,6 +69,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
             com.google.android.material.snackbar.Snackbar.make(
                 requireView(), "重启应用后生效", com.google.android.material.snackbar.Snackbar.LENGTH_LONG
             ).setAction("重启") {
+                // 确保所有 pending SharedPreferences 写入完成后再退出
+                val appPrefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+                appPrefs.edit().commit()
+                val cachePrefs = requireContext().getSharedPreferences("ifafu_cache", android.content.Context.MODE_PRIVATE)
+                cachePrefs.edit().commit()
                 val intent = requireActivity().packageManager.getLaunchIntentForPackage(requireActivity().packageName)
                 intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (intent != null) startActivity(intent)
