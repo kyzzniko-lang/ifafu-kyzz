@@ -38,8 +38,9 @@ class ExamParser @Inject constructor(
         if (table != null) {
             val rows = table.select("tr")
             for (row in rows) {
-                if (row.select("th").isNotEmpty()) continue
+                if (row.select("th").isNotEmpty() || row.hasClass("datelisthead")) continue
                 val cells = row.select("td")
+                if (cells.isNotEmpty() && cells[0].text().contains("选课课号")) continue
                 if (cells.size >= 8) {
                     exams.add(Exam(
                         id = htmlParser.cleanNbsp(cells[0].text()),

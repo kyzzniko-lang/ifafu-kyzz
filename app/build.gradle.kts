@@ -20,14 +20,16 @@ android {
         applicationId = "com.ifafu.kyzz"
         minSdk = 24
         targetSdk = 34
-        versionCode = 16
-        versionName = "2.5.0"
+        versionCode = 17
+        versionName = "2.5.1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         buildConfigField("String", "GITHUB_TOKEN_ENC", "\"${localProperties.getProperty("github.token.enc", "")}\"")
         buildConfigField("String", "ZHIPU_API_KEY_ENC", "\"${localProperties.getProperty("zhipu.api_key.enc", "")}\"")
         buildConfigField("String", "QWEN_API_KEY_ENC", "\"${localProperties.getProperty("qwen.api_key.enc", "")}\"")
+
+        resourceConfigurations += listOf("zh", "en")
     }
 
     signingConfigs {

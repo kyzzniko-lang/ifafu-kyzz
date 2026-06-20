@@ -22,8 +22,6 @@
             android:id="@+id/ivPetChatAvatar"
             android:layout_width="40dp"
             android:layout_height="40dp"
-            app:lottie_autoPlay="true"
-            app:lottie_loop="true"
             android:src="@drawable/pet_cat_idle" />
 
         <LinearLayout

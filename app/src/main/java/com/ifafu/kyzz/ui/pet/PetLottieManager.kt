@@ -123,15 +123,25 @@ object PetLottieManager {
         val gifName = stateMap?.get(state) ?: stateMap?.get(PetState.IDLE) ?: return
         val assetPath = "pet/$petType/$gifName"
         try {
+            // 先停掉 Lottie 动画，避免与 Glide GIF 加载冲突（某些设备 native crash）
+            view.cancelAnimation()
             Glide.with(context)
                 .asGif()
                 .load("file:///android_asset/$assetPath")
                 .diskCacheStrategy(DiskCacheStrategy.NONE)
                 .into(object : com.bumptech.glide.request.target.ViewTarget<com.airbnb.lottie.LottieAnimationView, com.bumptech.glide.load.resource.gif.GifDrawable>(view) {
                     override fun onResourceReady(resource: com.bumptech.glide.load.resource.gif.GifDrawable, transition: com.bumptech.glide.request.transition.Transition<in com.bumptech.glide.load.resource.gif.GifDrawable>?) {
-                        view.cancelAnimation()
-                        view.setImageDrawable(resource)
-                        resource.start()
+                        try {
+                            view.cancelAnimation()
+                            view.setImageDrawable(resource)
+                            resource.start()
+                        } catch (_: Exception) {
+                            view.setImageResource(R.drawable.pet_cat_idle)
+                        }
+                    }
+
+                    override fun onLoadFailed(errorDrawable: android.graphics.drawable.Drawable?) {
+                        try { view.setImageResource(R.drawable.pet_cat_idle) } catch (_: Exception) {}
                     }
                 })
         } catch (_: Exception) {

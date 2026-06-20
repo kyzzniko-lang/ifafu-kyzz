@@ -103,14 +103,13 @@ class MockLocationService : Service() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
 
-        removeTestProviderNetwork()
-        addTestProviderNetwork()
-
-        removeTestProviderGPS()
-        addTestProviderGPS()
-
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
+
+        removeTestProviderNetwork()
+        addTestProviderNetwork()
+        removeTestProviderGPS()
+        addTestProviderGPS()
 
         initLocationHandler()
     }

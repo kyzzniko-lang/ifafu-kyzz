@@ -927,11 +927,12 @@ class HomeFragment : Fragment() {
         val tvPetName = dialogView.findViewById<TextView>(R.id.tvChatPetName)
         val tvPetStatus = dialogView.findViewById<TextView>(R.id.tvChatPetStatus)
         val ivAvatar = dialogView.findViewById<com.airbnb.lottie.LottieAnimationView>(R.id.ivPetChatAvatar)
-        val btnClose = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnCloseChat)
+        val btnClose = dialogView.findViewById<android.widget.ImageButton>(R.id.btnCloseChat)
 
-        com.ifafu.kyzz.ui.pet.PetLottieManager.applyAnimation(
-            requireContext(), ivAvatar, petData.state, petData.petType
-        )
+        // 头像用静态 drawable，避免在 dialog 关闭/打开竞态中 Glide/Lottie 加载冲突导致 native crash
+        try {
+            ivAvatar.setImageResource(R.drawable.pet_cat_idle)
+        } catch (_: Exception) {}
         tvPetName.text = "${petData.name}  Lv.${petData.level}"
         tvPetStatus.text = petData.state.label
 

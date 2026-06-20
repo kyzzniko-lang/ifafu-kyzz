@@ -252,20 +252,27 @@ class ExamFragment : Fragment() {
                 })
                 // 考试完成状态标签
                 val isFinished = isExamFinished(exam.datetime)
-                titleRow.addView(TextView(ctx).apply {
-                    text = if (isFinished) "已完成" else "未完成"
-                    textSize = 11f
-                    typeface = resources.getFont(R.font.claude_serif)
-                    setPadding(12, 4, 12, 4)
-                    background = android.graphics.drawable.GradientDrawable().apply {
-                        shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                        cornerRadius = 10f
-                        setColor(if (isFinished) 0x1A2D7A4F.toInt() else 0x1A9C958E.toInt())
-                    }
-                    setTextColor(resources.getColor(
-                        if (isFinished) R.color.claude_success else R.color.claude_text_tertiary, null
-                    ))
-                })
+                val dp = resources.displayMetrics.density
+                if (isFinished) {
+                    titleRow.addView(TextView(ctx).apply {
+                        text = "已完成"
+                        textSize = 11f
+                        typeface = resources.getFont(R.font.claude_serif)
+                        setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (4 * dp).toInt())
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            marginStart = (8 * dp).toInt()
+                        }
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                            cornerRadius = 10f * dp
+                            setColor(0x1A2D7A4F.toInt())
+                        }
+                        setTextColor(resources.getColor(R.color.claude_success, null))
+                    })
+                }
                 val progress = progressMap[exam.id]
                 val statusTag = TextView(ctx).apply {
                     text = when (progress?.status) {
@@ -275,10 +282,16 @@ class ExamFragment : Fragment() {
                     }
                     textSize = 11f
                     typeface = resources.getFont(R.font.claude_serif)
-                    setPadding(12, 4, 12, 4)
+                    setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (4 * dp).toInt())
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        marginStart = (8 * dp).toInt()
+                    }
                     background = android.graphics.drawable.GradientDrawable().apply {
                         shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                        cornerRadius = 10f
+                        cornerRadius = 10f * dp
                         setColor(when (progress?.status) {
                             1 -> 0x1AB7791F.toInt() // warning bg
                             2 -> 0x1A2D7A4F.toInt() // success bg
@@ -307,7 +320,7 @@ class ExamFragment : Fragment() {
                         }
                         background = android.graphics.drawable.GradientDrawable().apply {
                             shape = android.graphics.drawable.GradientDrawable.RECTANGLE
-                            cornerRadius = 10f
+                            cornerRadius = 10f * dp
                             setColor(when (newStatus) {
                                 1 -> 0x1AB7791F.toInt()
                                 2 -> 0x1A2D7A4F.toInt()
@@ -322,7 +335,9 @@ class ExamFragment : Fragment() {
                     }
                     isClickable = true
                 }
-                titleRow.addView(statusTag)
+                if (!isFinished) {
+                    titleRow.addView(statusTag)
+                }
                 holder.content.addView(titleRow)
 
                 holder.content.addView(TextView(holder.itemView.context).apply {
