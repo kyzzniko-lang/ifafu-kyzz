@@ -133,8 +133,11 @@ class CacheManager @Inject constructor(
                 when {
                     key == "syllabus_$account" || key == "syllabus_${account}_ts" -> keysToRemove.add(key)
                     key.startsWith("syllabus_${account}_") -> keysToRemove.add(key)
+                    // 成绩缓存主数据键 + 按学期分键 + 时间戳，全部清理
+                    // （历史 bug：仅清理 _ts 键，导致 scores_$account 主键残留旧学期脏数据）
+                    key == "scores_$account" -> keysToRemove.add(key)
                     key == "scores_${account}_ts" -> keysToRemove.add(key)
-                    key.startsWith("scores_${account}_") && key.endsWith("_ts") -> keysToRemove.add(key)
+                    key.startsWith("scores_${account}_") -> keysToRemove.add(key)
                     key == "exams_$account" || key == "exams_${account}_ts" -> keysToRemove.add(key)
                     key == "student_info_$account" || key == "student_info_${account}_ts" -> keysToRemove.add(key)
                     key == "training_plan_$account" || key == "training_plan_${account}_ts" -> keysToRemove.add(key)

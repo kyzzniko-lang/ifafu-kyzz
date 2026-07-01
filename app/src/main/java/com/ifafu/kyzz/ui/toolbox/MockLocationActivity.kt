@@ -221,10 +221,9 @@ function tLat(x,y){var r=-100+2*x+3*y+.2*y*y+.1*x*y+.2*Math.sqrt(Math.abs(x));r+
 function tLng(x,y){var r=300+x+2*y+.1*x*x+.1*x*y+.1*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*PI)+20*Math.sin(2*x*PI))*2/3;r+=(20*Math.sin(x*PI)+40*Math.sin(x/3*PI))*2/3;r+=(150*Math.sin(x/12*PI)+300*Math.sin(x/30*PI))*2/3;return r}
 function gcj2wgs(lat,lng){var dLat=tLat(lng-105,lat-35),dLng=tLng(lng-105,lat-35),rLat=lat/180*PI,m=Math.sin(rLat);m=1-EE*m*m;var s=Math.sqrt(m);return{lat:lat-dLat*180/((A*(1-EE))/(m*s)*PI),lng:lng-dLng*180/(A/s*Math.cos(rLat)*PI)}}
 var map=L.map('map').setView([$lat,$lng],16);
-var osm=L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',{maxZoom:19}).addTo(map);
 var satellite=L.tileLayer('https://webst0{s}.is.autonavi.com/appmaptile?style=6&x={x}&y={y}&z={z}',{subdomains:['1','2','3','4'],maxZoom:18});
-var road=L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['1','2','3','4'],maxZoom:18});
-L.control.layers({'OpenStreetMap':osm,'卫星图':satellite,'街道图':road},null,{collapsed:false}).addTo(map);
+var road=L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['1','2','3','4'],maxZoom:18}).addTo(map);
+L.control.layers({'街道图':road,'卫星图':satellite},null,{collapsed:false}).addTo(map);
 
 // Single-point mode
 var pickMarker=null;

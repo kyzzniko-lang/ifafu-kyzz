@@ -162,9 +162,41 @@ class ExamFragment : Fragment() {
             val todayCal = java.util.Calendar.getInstance()
             val examYear = examCal.get(java.util.Calendar.YEAR)
             val todayYear = todayCal.get(java.util.Calendar.YEAR)
-            examYear < todayYear || (examYear == todayYear &&
-                examCal.get(java.util.Calendar.DAY_OF_YEAR) < todayCal.get(java.util.Calendar.DAY_OF_YEAR))
+            val examDay = examCal.get(java.util.Calendar.DAY_OF_YEAR)
+            val todayDay = todayCal.get(java.util.Calendar.DAY_OF_YEAR)
+            when {
+                examYear < todayYear || (examYear == todayYear && examDay < todayDay) -> true
+                // 考试当天：进一步看是否已过该场考试的最晚结束时刻。
+                // datetime 形如 "2026-06-29(周一)09:00-11:00~13:00-15:00"，
+                // 括号内用 ~ 分割多个时段，每段 "起-止"，取所有"止"时刻的最大值作为结束。
+                examYear == todayYear && examDay == todayDay -> isLatestTimePassed(raw)
+                else -> false
+            }
         } catch (_: Exception) { false }
+    }
+
+    private fun isLatestTimePassed(raw: String): Boolean {
+        val parenStart = raw.indexOf('(')
+        if (parenStart < 0) return false
+        val timeFmt = java.text.SimpleDateFormat("HH:mm", java.util.Locale.getDefault())
+        var latestEnd: java.util.Date? = null
+        // datetime 形如 "2026-06-29(周一)09:00-11:00~13:00-15:00"，
+        // 括号内用 ~ 分隔多个时段，每段 "起-止"，取所有"止"时刻的最大值作为考试结束。
+        for (seg in raw.substring(parenStart + 1).split("~", ")")) {
+            val range = seg.split("-")
+            if (range.size >= 2) {
+                try {
+                    val end = timeFmt.parse(range.last().trim().substringBefore(" ")) ?: continue
+                    if (latestEnd == null || end.after(latestEnd)) latestEnd = end
+                } catch (_: Exception) { continue }
+            }
+        }
+        if (latestEnd == null) return false
+        val nowCal = java.util.Calendar.getInstance()
+        val endCal = java.util.Calendar.getInstance().apply { time = latestEnd }
+        return nowCal.get(java.util.Calendar.HOUR_OF_DAY) > endCal.get(java.util.Calendar.HOUR_OF_DAY) ||
+            (nowCal.get(java.util.Calendar.HOUR_OF_DAY) == endCal.get(java.util.Calendar.HOUR_OF_DAY) &&
+                nowCal.get(java.util.Calendar.MINUTE) >= endCal.get(java.util.Calendar.MINUTE))
     }
 
     inner class ExamAdapter(

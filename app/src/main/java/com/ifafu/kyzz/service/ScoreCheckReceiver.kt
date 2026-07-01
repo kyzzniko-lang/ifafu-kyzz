@@ -70,7 +70,6 @@ class ScoreCheckReceiver : BroadcastReceiver() {
             if (!user.isLogin || user.account.isEmpty()) return
 
             val cachedScores = cacheManager.loadScores(user.account)
-            val lastCount = cachedScores?.size ?: 0
 
             val freshScores = withContext(Dispatchers.IO) {
                 scoreApi.getAllScores(
@@ -80,19 +79,18 @@ class ScoreCheckReceiver : BroadcastReceiver() {
 
             if (freshScores != null) {
                 cacheManager.saveScores(user.account, freshScores)
-                val currentCount = freshScores.size
 
-                // 只有当之前有缓存数据（非首次加载）且新数据更多时才通知
-                // 避免学期变更后缓存被清除导致的误报
-                if (lastCount > 0 && currentCount > lastCount) {
-                    val newCount = currentCount - lastCount
-                    // 通过比较课程名确认是真正的新成绩，而非缓存恢复
-                    val cachedNames = cachedScores?.map { it.courseName to it.year to it.term }?.toSet() ?: emptySet()
-                    val trulyNew = freshScores.filter { (it.courseName to it.year to it.term) !in cachedNames }
-                    if (trulyNew.isNotEmpty()) {
-                        val names = trulyNew.joinToString("、") { it.courseName }
-                        showNotification(context, "有${trulyNew.size}门新成绩", names)
-                    }
+                // 用集合差判断新成绩，而非"计数差 + lastCount>0"。
+                // 旧逻辑在学期切换清缓存后 lastCount=0 会直接漏报新学期第一条成绩，
+                // 且按课程名去重在重修/同名课时会误判。改用 courseCode+year+term 稳定 key。
+                fun scoreKey(s: com.ifafu.kyzz.data.model.Score): Triple<String, String, String> =
+                    Triple(s.courseCode, s.year, s.term)
+
+                val cachedKeys = cachedScores?.map(::scoreKey)?.toSet() ?: emptySet()
+                val trulyNew = freshScores.filter { it.score > 0f && scoreKey(it) !in cachedKeys }
+                if (trulyNew.isNotEmpty()) {
+                    val names = trulyNew.joinToString("、") { it.courseName }
+                    showNotification(context, "有${trulyNew.size}门新成绩", names)
                 }
             }
         } catch (e: Exception) {

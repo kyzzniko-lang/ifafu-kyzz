@@ -81,7 +81,12 @@ class MainViewModel @Inject constructor(
                 set(Calendar.MILLISECOND, 0)
             }
             val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
-            ((diffDays / 7) + 1).coerceAtLeast(0)
+            val week = ((diffDays / 7) + 1).coerceAtLeast(0)
+            // 上限 clamp：正常学期最多约 30 周（含小学期）。超过几乎一定是
+            // termFirstDay 过期未更新，此时显示"第40周"既荒谬又与今日课程区域
+            // （loadTodayCourses 用 maxCourseWeek+4 判假期）自相矛盾。
+            // 返回 0 让 chip 隐藏，与"假期中无今日课程"保持一致。
+            if (week > 30) 0 else week
         } catch (_: Exception) { 0 }
     }
 

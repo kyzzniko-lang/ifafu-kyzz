@@ -49,6 +49,27 @@
 
 ## 更新日志
 
+### v2.5.2
+- **修复课表学期结束后"今天"高亮错位一周的关键 bug**
+  - 根因：二维课表 `calculateCurrentWeek()` 用 `coerceIn(minWeek, maxWeek)` 把超出课程范围的当前周（如第18周，但课程只排到17周）钳制回 `maxWeek`，导致日期行定位到上周一、且"今天"列永远无法高亮。
+  - 修复：`coerceAtLeast(minWeek)` 仅约束下限，返回真实周次；标题超界时显示"课程已结束"；网格区给出空状态提示；周次选择器纳入当前周。
+- **修复成绩缓存主键永远不会被清除的隐蔽 bug**
+  - 根因：`CacheManager.clearCache()` 清理 scores 时漏掉了主数据键 `scores_$account`（仅清理 `_ts` 后缀键），导致学期切换 / 手动清缓存后旧成绩脏数据永久残留。
+  - 修复：补全 `key == "scores_$account"` 及按学期分键的清理条件。
+- **修复新学期第一条新成绩不推送通知**
+  - 根因：`ScoreCheckReceiver` 用 `lastCount > 0 && currentCount > lastCount` 计数差判断新成绩，学期切换清缓存后 `lastCount=0` 直接漏报。
+  - 修复：改用集合差逻辑（稳定 key `courseCode+year+term`），去掉 `lastCount>0` 前置，避免重修同名课误判。
+- **修复首页倒计时卡片被过期事件占满**
+  - 根因：`HomeFragment` 倒计时列表未过滤 `days < 0`，过期事件（负数）排在最前占满 3 个槽位，新建的未来事件被挤掉。
+  - 修复：`mapNotNull` 内过滤掉已过期事件。
+- **修复首页"第X周"chip 显示离谱大数字**
+  - 根因：`MainViewModel.calculateCurrentWeek()` 仅 `coerceAtLeast(0)` 无上限，`termFirstDay` 过期时会显示"第30周""第38周"等荒谬值。
+  - 修复：超 30 周返回 0 让 chip 隐藏，与今日课程区域的假期守卫一致。
+- **修复考试当天过了结束时刻仍显示"未完成"**
+  - 根因：`isExamFinished` 只比较到"天"，考试当天即使已过结束时间仍算未完成。
+  - 修复：新增"考试当天"分支，解析括号内多个时段的最晚结束时刻判断是否已过。
+- **虚拟定位地图移除显示异常的 OpenStreetMap 图层，仅保留高德卫星图与街道图**
+
 ### v2.5.1
 - **修复宠物聊天弹窗打开即崩溃重启的关键 bug**
   - 根因：`dialog_pet_chat.xml` 中的关闭按钮为 `ImageButton`，但 `HomeFragment.kt` 代码中通过 `findViewById` 强转为 `MaterialButton`，导致 `ClassCastException` 崩溃。

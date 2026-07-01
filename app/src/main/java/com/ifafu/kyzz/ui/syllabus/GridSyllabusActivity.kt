@@ -295,7 +295,10 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             for (w in c.weekBegin..c.weekEnd) weekSet.add(w)
         }
 
-        for (w in minWeek..maxWeek) {
+        // 循环上界取 maxWeek 与当前周的较大者，保证当前周（可能超出课程范围）
+        // 也能在选择器中显示并高亮。
+        val pickerMaxWeek = maxOf(maxWeek, currentWeek)
+        for (w in minWeek..pickerMaxWeek) {
             val chip = Chip(this).apply {
                 text = "第${w}周"
                 isClickable = true
@@ -449,7 +452,10 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 if (diffMillis >= 0) {
                     val diffDays = (diffMillis / (24 * 60 * 60 * 1000)).toInt()
                     val week = (diffDays / 7) + 1
-                    return week.coerceIn(minWeek, maxWeek)
+                    // 仅约束下限，不约束上限。当前周超过 maxWeek（学期已结束/课程排到最后）
+                    // 时仍返回真实周次，否则 updateDateRow 会把今天定位到过去某周、
+                    // 且"今天"列永远无法高亮。超出范围的周只是没有课程，符合预期。
+                    return week.coerceAtLeast(minWeek)
                 }
             } catch (_: Exception) {}
         }
@@ -486,10 +492,16 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     }
 
     private fun updateWeekDisplay() {
-        val title = if (currentWeek == realCurrentWeek && realCurrentWeek > 0) {
-            "第${currentWeek}周(本周)"
-        } else {
-            "第${currentWeek}周"
+        val title = when {
+            currentWeek == realCurrentWeek && realCurrentWeek > 0 && currentWeek > maxWeek -> {
+                "第${currentWeek}周(本周·课程已结束)"
+            }
+            currentWeek == realCurrentWeek && realCurrentWeek > 0 -> {
+                "第${currentWeek}周(本周)"
+            }
+            else -> {
+                "第${currentWeek}周"
+            }
         }
         binding.tvWeekTitle.text = title
         binding.btnPrevWeek.alpha = if (currentWeek <= minWeek) 0.3f else 1.0f
@@ -538,6 +550,28 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             (course.oddOrTwice == 0 ||
              (course.oddOrTwice == 1 && currentWeek % 2 == 1) ||
              (course.oddOrTwice == 2 && currentWeek % 2 == 0))
+        }
+
+        // 当前周已超出本学期课程范围（如学期17周结束、现在第18周）：
+        // 仍显示日期行让"今天"正确高亮，但网格区给一行提示，避免空白像加载失败。
+        if (weekCourses.isEmpty() && currentWeek > maxWeek) {
+            binding.gridContent.addView(createSectionColumn())
+            val hint = TextView(this).apply {
+                text = "本学期课程已于第${maxWeek}周结束"
+                setTextColor(resources.getColor(R.color.claude_text_hint, null))
+                textSize = 13f
+                gravity = Gravity.CENTER
+                setPadding(0, dpToPx(40), 0, dpToPx(40))
+                typeface = resources.getFont(R.font.claude_serif)
+            }
+            val hintCol = LinearLayout(this).apply {
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 6f)
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                addView(hint)
+            }
+            binding.gridContent.addView(hintCol)
+            return
         }
 
         // 按列组织课程：day -> section -> courses

@@ -434,6 +434,8 @@ class HomeFragment : Fragment() {
             try {
                 val target = sdf.parse(event.date) ?: return@mapNotNull null
                 val days = ((target.time - now.time.time) / (24 * 60 * 60 * 1000L)).toInt()
+                // 过滤掉已过期事件（days < 0），否则负数排在最前会占满首页 3 个槽位
+                if (days < 0) return@mapNotNull null
                 event to days
             } catch (_: Exception) { null }
         }.sortedBy { it.second }.take(3)
