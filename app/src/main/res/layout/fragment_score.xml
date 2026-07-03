@@ -130,14 +130,14 @@
                 android:layout_marginHorizontal="12dp"
                 android:background="@color/claude_border" />
 
-            <!-- Weighted avg + Total credits stacked -->
+            <!-- Weighted avg + Total credits + Avg + Subject count (2x2 grid) -->
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:orientation="vertical">
 
-                <!-- Weighted avg row -->
+                <!-- Row 1: Weighted avg + Total credits -->
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -162,19 +162,10 @@
                         android:textColor="@color/claude_text_hint"
                         android:textSize="11sp" />
 
-                </LinearLayout>
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="0dp" />
-
-                <!-- Total credits row -->
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="6dp"
-                    android:gravity="center_vertical"
-                    android:orientation="horizontal">
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
 
                     <TextView
                         android:id="@+id/tvTotalCredits"
@@ -191,6 +182,57 @@
                         android:layout_height="wrap_content"
                         android:layout_marginStart="6dp"
                         android:text="总学分"
+                        android:textColor="@color/claude_text_hint"
+                        android:textSize="11sp" />
+
+                </LinearLayout>
+
+                <!-- Row 2: Avg (arithmetic) + Subject count -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/tvAvgScore"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif"
+                        android:text="—"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="平均分"
+                        android:textColor="@color/claude_text_hint"
+                        android:textSize="11sp" />
+
+                    <View
+                        android:layout_width="0dp"
+                        android:layout_height="0dp"
+                        android:layout_weight="1" />
+
+                    <TextView
+                        android:id="@+id/tvSubjectCount"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:fontFamily="sans-serif"
+                        android:text="—"
+                        android:textColor="@color/claude_text_primary"
+                        android:textSize="20sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="6dp"
+                        android:text="已出科目"
                         android:textColor="@color/claude_text_hint"
                         android:textSize="11sp" />
 

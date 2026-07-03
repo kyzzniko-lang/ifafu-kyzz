@@ -143,6 +143,8 @@ class CacheManager @Inject constructor(
                     key == "training_plan_$account" || key == "training_plan_${account}_ts" -> keysToRemove.add(key)
                     key == "grade_exams_$account" || key == "grade_exams_${account}_ts" -> keysToRemove.add(key)
                     key == "exam_progress_$account" -> keysToRemove.add(key)
+                    // 成绩首次见到时间记录（用于成绩页按出分先后排序）
+                    key == "score_first_seen_$account" -> keysToRemove.add(key)
                 }
             }
             prefs.edit().apply {
@@ -293,5 +295,90 @@ class CacheManager @Inject constructor(
             Log.e(TAG, "Failed to deserialize ExamProgress for $account", e)
             emptyList()
         }
+    }
+
+    // ==================== 成绩首次见到时间（出分先后排序用） ====================
+
+    /**
+     * 成绩唯一标识：courseCode + year + term（与 ScoreCheckReceiver 去重 key 同源）。
+     * 教务系统不提供成绩录入时间，这里记录 App 本地首次见到该成绩的时间戳，
+     * 用于成绩页按"出分先后"排序与标记最新成绩。
+     */
+    private fun scoreKey(s: com.ifafu.kyzz.data.model.Score): String =
+        "${s.courseCode}|${s.year}|${s.term}"
+
+    /**
+     * 合并新拉取的成绩到本地首次见到时间表，并为每条成绩赋值 firstSeenTs。
+     *
+     * NEW 标记规则：只有"用户当前在读学期"的成绩才会被记为当前时间（进入 48h NEW 窗口）；
+     * 其它所有学期的成绩一律记为 0（窗口外，永不显示 NEW）。
+     *
+     * 当前在读学期由 [com.ifafu.kyzz.data.util.TermResolver.inferCurrentTerm] 按手机当前
+     * 日期推断（如 2026 年 2-7 月 → 2025-2026 学年第二学期），并与爬取到的成绩数据复核：
+     * 若推断学期在成绩里已有数据，则用它；若推断学期还一门分都没出（如刚开学），则退回
+     * 数据里最大的学期作为"最近有分学期"，避免新学期还没出分时把上学期标 NEW。
+     */
+    fun mergeAndAssignFirstSeen(account: String, scores: List<com.ifafu.kyzz.data.model.Score>) {
+        if (scores.isEmpty()) return
+        val existing = loadScoreFirstSeenInternal(account).toMutableMap()
+        val now = System.currentTimeMillis()
+
+        // 1. 用手机日期推断当前在读学期
+        val inferred = com.ifafu.kyzz.data.util.TermResolver.inferCurrentTerm()
+        // 2. 复核：推断学期是否在爬取数据里有成绩
+        val hasInferredScores = scores.any { it.year == inferred.year && it.term == inferred.term }
+        // 3. 确定"当前学期"：有分用推断值；没分退回数据里最大的学期（最近有分学期）
+        val (curYear, curTerm) = if (hasInferredScores) {
+            inferred.year to inferred.term
+        } else {
+            val latestYear = scores.map { it.year }.maxOrNull() ?: return
+            val latestTerm = scores.filter { it.year == latestYear }
+                .map { it.term }.maxOrNull() ?: return
+            latestYear to latestTerm
+        }
+
+        for (s in scores) {
+            val key = scoreKey(s)
+            val isCurrentTerm = s.year == curYear && s.term == curTerm
+            if (key in existing) {
+                val old = existing.getValue(key)
+                // 自愈：非当前学期的成绩不应有窗口内时间戳（旧版本误标残留），纠正为 0
+                s.firstSeenTs = if (!isCurrentTerm && old > 0L) {
+                    existing[key] = 0L; 0L
+                } else {
+                    old
+                }
+            } else {
+                // 仅当前学期的成绩记 now（进入 NEW 窗口），其它学期一律记 0（永不 NEW）
+                val ts = if (isCurrentTerm) now else 0L
+                existing[key] = ts
+                s.firstSeenTs = ts
+            }
+        }
+        saveScoreFirstSeenInternal(account, existing)
+    }
+
+    /** 仅从缓存加载时间戳并赋值（不写入），用于离线/缓存展示时恢复排序。 */
+    fun assignFirstSeenFromCache(account: String, scores: List<com.ifafu.kyzz.data.model.Score>) {
+        if (scores.isEmpty()) return
+        val map = loadScoreFirstSeenInternal(account)
+        for (s in scores) {
+            s.firstSeenTs = map[scoreKey(s)] ?: 0L
+        }
+    }
+
+    private fun loadScoreFirstSeenInternal(account: String): Map<String, Long> {
+        val json = prefs.getString("score_first_seen_$account", null) ?: return emptyMap()
+        return try {
+            val type = object : TypeToken<MutableMap<String, Long>>() {}.type
+            gson.fromJson(json, type) ?: emptyMap()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to deserialize score_first_seen for $account", e)
+            emptyMap()
+        }
+    }
+
+    private fun saveScoreFirstSeenInternal(account: String, map: Map<String, Long>) {
+        prefs.edit().putString("score_first_seen_$account", gson.toJson(map)).apply()
     }
 }

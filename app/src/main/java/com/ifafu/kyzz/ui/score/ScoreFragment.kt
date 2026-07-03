@@ -183,6 +183,10 @@ class ScoreFragment : Fragment() {
         val weightedSum = scores.sumOf { (it.score * it.studyScore).toDouble() }.toFloat()
         val weightedAvg = if (totalCredits > 0) weightedSum / totalCredits else 0f
 
+        // 算术平均分（不考虑学分权重）与已出成绩科目数
+        val avgScore = scores.map { it.score }.average().toFloat()
+        val subjectCount = scores.size
+
         val gpa = if (scores.any { it.scorePoint > 0f }) {
             val gpSum = scores.sumOf { (it.scorePoint * it.studyScore).toDouble() }.toFloat()
             if (totalCredits > 0) gpSum / totalCredits else 0f
@@ -194,6 +198,8 @@ class ScoreFragment : Fragment() {
         binding.gpaRingView.setGpa(gpa)
         animateCounter(binding.tvWeightedAvg, 0f, weightedAvg, "%.1f", 800)
         animateCounter(binding.tvTotalCredits, 0f, totalCredits, "%.1f", 800)
+        animateCounter(binding.tvAvgScore, 0f, avgScore, "%.1f", 800)
+        binding.tvSubjectCount.text = subjectCount.toString()
     }
 
     private fun animateCounter(textView: TextView, from: Float, to: Float, format: String, duration: Long) {
@@ -300,10 +306,37 @@ class ScoreFragment : Fragment() {
                     typeface = resources.getFont(R.font.claude_serif)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
+                // NEW 标签：成绩首次见到时间在最近 48 小时内时显示，常驻不因刷新丢失。
+                if (score.isNewWithin()) {
+                    val dp = resources.displayMetrics.density
+                    topRow.addView(TextView(requireContext()).apply {
+                        text = "NEW"
+                        textSize = 10f
+                        typeface = android.graphics.Typeface.DEFAULT_BOLD
+                        setTextColor(resources.getColor(R.color.claude_terracotta, null))
+                        setPadding((8 * dp).toInt(), (2 * dp).toInt(), (8 * dp).toInt(), (2 * dp).toInt())
+                        layoutParams = LinearLayout.LayoutParams(
+                            LinearLayout.LayoutParams.WRAP_CONTENT,
+                            LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply { marginEnd = (10 * dp).toInt() }
+                        background = android.graphics.drawable.GradientDrawable().apply {
+                            shape = android.graphics.drawable.GradientDrawable.RECTANGLE
+                            cornerRadius = 10f * dp
+                            setColor(0x1AD4724A.toInt()) // terracotta 半透明底
+                            setStroke((1 * dp).toInt(), resources.getColor(R.color.claude_terracotta, null))
+                        }
+                    })
+                }
                 topRow.addView(TextView(requireContext()).apply {
                     text = if (score.score > 0) "${score.score}" else "--"
                     typeface = resources.getFont(R.font.claude_serif); textSize = 22f
-                    setTextColor(resources.getColor(R.color.claude_terracotta, null))
+                    // 分数着色：及格（>=60）绿色，不及格（<60）红色，未出分灰色
+                    val scoreColor = when {
+                        score.score <= 0 -> R.color.claude_text_hint
+                        score.score < 60 -> R.color.claude_error
+                        else -> R.color.claude_success
+                    }
+                    setTextColor(resources.getColor(scoreColor, null))
                 })
                 holder.content.addView(topRow)
                 val infoParts = mutableListOf("${score.year} 第${score.term}学期", score.courseType, "学分: ${score.studyScore}")

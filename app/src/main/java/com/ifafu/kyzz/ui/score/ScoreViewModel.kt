@@ -50,6 +50,7 @@ class ScoreViewModel @Inject constructor(
             val cached = cacheManager.loadScores(user.account)
             if (!isStale && cached != null && cached.isNotEmpty()) {
                 allScores = cached
+                cacheManager.assignFirstSeenFromCache(user.account, allScores)
                 _state.value = UiState.Success(filterScores())
                 return
             }
@@ -65,11 +66,14 @@ class ScoreViewModel @Inject constructor(
                 if (scores != null) {
                     allScores = scores
                     cacheManager.saveScores(freshUser.account, scores)
+                    // 记录首次见到时间，标记本次新增成绩，用于排序与 NEW 角标
+                    cacheManager.mergeAndAssignFirstSeen(freshUser.account, allScores)
                     _state.value = UiState.Success(filterScores())
                 } else {
                     val cached = cacheManager.loadScores(freshUser.account)
                     if (cached != null && cached.isNotEmpty()) {
                         allScores = cached
+                        cacheManager.assignFirstSeenFromCache(freshUser.account, allScores)
                         _state.value = UiState.Cached(filterScores(), "离线模式 · 显示缓存数据")
                     } else {
                         _state.value = UiState.Error("获取成绩失败，请检查网络后重试")
@@ -84,6 +88,7 @@ class ScoreViewModel @Inject constructor(
                 val cached = cacheManager.loadScores(userRepository.getUser().account)
                 if (cached != null && cached.isNotEmpty()) {
                     allScores = cached
+                    cacheManager.assignFirstSeenFromCache(userRepository.getUser().account, allScores)
                     _state.value = UiState.Cached(filterScores(), "离线模式 · 显示缓存数据")
                 } else {
                     _state.value = UiState.Error("网络异常，请稍后重试")
@@ -115,7 +120,14 @@ class ScoreViewModel @Inject constructor(
         if (currentTerm != null) {
             filtered = filtered.filter { it.term == currentTerm }
         }
-        return filtered
+        // 按"出分先后"排序：有本地首次见到时间戳的（最近新出的）排最前，
+        // 时间戳相同则同批；无时间戳的历史成绩按学年/学期/课程名兜底，排在后面。
+        return filtered.sortedWith(
+            compareByDescending<Score> { it.firstSeenTs }
+                .thenByDescending { it.year }
+                .thenByDescending { it.term }
+                .thenBy { it.courseName }
+        )
     }
 
     fun getAvailableYears(): List<String> {
