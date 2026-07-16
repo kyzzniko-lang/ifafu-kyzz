@@ -26,7 +26,13 @@ object UpdateChecker {
     private const val REPO = "kyzzniko-lang/ifafu-kyzz"
     private const val API_URL = "https://api.github.com/repos/$REPO/releases/latest"
 
+    // 单例协程 scope：用于无显式 scope 传入时的兜底。
+    // 通过 currentCheckJob 跟踪并取消上一次未完成的检查，避免多个并发检查叠加，
+    // 也避免旧回调（持有已销毁的 Fragment/Activity）在协程里继续持有引用。
     private val checkScope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
+    @Volatile
+    private var currentCheckJob: kotlinx.coroutines.Job? = null
 
     data class ReleaseInfo(
         @SerializedName("tag_name") val tagName: String,
@@ -43,9 +49,18 @@ object UpdateChecker {
         val apkAsset: Asset? get() = assets?.find { it.name.endsWith(".apk") }
     }
 
+    /**
+     * 检查更新。回调始终在主线程执行。
+     *
+     * 注意：context 仅用于读取应用版本号（内部转 applicationContext），不会跨协程持有
+     * 调用方的 Activity/Fragment 引用。若连续调用，会取消上一次未完成的检查。
+     */
     fun checkForUpdate(context: Context, callback: (ReleaseInfo?) -> Unit) {
+        // 取消上一次未完成的检查，避免并发叠加 & 旧回调持有已销毁组件
+        currentCheckJob?.cancel()
         val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-        checkScope.launch {
+        val appContext = context.applicationContext // 仅持有 application context，避免泄漏 Activity
+        currentCheckJob = checkScope.launch {
             try {
                 val client = OkHttpClient.Builder()
                     .connectTimeout(15, TimeUnit.SECONDS)
@@ -79,7 +94,7 @@ object UpdateChecker {
                     }
 
                     val release = Gson().fromJson(body, ReleaseInfo::class.java)
-                    val currentVersion = getCurrentVersion(context)
+                    val currentVersion = getCurrentVersion(appContext)
                     val isNewer = isNewerVersion(release.versionName, currentVersion)
                     val hasApk = release.apkAsset != null
                     android.util.Log.i("UpdateChecker", "Remote: ${release.versionName}, Local: $currentVersion, isNewer: $isNewer, hasApk: $hasApk, APK: ${release.apkAsset?.name}")
@@ -91,7 +106,7 @@ object UpdateChecker {
                     }
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
-                // 协程取消，不回调
+                // 协程取消（被新的检查取消或调用方主动取消），不回调
             } catch (e: Exception) {
                 android.util.Log.e("UpdateChecker", "Check failed: ${e.javaClass.simpleName}: ${e.message}")
                 mainHandler.post { callback(null) }
@@ -168,14 +183,13 @@ object UpdateChecker {
                 try { ctx.unregisterReceiver(receiver) } catch (_: Exception) {}
 
                 val query = DownloadManager.Query().setFilterById(downloadId)
-                val cursor = dm.query(query)
-                val status = if (cursor.moveToFirst()) {
-                    cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                } else {
-                    cursor.close()
-                    DownloadManager.STATUS_FAILED
+                val status = dm.query(query).use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                    } else {
+                        DownloadManager.STATUS_FAILED
+                    }
                 }
-                cursor.close()
 
                 if (status == DownloadManager.STATUS_FAILED) {
                     dm.remove(downloadId)

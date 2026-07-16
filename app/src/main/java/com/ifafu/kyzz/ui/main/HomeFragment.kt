@@ -143,6 +143,7 @@ class HomeFragment : Fragment() {
         updateGreeting()
         if (!simpleMode) {
             petViewModel.reloadPet()
+            petViewModel.resumeBackgroundUpdates()
         }
         // Show cached update result if available
         showCachedUpdateIfNeeded()
@@ -150,6 +151,20 @@ class HomeFragment : Fragment() {
         if (!simpleMode) {
             bubbleHandler.removeCallbacks(resumeRunnable)
             bubbleHandler.postDelayed(resumeRunnable, 2000)
+            // 恢复暂停的无限动画
+            breathingAnimator?.takeIf { !it.isStarted }?.start()
+            if (breathingAnimator?.isPaused == true) breathingAnimator?.resume()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // App/Fragment 不可见时暂停宠物 tick 循环与首页无限动画，降低后台耗电
+        if (!simpleMode) {
+            petViewModel.pauseBackgroundUpdates()
+            bubbleHandler.removeCallbacks(resumeRunnable)
+            // 暂停首页常驻的无限动画，回前台时由 onResume 恢复
+            breathingAnimator?.pause()
         }
     }
 

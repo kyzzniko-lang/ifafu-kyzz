@@ -67,6 +67,7 @@
         <activity android:name=".ui.note.NoteListActivity" />
         <activity android:name=".ui.note.NoteEditActivity" />
         <activity android:name=".ui.toolbox.MockLocationActivity" />
+        <activity android:name=".ui.feedback.CrashFeedbackActivity" />
 
         <service
             android:name=".service.MockLocationService"
@@ -99,6 +100,7 @@
             android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

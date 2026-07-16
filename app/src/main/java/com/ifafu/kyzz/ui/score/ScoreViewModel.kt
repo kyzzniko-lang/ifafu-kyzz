@@ -12,7 +12,9 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 
 @HiltViewModel
@@ -29,6 +31,7 @@ class ScoreViewModel @Inject constructor(
 
     private var currentYear: String? = null
     private var currentTerm: String? = null
+    private var loadJob: Job? = null
 
     init {
         _state.value = UiState.Idle
@@ -42,27 +45,44 @@ class ScoreViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            val isStale = cacheManager.isCacheStale(user.account, "scores", 6 * 60 * 60 * 1000L) // 6 hours
-            if (!isStale && allScores.isNotEmpty()) {
+            val isStale = cacheManager.isCacheStale(
+                user.account,
+                "scores",
+                SCORE_CACHE_MAX_AGE_MS
+            )
+
+            // Stale-while-revalidate: always render memory/disk cache immediately.
+            // Only skip networking while the cache is still within the 10-minute window.
+            if (allScores.isNotEmpty()) {
                 _state.value = UiState.Success(filterScores())
-                return
-            }
-            val cached = cacheManager.loadScores(user.account)
-            if (!isStale && cached != null && cached.isNotEmpty()) {
-                allScores = cached
-                cacheManager.assignFirstSeenFromCache(user.account, allScores)
-                _state.value = UiState.Success(filterScores())
-                return
+                if (!isStale) return
+            } else {
+                val cached = cacheManager.loadScores(user.account)
+                if (cached != null) {
+                    allScores = cached
+                    cacheManager.assignFirstSeenFromCache(user.account, allScores)
+                    _state.value = UiState.Success(filterScores())
+                    if (!isStale) return
+                }
             }
         }
 
-        viewModelScope.launch {
-            _state.value = UiState.Loading
+        // Repeated pull-to-refresh gestures previously queued behind HtmlClient's mutex,
+        // making a normal request look like a 30-second refresh.
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
+            // Pull-to-refresh should keep the existing list visible. Showing the full-page
+            // loading view here made a slow network request feel like the page was frozen.
+            if (allScores.isEmpty()) {
+                _state.value = UiState.Loading
+            }
             try {
                 val freshUser = userRepository.getUser()
-                val scores = scoreApi.getAllScores(
-                    userRepository.host, freshUser.token, freshUser.account, freshUser.name
-                )
+                val scores = withTimeoutOrNull(SCORE_REFRESH_TIMEOUT_MS) {
+                    scoreApi.getAllScores(
+                        userRepository.host, freshUser.token, freshUser.account, freshUser.name
+                    )
+                }
                 if (scores != null) {
                     allScores = scores
                     cacheManager.saveScores(freshUser.account, scores)
@@ -139,5 +159,12 @@ class ScoreViewModel @Inject constructor(
         val sortedScores = allScores.sortedWith(compareByDescending<Score> { it.year }.thenByDescending { it.term })
         val latest = sortedScores.firstOrNull() ?: return null
         return Pair(latest.year, latest.term)
+    }
+
+    companion object {
+        /** Avoid leaving the refresh spinner running through several stacked network timeouts. */
+        private const val SCORE_REFRESH_TIMEOUT_MS = 20_000L
+        /** Fresh enough for normal page entry; older data stays visible while refreshing. */
+        private const val SCORE_CACHE_MAX_AGE_MS = 10 * 60 * 1000L
     }
 }

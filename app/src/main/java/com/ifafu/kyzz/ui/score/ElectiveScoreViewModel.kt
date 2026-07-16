@@ -33,17 +33,18 @@ class ElectiveScoreViewModel @Inject constructor(
         if (!user.isLogin) { _state.value = State.Error("未登录"); return }
 
         if (!forceRefresh) {
-            val isStale = cacheManager.isCacheStale(user.account, "scores", 6 * 60 * 60 * 1000L) // 6 hours
-            if (!isStale) {
+            val isStale = cacheManager.isCacheStale(user.account, "scores", 10 * 60 * 1000L)
+            run {
                 val cached = cacheManager.loadScores(user.account)
                 if (cached != null) {
-                    filterElectives(cached); return
+                    filterElectives(cached)
+                    if (!isStale) return
                 }
             }
         }
 
         viewModelScope.launch {
-            _state.value = State.Loading
+            if (_state.value !is State.Success) _state.value = State.Loading
             try {
                 val scores = scoreApi.getAllScores(
                     userRepository.host, user.token, user.account, user.name

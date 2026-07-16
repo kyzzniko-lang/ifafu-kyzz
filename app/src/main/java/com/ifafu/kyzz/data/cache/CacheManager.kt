@@ -26,6 +26,7 @@ class CacheManager @Inject constructor(
 
     companion object {
         private const val TAG = "CacheManager"
+        private const val MAX_CHAT_HISTORY = 50
     }
 
     fun saveSyllabus(account: String, syllabus: Syllabus) {
@@ -267,8 +268,10 @@ class CacheManager @Inject constructor(
     }
 
     fun saveChatHistory(account: String, messages: List<com.ifafu.kyzz.data.api.PetChatApi.ChatMessage>) {
+        // 限制最近 50 条，避免长对话把超大 JSON 塞进 SharedPreferences（全量读改写易 ANR）
+        val trimmed = if (messages.size > MAX_CHAT_HISTORY) messages.takeLast(MAX_CHAT_HISTORY) else messages
         prefs.edit()
-            .putString("chat_history_$account", gson.toJson(messages.map { mapOf("content" to it.content, "isUser" to it.isUser) }))
+            .putString("chat_history_$account", gson.toJson(trimmed.map { mapOf("content" to it.content, "isUser" to it.isUser) }))
             .apply()
     }
 

@@ -12,7 +12,11 @@ import java.util.Calendar
 class BootReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action != Intent.ACTION_BOOT_COMPLETED) return
+        // 接受开机完成和应用更新完成两种广播。
+        // MY_PACKAGE_REPLACED：App 升级后闹钟会被清除，需重新注册，否则每日提醒静默失效。
+        val action = intent?.action
+        if (action != Intent.ACTION_BOOT_COMPLETED &&
+            action != Intent.ACTION_MY_PACKAGE_REPLACED) return
 
         val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("isLogin", false)) return

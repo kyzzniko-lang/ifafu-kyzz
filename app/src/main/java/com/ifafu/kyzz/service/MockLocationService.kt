@@ -70,8 +70,10 @@ class MockLocationService : Service() {
     private lateinit var locationManager: LocationManager
     private lateinit var locationThread: HandlerThread
     private lateinit var locationHandler: Handler
-    private var latitude: Double = 0.0
-    private var longitude: Double = 0.0
+    // @Volatile: 这些字段在定位后台线程(updateRunnable)读写，Activity binder 线程也会写，
+    // 必须保证可见性，否则后台线程可能读到旧值。
+    @Volatile private var latitude: Double = 0.0
+    @Volatile private var longitude: Double = 0.0
     private var overlay: MockLocationOverlay? = null
 
     // Trajectory mode state
@@ -102,6 +104,18 @@ class MockLocationService : Service() {
     override fun onCreate() {
         super.onCreate()
         locationManager = getSystemService(Context.LOCATION_SERVICE) as LocationManager
+
+        // 从持久化恢复上次坐标，作为初始兜底值。
+        // 若系统因 START_NOT_STICKY 外的原因重建服务（极端情况），避免坐标塌缩到 (0,0)。
+        try {
+            val prefs = getSharedPreferences("ifafu_user", MODE_PRIVATE)
+            val lastLat = prefs.getFloat("mock_location_lat", Float.NaN)
+            val lastLng = prefs.getFloat("mock_location_lng", Float.NaN)
+            if (!lastLat.isNaN() && !lastLng.isNaN()) {
+                latitude = lastLat.toDouble()
+                longitude = lastLng.toDouble()
+            }
+        } catch (_: Exception) {}
 
         createNotificationChannel()
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -176,7 +190,10 @@ class MockLocationService : Service() {
         }
         isRunning = true
 
-        return super.onStartCommand(intent, flags, startId)
+        // 模拟定位不应被系统自动重启：若返回 START_STICKY，系统重建时 intent 为 null，
+        // 会用 onCreate 恢复的坐标或初始值继续注入定位，可能导致用户不知情下持续生效。
+        // 改为 NOT_STICKY：服务被杀后不再重建，用户需要时手动重启。
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
@@ -220,7 +237,7 @@ class MockLocationService : Service() {
                     setLocationNetwork()
                 } catch (_: Exception) {}
                 // Randomize interval by ±30ms so it's not perfectly regular
-                val jitter = (random.nextLong() % 61) - 30 // -30 ~ +30 ms
+                val jitter = random.nextInt(61) - 30 // -30 ~ +30 ms（nextInt 无负数符号问题）
                 locationHandler.postDelayed(this, (100L + jitter).coerceAtLeast(50L))
             }
         }
@@ -392,7 +409,7 @@ class MockLocationService : Service() {
             currentAccuracy += (random.nextFloat() - 0.5f) * 2f
             currentAccuracy = currentAccuracy.coerceIn(5f, 25f)
 
-            val timeJitter = (random.nextLong() % 21) - 10 // ±10ms
+            val timeJitter = random.nextInt(21) - 10 // ±10ms
             val nanoJitter = timeJitter * 1_000_000L
 
             val loc = Location(LocationManager.GPS_PROVIDER).apply {
@@ -503,7 +520,7 @@ class MockLocationService : Service() {
             val reportLng = longitude + driftLng
             val netAccuracy = currentAccuracy * (2f + random.nextFloat()) // 2-3x GPS error
 
-            val timeJitter = (random.nextLong() % 31) - 15 // ±15ms (more than GPS)
+            val timeJitter = random.nextInt(31) - 15 // ±15ms (more than GPS)
             val nanoJitter = timeJitter * 1_000_000L
 
             val loc = Location(LocationManager.NETWORK_PROVIDER).apply {
@@ -588,12 +605,15 @@ class MockLocationService : Service() {
 
         val speedStr = "${"%.1f".format(currentActualSpeed)}m/s"
         val contentText = if (isTrajectoryMode && isLoopMode) {
-            val wps = "${currentWaypointIndex.coerceIn(0, trajectoryWaypoints.size - 1) + 1}/${trajectoryWaypoints.size}"
+            // coerceInSafe: 避免 trajectoryWaypoints 为空时 coerceIn(0, -1) 抛 IllegalArgumentException
+            val maxIdx = (trajectoryWaypoints.size - 1).coerceAtLeast(0)
+            val wps = "${currentWaypointIndex.coerceIn(0, maxIdx) + 1}/${trajectoryWaypoints.size}"
             val lapInfo = if (trajectoryTargetLaps > 0) "圈: ${completedLaps + 1}/${trajectoryTargetLaps}" else "圈: ${completedLaps + 1}/∞"
             "校园跑 $wps | $lapInfo | $speedStr"
         } else if (isTrajectoryMode) {
             val progress = if (trajectoryWaypoints.size >= 2) {
-                "${currentWaypointIndex.coerceIn(0, trajectoryWaypoints.size - 1) + 1}/${trajectoryWaypoints.size}"
+                val maxIdx = trajectoryWaypoints.size - 1
+                "${currentWaypointIndex.coerceIn(0, maxIdx) + 1}/${trajectoryWaypoints.size}"
             } else ""
             "轨迹: $progress | $speedStr | ${String.format("%.6f", lat)}, ${String.format("%.6f", lng)}"
         } else {

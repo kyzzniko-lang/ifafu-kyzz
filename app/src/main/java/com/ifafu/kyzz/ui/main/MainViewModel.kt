@@ -6,6 +6,7 @@ import com.ifafu.kyzz.data.model.Course
 import com.ifafu.kyzz.data.model.Exam
 import com.ifafu.kyzz.data.model.User
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.util.TermResolver
 import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
@@ -112,8 +113,10 @@ class MainViewModel @Inject constructor(
             if (currentWeek > maxCourseWeek + 4) {
                 // 暑假/寒假期间，课表已结束，不显示课程也不反复请求网络
                 // 只有在课表缓存过期（30天）时才尝试刷新，以检测新学期课表是否已发布
+                // During a normal vacation do not poll repeatedly; only refresh after
+                // the long-term cache expires or when the inferred semester changes.
                 val isCacheExpired = cacheManager.isCacheStale(user.account, "syllabus", 30L * 24 * 60 * 60 * 1000)
-                if (isCacheExpired) {
+                if (isCacheExpired || belongsToDifferentTerm(syllabus)) {
                     fetchSyllabusAndShow()
                 } else {
                     _todayCourses.postValue(emptyList())
@@ -127,6 +130,14 @@ class MainViewModel @Inject constructor(
             }
             computeTodayCourses(syllabus)
         }
+    }
+
+    private fun belongsToDifferentTerm(syllabus: com.ifafu.kyzz.data.model.Syllabus): Boolean {
+        val target = TermResolver.inferCurrentTerm()
+        val cachedYear = syllabus.searchYearOptions.getOrNull(syllabus.selectedYearOption)
+        val cachedTerm = syllabus.searchTermOptions.getOrNull(syllabus.selectedTermOption)
+        return !cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty() &&
+            (cachedYear != target.year || cachedTerm != target.term)
     }
 
     private fun fetchSyllabusAndShow() {

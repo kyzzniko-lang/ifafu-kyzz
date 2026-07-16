@@ -50,4 +50,18 @@
 
     <color name="claude_offline_banner_bg">#FFF3E0</color>
     <color name="claude_offline_banner_text">#E65100</color>
+
+    <!-- Login screen: cool neutral surfaces with a restrained warm brand accent. -->
+    <color name="login_page_bg">#FAF9F7</color>
+    <color name="login_page_accent">#08D4724A</color>
+    <color name="login_card_bg">#00FFFFFF</color>
+    <color name="login_card_stroke">#00FFFFFF</color>
+    <color name="login_input_bg">#F3F1ED</color>
+    <color name="login_input_stroke">#DED9D2</color>
+    <color name="login_input_icon">#9C958E</color>
+    <color name="login_brand_start">#24272C</color>
+    <color name="login_brand_end">#111316</color>
+    <color name="login_brand_mark_text">#FFFFFF</color>
+    <color name="login_button_bg">#1F1B17</color>
+    <color name="login_button_text">#FFFFFF</color>
 </resources>

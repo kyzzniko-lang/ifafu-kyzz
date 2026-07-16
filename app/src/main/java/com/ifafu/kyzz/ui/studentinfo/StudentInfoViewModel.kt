@@ -33,18 +33,20 @@ class StudentInfoViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            val isStale = cacheManager.isCacheStale(user.account, "student_info", 7 * 24 * 60 * 60 * 1000L) // 7 days
-            if (!isStale) {
+            val isStale = cacheManager.isCacheStale(user.account, "student_info", 10 * 60 * 1000L)
+            run {
                 val cached = cacheManager.loadStudentInfo(user.account)
                 if (cached != null) {
                     _state.value = UiState.Success(cached)
-                    return
+                    if (!isStale) return
                 }
             }
         }
 
         viewModelScope.launch {
-            _state.value = UiState.Loading
+            if (_state.value !is UiState.Success && _state.value !is UiState.Cached) {
+                _state.value = UiState.Loading
+            }
             try {
                 val freshUser = userRepository.getUser()
                 val info = studentInfoApi.getStudentInfo(

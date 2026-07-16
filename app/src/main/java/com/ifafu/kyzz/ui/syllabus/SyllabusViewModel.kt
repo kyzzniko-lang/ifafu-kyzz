@@ -6,12 +6,14 @@ import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Syllabus
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.data.network.AlertException
+import com.ifafu.kyzz.data.util.TermResolver
 import com.ifafu.kyzz.ui.base.ReloginViewModel
 import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import javax.inject.Inject
 
 @HiltViewModel
@@ -40,6 +42,7 @@ class SyllabusViewModel @Inject constructor(
     // 记录初始 GET 加载的学年/学期，spinner 选择相同时直接复用缓存
     private var initialLoadedYear: String? = null
     private var initialLoadedTerm: String? = null
+    private var loadJob: Job? = null
 
     init {
         _state.value = UiState.Idle
@@ -71,15 +74,18 @@ class SyllabusViewModel @Inject constructor(
 
         if (!forceRefresh) {
             val cached = cacheManager.loadSyllabus(user.account, yearTermKey)
-            if (cached != null && cached.courses.isNotEmpty() && !isCacheStale(cached)) {
+            if (cached != null) {
                 updateAvailableOptions(cached)
                 _state.value = UiState.Success(cached)
-                return
+                if (!isCacheStale(cached)) return
             }
         }
 
-        viewModelScope.launch {
-            _state.value = UiState.Loading
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
+            if (_state.value !is UiState.Success && _state.value !is UiState.Cached) {
+                _state.value = UiState.Loading
+            }
             try {
                 val freshUser = userRepository.getUser()
                 val syllabus = if (year != null && term != null && !isCurrentTerm) {
@@ -175,8 +181,18 @@ class SyllabusViewModel @Inject constructor(
     private fun isCacheStale(cached: Syllabus): Boolean {
         val account = userRepository.getUser().account
         // Check 1: time-based staleness
-        if (cacheManager.isCacheStale(account, "syllabus", 30L * 24 * 60 * 60 * 1000)) {
+        if (cacheManager.isCacheStale(account, "syllabus", CACHE_MAX_AGE_MS)) {
             return true
+        }
+        if (isCurrentTerm) {
+            val inferred = TermResolver.inferCurrentTerm()
+            val cachedYear = cached.searchYearOptions.getOrNull(cached.selectedYearOption)
+            val cachedTerm = cached.searchTermOptions.getOrNull(cached.selectedTermOption)
+            if (!cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty() &&
+                (cachedYear != inferred.year || cachedTerm != inferred.term)
+            ) {
+                return true
+            }
         }
         // Check 2: semester boundary — 仅对当前学期检查，历史学期的缓存不应因当前周数判断为过期
         if (!isCurrentTerm) return false
@@ -208,5 +224,9 @@ class SyllabusViewModel @Inject constructor(
             } catch (_: Exception) {}
         }
         return false
+    }
+
+    companion object {
+        private const val CACHE_MAX_AGE_MS = 10 * 60 * 1000L
     }
 }

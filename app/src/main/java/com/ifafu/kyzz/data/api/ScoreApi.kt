@@ -7,6 +7,7 @@ import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.ScoreParser
 import com.ifafu.kyzz.data.repository.UserRepository
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.withTimeoutOrNull
 import java.net.URLEncoder
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -22,6 +23,8 @@ class ScoreApi @Inject constructor(
 
     companion object {
         private const val TAG = "ScoreApi"
+        private const val SCORE_REQUEST_TIMEOUT_MS = 12_000L
+        private const val SCORE_POST_TIMEOUT_MS = 8_000L
     }
 
     suspend fun getAllScores(host: String, token: String, number: String, name: String): List<Score>? {
@@ -31,7 +34,9 @@ class ScoreApi @Inject constructor(
             
             val accessUrl = "${host}/(${token})/xscjcx_dq_fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
 
-            val doc = htmlClient.get(accessUrl)
+            val doc = withTimeoutOrNull(SCORE_REQUEST_TIMEOUT_MS) {
+                htmlClient.get(accessUrl)
+            } ?: return null
             val html = doc.html()
 
             if (userApi.isSessionExpired(html)) {
@@ -44,7 +49,9 @@ class ScoreApi @Inject constructor(
                 val user = userRepository.getUser()
                 val retryUrl = "${host}/(${user.token})/xscjcx_dq_fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
                 htmlClient.setReferer("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
-                val retryDoc = htmlClient.get(retryUrl)
+                val retryDoc = withTimeoutOrNull(SCORE_REQUEST_TIMEOUT_MS) {
+                    htmlClient.get(retryUrl)
+                } ?: return null
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) {
                     // It still says system busy. The ZF system might be blocking us due to pending evaluation.
@@ -89,7 +96,9 @@ class ScoreApi @Inject constructor(
             .add("btnCx", "查  询")
             .build()
 
-        val resultHtml = htmlClient.postString(accessUrl, formBody)
+        val resultHtml = withTimeoutOrNull(SCORE_POST_TIMEOUT_MS) {
+            htmlClient.postString(accessUrl, formBody)
+        } ?: return initialScores
         htmlClient.throwIfAlert(resultHtml)
         val allScores = scoreParser.parseScores(resultHtml)
 

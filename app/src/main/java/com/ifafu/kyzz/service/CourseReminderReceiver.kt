@@ -12,6 +12,7 @@ import androidx.core.app.NotificationCompat
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.ui.main.MainActivity
 import dagger.hilt.EntryPoint
 import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
@@ -55,11 +56,16 @@ class CourseReminderReceiver : BroadcastReceiver() {
                                 nm.createNotificationChannel(channel)
                             }
 
+                            val openApp = PendingIntent.getActivity(
+                                context, 1001, Intent(context, MainActivity::class.java),
+                                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                            )
                             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                                 .setSmallIcon(R.mipmap.ic_launcher)
                                 .setContentTitle("今日课程提醒")
                                 .setContentText(text)
                                 .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+                                .setContentIntent(openApp)
                                 .setAutoCancel(true)
                                 .build()
 
@@ -90,8 +96,24 @@ class CourseReminderReceiver : BroadcastReceiver() {
             val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pending)
         } catch (e: SecurityException) {
+            scheduleFallback(context)
             android.util.Log.w("CourseReminderReceiver", "无精确闹钟权限", e)
         }
+    }
+
+    private fun scheduleFallback(context: Context) {
+        val pending = PendingIntent.getBroadcast(
+            context, 0, Intent(context, CourseReminderReceiver::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val triggerAt = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 7)
+            set(Calendar.MINUTE, 30)
+            set(Calendar.SECOND, 0)
+            add(Calendar.DAY_OF_YEAR, 1)
+        }.timeInMillis
+        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
     }
 
     private fun buildReminderText(context: Context): String {
@@ -139,7 +161,8 @@ class CourseReminderReceiver : BroadcastReceiver() {
             return matched.joinToString("\n") { c ->
                 "第${c.begin}-${c.end}节 ${c.name} @${c.address}"
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            android.util.Log.w("CourseReminderReceiver", "构建提醒文本失败", e)
             return ""
         }
     }

@@ -37,18 +37,20 @@ class GradeExamViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            val isStale = cacheManager.isCacheStale(user.account, "grade_exams", 24 * 60 * 60 * 1000L) // 24 hours
-            if (!isStale) {
+            val isStale = cacheManager.isCacheStale(user.account, "grade_exams", 10 * 60 * 1000L)
+            run {
                 val cached = cacheManager.loadGradeExams(user.account)
                 if (cached != null && cached.isNotEmpty()) {
                     _state.value = UiState.Success(cached)
-                    return
+                    if (!isStale) return
                 }
             }
         }
 
         viewModelScope.launch {
-            _state.value = UiState.Loading
+            if (_state.value !is UiState.Success && _state.value !is UiState.Cached) {
+                _state.value = UiState.Loading
+            }
             try {
                 val freshUser = userRepository.getUser()
                 val exams = trainingPlanApi.getGradeExams(

@@ -186,8 +186,8 @@
 
     <!-- Document-style input: hairline underline only, hints rendered as separate labels above -->
     <style name="ClaudeInputUnderline" parent="Widget.Material3.TextInputLayout.OutlinedBox">
-        <item name="boxBackgroundColor">@color/claude_input_bg</item>
-        <item name="boxStrokeColor">@color/claude_input_stroke</item>
+        <item name="boxBackgroundColor">@color/login_input_bg</item>
+        <item name="boxStrokeColor">@color/login_input_stroke</item>
         <item name="boxStrokeWidth">1dp</item>
         <item name="boxStrokeWidthFocused">1.5dp</item>
         <item name="boxCornerRadiusTopStart">10dp</item>
@@ -197,6 +197,36 @@
         <item name="hintEnabled">false</item>
         <item name="hintAnimationEnabled">false</item>
         <item name="android:textColorHint">@color/claude_text_hint</item>
+    </style>
+
+    <style name="LoginInput" parent="Widget.Material3.TextInputLayout.OutlinedBox">
+        <item name="boxBackgroundColor">@color/login_input_bg</item>
+        <item name="boxStrokeColor">@color/login_input_stroke</item>
+        <item name="boxStrokeWidth">1dp</item>
+        <item name="boxStrokeWidthFocused">1.5dp</item>
+        <item name="boxCornerRadiusTopStart">10dp</item>
+        <item name="boxCornerRadiusTopEnd">10dp</item>
+        <item name="boxCornerRadiusBottomStart">10dp</item>
+        <item name="boxCornerRadiusBottomEnd">10dp</item>
+        <item name="hintTextColor">@color/claude_terracotta</item>
+        <item name="android:textColorHint">@color/claude_text_hint</item>
+        <item name="android:minHeight">58dp</item>
+    </style>
+
+    <style name="LoginPrimaryButton" parent="Widget.Material3.Button">
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:textStyle">normal</item>
+        <item name="android:letterSpacing">0.04</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:textColor">@color/login_button_text</item>
+        <item name="backgroundTint">@color/login_button_bg</item>
+        <item name="cornerRadius">10dp</item>
+        <item name="android:minHeight">54dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="elevation">0dp</item>
+        <item name="rippleColor">@color/claude_ink_ripple</item>
     </style>
 
     <style name="ClaudeChip" parent="Widget.Material3.Chip.Suggestion">

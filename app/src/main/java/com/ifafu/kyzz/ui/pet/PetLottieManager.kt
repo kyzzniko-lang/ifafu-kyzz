@@ -128,7 +128,7 @@ object PetLottieManager {
             Glide.with(context)
                 .asGif()
                 .load("file:///android_asset/$assetPath")
-                .diskCacheStrategy(DiskCacheStrategy.NONE)
+                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .into(object : com.bumptech.glide.request.target.ViewTarget<com.airbnb.lottie.LottieAnimationView, com.bumptech.glide.load.resource.gif.GifDrawable>(view) {
                     override fun onResourceReady(resource: com.bumptech.glide.load.resource.gif.GifDrawable, transition: com.bumptech.glide.request.transition.Transition<in com.bumptech.glide.load.resource.gif.GifDrawable>?) {
                         try {
@@ -157,7 +157,7 @@ object PetLottieManager {
             Glide.with(context)
                 .asGif()
                 .load("file:///android_asset/$assetPath")
-                .diskCacheStrategy(DiskCacheStrategy.NONE)
+                .diskCacheStrategy(DiskCacheStrategy.AUTOMATIC)
                 .into(view)
         } catch (_: Exception) {
             view.setImageResource(R.drawable.pet_cat_idle)

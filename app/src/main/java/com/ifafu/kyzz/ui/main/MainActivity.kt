@@ -8,6 +8,8 @@ import android.view.ViewGroup
 import android.widget.ImageView
 import android.widget.Toast
 import androidx.activity.viewModels
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.navigation.NavController
 import androidx.navigation.fragment.NavHostFragment
 import androidx.navigation.NavOptions
@@ -23,11 +25,18 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
     private val viewModel: MainViewModel by viewModels()
     private lateinit var navController: NavController
     private var firstClickBack: Long = 0
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun createBinding(): ActivityMainBinding = ActivityMainBinding.inflate(layoutInflater)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // 崩溃恢复检测：若本次启动由崩溃触发且有待反馈的崩溃记录，弹恢复对话框
+        if (intent?.getBooleanExtra(com.ifafu.kyzz.MainApplication.EXTRA_CRASH_RECOVERY, false) == true) {
+            maybeShowCrashRecoveryDialog()
+        }
 
         val simpleMode = getSharedPreferences("ifafu_user", MODE_PRIVATE).getBoolean("simple_mode", false)
         if (simpleMode) {
@@ -63,6 +72,18 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
         }
 
         scheduleCourseReminder()
+        requestNotificationPermissionIfNeeded()
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(
+                this,
+                android.Manifest.permission.POST_NOTIFICATIONS
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     private fun animateNavIcon(itemId: Int) {
@@ -80,6 +101,38 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
                 icon.scaleX = 1f
                 icon.scaleY = 1f
             }
+        }
+    }
+
+    /**
+     * 崩溃恢复对话框：检测到上次崩溃（落盘 pending）时弹出，
+     * 引导用户反馈或忽略。只在有 pending 记录时弹一次。
+     */
+    private fun maybeShowCrashRecoveryDialog() {
+        val crashInfo = com.ifafu.kyzz.core.crash.CrashReporter.getPendingCrashReport()
+            ?: return
+        if (isFinishing || isDestroyed) return
+        try {
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+                .setTitle("应用已恢复")
+                .setMessage(
+                    "应用上次异常退出了（${crashInfo.message}）。\n" +
+                    "是否把这次的崩溃信息反馈给开发者，帮助我们修复？"
+                )
+                .setPositiveButton("反馈问题") { _, _ ->
+                    startActivity(
+                        android.content.Intent(this, com.ifafu.kyzz.ui.feedback.CrashFeedbackActivity::class.java)
+                    )
+                }
+                .setNegativeButton("忽略") { dialog, _ ->
+                    com.ifafu.kyzz.core.crash.CrashReporter.clearPendingCrash()
+                    dialog.dismiss()
+                }
+                .setCancelable(false)
+                .show()
+        } catch (e: Exception) {
+            com.ifafu.kyzz.util.Logger.e("MainActivity", "show crash recovery dialog failed", e)
+            com.ifafu.kyzz.core.crash.CrashReporter.clearPendingCrash()
         }
     }
 

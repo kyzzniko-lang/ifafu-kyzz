@@ -93,9 +93,9 @@ class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
             sb.appendLine("DTSTART:${dateStr}T${times.first}00")
             sb.appendLine("DTEND:${dateStr}T${endTime}00")
             sb.appendLine("RRULE:$rrule")
-            sb.appendLine("SUMMARY:${course.name}")
-            sb.appendLine("LOCATION:${course.address}")
-            sb.appendLine("DESCRIPTION:${course.teacher}")
+            sb.appendLine("SUMMARY:${escapeIcs(course.name)}")
+            sb.appendLine("LOCATION:${escapeIcs(course.address)}")
+            sb.appendLine("DESCRIPTION:${escapeIcs(course.teacher)}")
             sb.appendLine("END:VEVENT")
         }
         sb.appendLine("END:VCALENDAR")
@@ -124,4 +124,13 @@ class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
             Toast.makeText(this, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
+
+    /** RFC 5545 text escaping; commas/semicolons/newlines otherwise break ICS fields. */
+    private fun escapeIcs(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "\\n")
 }

@@ -40,6 +40,9 @@ class PetViewModel @Inject constructor(
     private var lastBubbleTime = 0L
     private val petMutex = Mutex()
 
+    // 后台暂停控制：App 切到后台时停止每分钟 tick + 写盘，避免无谓耗电与磁盘 IO
+    @Volatile private var backgroundPaused = false
+
     data class CheckInResult(val points: Int, val streak: Int, val alreadyChecked: Boolean)
 
     init {
@@ -56,8 +59,22 @@ class PetViewModel @Inject constructor(
         viewModelScope.launch {
             while (true) {
                 delay(60_000) // 每分钟更新一次
-                updateState()
+                // 后台暂停时跳过 tick + 磁盘读写，回到前台首次 tick 会补偿衰减
+                if (!backgroundPaused) updateState()
             }
+        }
+    }
+
+    /** App 切到后台时调用，暂停每分钟的 tick 循环和磁盘写盘 */
+    fun pauseBackgroundUpdates() {
+        backgroundPaused = true
+    }
+
+    /** App 回到前台时调用，恢复 tick 并立即补偿一次状态更新 */
+    fun resumeBackgroundUpdates() {
+        if (backgroundPaused) {
+            backgroundPaused = false
+            updateState()
         }
     }
 
@@ -368,13 +385,13 @@ class PetViewModel @Inject constructor(
     fun feed() {
         viewModelScope.launch {
             var fed = false
+            var cooldownMessageShown = false
             petMutex.withLock {
                 val pet = _pet.value ?: return@withLock
                 if (!pet.canFeed()) {
                     val mins = (pet.nextFeedRecoverIn() / 60_000).toInt()
                     _bubbleText.value = "肚子还饱着呢~ ${mins}分钟后再喂我吧，你以为我是饭桶吗？"
-                    delay(2000)
-                    _bubbleText.value = null
+                    cooldownMessageShown = true
                     return@withLock
                 }
                 pet.feed()
@@ -385,7 +402,13 @@ class PetViewModel @Inject constructor(
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
                 fed = true
             }
-            if (!fed) return@launch
+            if (!fed) {
+                if (cooldownMessageShown) {
+                    delay(2000)
+                    _bubbleText.value = null
+                }
+                return@launch
+            }
             delay(3000)
             _bubbleText.value = null
             petMutex.withLock {
@@ -456,13 +479,13 @@ class PetViewModel @Inject constructor(
     fun play() {
         viewModelScope.launch {
             var played = false
+            var cooldownMessageShown = false
             petMutex.withLock {
                 val pet = _pet.value ?: return@withLock
                 if (!pet.canPlay()) {
                     val mins = (pet.nextPlayRecoverIn() / 60_000).toInt()
                     _bubbleText.value = "我有点累了~ ${mins}分钟后再陪我玩吧，你以为我是永动机吗？"
-                    delay(2000)
-                    _bubbleText.value = null
+                    cooldownMessageShown = true
                     return@withLock
                 }
                 pet.play()
@@ -473,7 +496,13 @@ class PetViewModel @Inject constructor(
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
                 played = true
             }
-            if (!played) return@launch
+            if (!played) {
+                if (cooldownMessageShown) {
+                    delay(2000)
+                    _bubbleText.value = null
+                }
+                return@launch
+            }
             delay(3000)
             _bubbleText.value = null
             petMutex.withLock {

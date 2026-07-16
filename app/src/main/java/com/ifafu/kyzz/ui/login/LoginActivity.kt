@@ -6,6 +6,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.view.inputmethod.EditorInfo
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.ImageButton
@@ -42,10 +43,14 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
         loadSavedCredentials()
         playEntryAnimation()
 
-        binding.btnLogin.setOnClickListener {
-            val account = binding.etAccount.text.toString().trim()
-            val password = binding.etPassword.text.toString().trim()
-            viewModel.login(account, password)
+        binding.btnLogin.setOnClickListener { submitLogin() }
+        binding.etPassword.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                submitLogin()
+                true
+            } else {
+                false
+            }
         }
 
         viewModel.loginState.observe(this) { state ->
@@ -79,6 +84,13 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
         }
     }
 
+    private fun submitLogin() {
+        val account = binding.etAccount.text.toString().trim()
+        // 学号可去除误输入的空格，密码必须原样提交。
+        val password = binding.etPassword.text.toString()
+        viewModel.login(account, password)
+    }
+
     private fun setupAmbientGlow() {
         binding.ambientGlow?.let { glow ->
             glowAnimator1 = ValueAnimator.ofFloat(0.3f, 0.5f, 0.3f).apply {
@@ -110,13 +122,14 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
     }
 
     private fun animateInputLayout(view: View, hasFocus: Boolean) {
-        val scale = if (hasFocus) 1.02f else 1f
         val alpha = if (hasFocus) 1f else 0.9f
         view.animate()
-            .scaleX(scale).scaleY(scale)
+            // Keep the field inside its card bounds. Scaling a focused TextInputLayout
+            // makes the parent MaterialCardView clip its left and right outline.
+            .scaleX(1f).scaleY(1f)
             .alpha(alpha)
             .setDuration(200)
-            .setInterpolator(OvershootInterpolator(2f))
+            .setInterpolator(AccelerateDecelerateInterpolator())
             .start()
     }
 

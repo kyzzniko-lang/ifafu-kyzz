@@ -64,7 +64,8 @@ class CommentTeacherApi @Inject constructor(
         try {
             val result = fetchMainPage(host, token, number, name)
             if (result.error != null) return result.error
-            val html = result.html!!
+            val html = result.html
+                ?: return Response(false, -1, result.error?.message ?: "评价页面加载失败，请检查网络后重试")
             val links = parseCourseLinks(html)
             if (links.isNotEmpty()) {
                 val data = links.joinToString(",") { "[\"${it.path}\",\"${it.label}\"]" }
@@ -280,7 +281,9 @@ class CommentTeacherApi @Inject constructor(
         try {
             val result = fetchMainPage(host, token, number, name)
             if (result.error != null) return result.error
-            return doComment(host, token, number, name, result.html!!, mode, commentText, onProgress)
+            val html = result.html
+                ?: return result.error ?: Response(false, -1, "评价页面加载失败，请检查网络后重试")
+            return doComment(host, token, number, name, html, mode, commentText, onProgress)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {

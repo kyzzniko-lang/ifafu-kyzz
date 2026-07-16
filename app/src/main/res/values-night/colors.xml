@@ -45,4 +45,17 @@
 
     <color name="claude_ink">#1A1715</color>
     <color name="claude_ink_disabled">#605A52</color>
+
+    <color name="login_page_bg">#1F1E1D</color>
+    <color name="login_page_accent">#10E8A07A</color>
+    <color name="login_card_bg">#001F1E1D</color>
+    <color name="login_card_stroke">#001F1E1D</color>
+    <color name="login_input_bg">#252220</color>
+    <color name="login_input_stroke">#3A3632</color>
+    <color name="login_input_icon">#9C958E</color>
+    <color name="login_brand_start">#F1A37E</color>
+    <color name="login_brand_end">#CD6842</color>
+    <color name="login_brand_mark_text">#17120F</color>
+    <color name="login_button_bg">#D4724A</color>
+    <color name="login_button_text">#1F1E1D</color>
 </resources>

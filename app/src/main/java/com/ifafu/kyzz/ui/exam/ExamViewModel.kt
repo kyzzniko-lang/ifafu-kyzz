@@ -8,12 +8,14 @@ import com.ifafu.kyzz.data.model.ExamTable
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.ui.base.ReloginViewModel
 import com.ifafu.kyzz.data.network.AlertException
+import com.ifafu.kyzz.data.util.TermResolver
 import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
 import javax.inject.Inject
 
 @HiltViewModel
@@ -25,10 +27,12 @@ class ExamViewModel @Inject constructor(
 
     companion object {
         private const val TAG = "ExamViewModel"
+        private const val CACHE_MAX_AGE_MS = 10 * 60 * 1000L
     }
 
     private val _state = MutableLiveData<UiState<ExamTable>>()
     val state: LiveData<UiState<ExamTable>> = _state
+    private var loadJob: Job? = null
 
     init {
         _state.value = UiState.Idle
@@ -44,22 +48,28 @@ class ExamViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            val isStale = cacheManager.isCacheStale(user.account, "exams", 12 * 60 * 60 * 1000L) // 12 hours
-            if (!isStale) {
+            val isStale = cacheManager.isCacheStale(user.account, "exams", CACHE_MAX_AGE_MS)
+            run {
                 val cached = cacheManager.loadExamTable(user.account)
-                if (cached != null && cached.exams.isNotEmpty()) {
+                if (cached != null) {
                     // 检测缓存中的考试是否都已过期（属于旧学期）
                     if (!isAllExamsExpired(cached.exams)) {
                         _state.value = UiState.Success(cached)
-                        return
+                        if (!isStale &&
+                            (cached.exams.isEmpty() || !isAllExamsExpired(cached.exams)) &&
+                            !belongsToDifferentTerm(cached)
+                        ) return
                     }
                     // 缓存中的考试全部过期，强制刷新
                 }
             }
         }
 
-        viewModelScope.launch {
-            _state.value = UiState.Loading
+        if (loadJob?.isActive == true) return
+        loadJob = viewModelScope.launch {
+            if (_state.value !is UiState.Success && _state.value !is UiState.Cached) {
+                _state.value = UiState.Loading
+            }
             try {
                 val freshUser = userRepository.getUser()
                 val examTable = examApi.getExamTable(
@@ -129,5 +139,13 @@ class ExamViewModel @Inject constructor(
             } catch (_: Exception) { continue }
         }
         return true
+    }
+
+    private fun belongsToDifferentTerm(table: ExamTable): Boolean {
+        val target = TermResolver.inferCurrentTerm()
+        val cachedYear = table.searchYearOptions.getOrNull(table.selectedYearOption)
+        val cachedTerm = table.searchTermOptions.getOrNull(table.selectedTermOption)
+        return !cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty() &&
+            (cachedYear != target.year || cachedTerm != target.term)
     }
 }
