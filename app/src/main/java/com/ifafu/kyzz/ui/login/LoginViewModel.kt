@@ -30,6 +30,11 @@ class LoginViewModel @Inject constructor(
     private var isLoadingCaptcha = false
     private var pendingErrorMessage: String? = null
 
+    companion object {
+        private const val MAX_CAPTCHA_RETRIES = 3
+        private const val MAX_RECOGNITION_RETRIES = 2
+    }
+
     fun getSavedProfiles(): List<UserRepository.AccountProfile> = userRepository.getAccountProfiles()
 
     fun removeAccount(account: String) = userRepository.removeAccount(account)
@@ -81,23 +86,28 @@ class LoginViewModel @Inject constructor(
             _loginState.value = LoginState.Error("验证码加载中，请稍候")
             return
         }
-        val captcha = manualCaptcha ?: autoCaptcha
-        if (captcha.isBlank()) {
-            _loginState.value = LoginState.Error("验证码识别失败，请重试")
-            return
-        }
+        var captcha = manualCaptcha ?: autoCaptcha
         viewModelScope.launch {
             _loginState.value = LoginState.Loading
             try {
-                val user = User()
+                // 首次图片识别为空时也要自动换一张重新识别，不能要求用户手动点击刷新。
+                if (captcha.isBlank() && manualCaptcha == null) {
+                    captcha = refreshCaptchaForRetry(MAX_RECOGNITION_RETRIES).orEmpty()
+                }
+                if (captcha.isBlank()) {
+                    _loginState.value = LoginState.Error("验证码识别失败，请重试")
+                    return@launch
+                }
+                var user = User()
                 var response = attemptLogin(account, password, captcha, user)
 
-                // 仅当用户未手动输入验证码、且失败原因是验证码错时，自动刷新重试最多 2 次
-                if (!response.success && manualCaptcha == null) {
-                    var attempt = 0
-                    while (!response.success && attempt < 2 && isCaptchaError(response.message)) {
-                        attempt++
-                        val freshCaptcha = refreshCaptchaForRetry() ?: break
+                // 自动识别失败或服务端判定验证码错误时，必须获取全新的图片再提交，不能复用旧验证码。
+                if (!response.success && manualCaptcha == null && isCaptchaError(response.message)) {
+                    repeat(MAX_CAPTCHA_RETRIES) {
+                        if (response.success || !isCaptchaError(response.message)) return@repeat
+                        val freshCaptcha = refreshCaptchaForRetry(MAX_RECOGNITION_RETRIES)
+                            ?: return@repeat
+                        user = User()
                         response = attemptLogin(account, password, freshCaptcha, user)
                     }
                 }
@@ -132,23 +142,29 @@ class LoginViewModel @Inject constructor(
     }
 
     private fun isCaptchaError(message: String?): Boolean {
-        if (message == null) return false
-        return message.contains("验证码")
+        val normalized = message.orEmpty().lowercase()
+        return listOf(
+            "验证码", "驗證碼", "校验码", "校驗碼", "识别码", "識別碼",
+            "captcha", "verification code", "check code", "code error"
+        ).any(normalized::contains)
     }
 
-    /** 刷新验证码并尝试本地识别，返回识别结果；若识别失败/网络失败返回 null。不更新 LiveData，避免 UI 闪烁 */
-    private suspend fun refreshCaptchaForRetry(): String? {
-        return try {
-            val bitmap = userApi.prepareLogin(userRepository.host) ?: return null
-            _captchaBitmap.value = bitmap
-            val recognized = if (zfVerify.initialized) zfVerify.recognize(bitmap) else ""
-            if (recognized.isBlank()) null else {
-                autoCaptcha = recognized
-                recognized
+    /** 获取新图片并识别；当前图片识别失败时再次获取新图片，而不是重复提交旧答案。 */
+    private suspend fun refreshCaptchaForRetry(maxRecognitionRetries: Int): String? {
+        repeat(maxRecognitionRetries) {
+            try {
+                val bitmap = userApi.prepareLogin(userRepository.host) ?: return@repeat
+                _captchaBitmap.postValue(bitmap)
+                val recognized = if (zfVerify.initialized) zfVerify.recognize(bitmap).trim() else ""
+                if (recognized.isNotBlank()) {
+                    autoCaptcha = recognized
+                    return recognized
+                }
+            } catch (_: Exception) {
+                // 网络或识别失败时继续获取下一张验证码。
             }
-        } catch (e: Exception) {
-            null
         }
+        return null
     }
 
     sealed class LoginState {

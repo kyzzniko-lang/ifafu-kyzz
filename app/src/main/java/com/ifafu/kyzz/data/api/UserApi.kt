@@ -204,8 +204,8 @@ class UserApi @Inject constructor(
                     return response
                 } else {
                     Log.w(TAG, "Relogin attempt $i: login failed - ${response.message}")
-                    // 验证码错才继续重试；账号/密码错立即返回，避免空耗
-                    if (response.message?.contains("验证码") != true) {
+                    // 只有验证码相关失败才继续；账号/密码错误立即返回，避免无意义重试。
+                    if (!isCaptchaErrorMessage(response.message)) {
                         return response
                     }
                 }
@@ -217,6 +217,14 @@ class UserApi @Inject constructor(
 
         Log.e(TAG, "Relogin failed after $maxRetry attempts")
         return Response(false, -1, "自动重新登录失败")
+    }
+
+    private fun isCaptchaErrorMessage(message: String?): Boolean {
+        val normalized = message.orEmpty().lowercase()
+        return listOf(
+            "验证码", "驗證碼", "校验码", "校驗碼", "识别码", "識別碼",
+            "captcha", "verification code", "check code", "code error"
+        ).any(normalized::contains)
     }
 
     fun isSessionExpired(html: String): Boolean {
