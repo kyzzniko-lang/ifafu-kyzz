@@ -17,8 +17,8 @@ class CommentRepository @Inject constructor(
         return api.postComment(content, nickname, authorId, tag)
     }
 
-    suspend fun deleteComment(commentId: String): Boolean {
-        return api.deleteComment(commentId)
+    suspend fun deleteComment(commentId: String, authorId: String): Boolean {
+        return api.deleteComment(commentId, authorId)
     }
 
     suspend fun getNickname(userId: String): String? {

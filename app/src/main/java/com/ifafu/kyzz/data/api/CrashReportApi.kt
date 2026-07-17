@@ -1,17 +1,10 @@
 package com.ifafu.kyzz.data.api
 
-import com.google.gson.Gson
-import com.ifafu.kyzz.BuildConfig
 import com.ifafu.kyzz.core.crash.CrashInfo
-import com.ifafu.kyzz.data.util.KeyGuard
 import com.ifafu.kyzz.util.Logger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,22 +22,12 @@ import javax.inject.Singleton
  */
 @Singleton
 class CrashReportApi @Inject constructor(
-    private val client: OkHttpClient
+    private val feedbackWorkerApi: FeedbackWorkerApi
 ) {
     companion object {
         private const val TAG = "CrashReportApi"
-        private const val OWNER = "kyzzniko-lang"
-        private const val REPO = "ifafu-kyzz-comment"
-        private const val CRASH_ISSUE = 3
-        private val TOKEN = KeyGuard.decode(BuildConfig.GITHUB_TOKEN_ENC)
-        private const val BASE = "https://api.github.com/repos/$OWNER/$REPO"
         private val DATE_FMT = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
     }
-
-    private val gson = Gson()
-    private val JSON = "application/json; charset=utf-8".toMediaType()
-
-    private fun isConfigured(): Boolean = TOKEN.isNotBlank()
 
     /**
      * 上报一次崩溃/ANR。
@@ -54,13 +37,8 @@ class CrashReportApi @Inject constructor(
      */
     suspend fun reportCrash(crashInfo: CrashInfo, userDescription: String): Boolean =
         withContext(Dispatchers.IO) {
-            if (!isConfigured()) {
-                Logger.w(TAG, "token not configured, skip crash report")
-                return@withContext false
-            }
             try {
-                val url = "$BASE/issues/$CRASH_ISSUE/comments"
-                val bodyObj = buildMap {
+                val payload = buildMap<String, String> {
                     put("type", crashInfo.type)
                     put("time", DATE_FMT.format(Date(crashInfo.time)))
                     put("appVersion", crashInfo.appVersion)
@@ -72,24 +50,11 @@ class CrashReportApi @Inject constructor(
                         put("description", userDescription)
                     }
                 }
-                val innerJson = gson.toJson(bodyObj)
-                val bodyJson = gson.toJson(mapOf("body" to innerJson))
-
-                val request = Request.Builder().url(url).apply {
-                    header("Authorization", "token $TOKEN")
-                    header("Accept", "application/vnd.github.v3+json")
-                }.post(bodyJson.toRequestBody(JSON)).build()
-
-                client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        Logger.i(TAG, "crash report sent successfully")
-                        true
-                    } else {
-                        val respBody = response.body?.string()
-                        Logger.e(TAG, "reportCrash failed: ${response.code} $respBody")
-                        false
-                    }
-                }
+                val ok = feedbackWorkerApi.post("/crash", payload)
+                    ?.get("ok")?.asBoolean == true
+                if (ok) Logger.i(TAG, "crash report sent successfully")
+                else Logger.w(TAG, "crash report rejected by feedback service")
+                ok
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -3,27 +3,21 @@ package com.ifafu.kyzz.ui.toolbox
 import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
-import com.ifafu.kyzz.BuildConfig
 import androidx.lifecycle.lifecycleScope
+import com.ifafu.kyzz.BuildConfig
+import com.ifafu.kyzz.data.api.FeedbackWorkerApi
 import com.ifafu.kyzz.databinding.ActivityKyzzToolboxBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.json.JSONArray
-import org.json.JSONObject
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
 
-    private val okHttpClient by lazy { OkHttpClient() }
-
-    private val repoOwner = "kyzzniko-lang"
-    private val repoName = "ifafu-kyzz"
-    private val githubToken = com.ifafu.kyzz.data.util.KeyGuard.decode(com.ifafu.kyzz.BuildConfig.GITHUB_TOKEN_ENC)
+    @Inject lateinit var feedbackWorkerApi: FeedbackWorkerApi
 
     override fun createBinding(): ActivityKyzzToolboxBinding = ActivityKyzzToolboxBinding.inflate(layoutInflater)
 
@@ -68,25 +62,15 @@ class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
         }
     }
 
-    private fun submitToGitHub(title: String, body: String): Boolean {
-        if (githubToken.isEmpty()) return false
-        return try {
-            val json = JSONObject().apply {
-                put("title", title)
-                put("body", body)
-                put("labels", JSONArray().put("feedback"))
-            }
-            val request = Request.Builder()
-                .url("https://api.github.com/repos/$repoOwner/$repoName/issues")
-                .header("Authorization", "token $githubToken")
-                .header("Accept", "application/vnd.github.v3+json")
-                .post(json.toString().toRequestBody("application/json".toMediaType()))
-                .build()
-            okHttpClient.newCall(request).execute().use { response ->
-                response.isSuccessful
-            }
-        } catch (e: Exception) {
-            false
-        }
-    }
+    private fun submitToGitHub(title: String, body: String): Boolean =
+        feedbackWorkerApi.post(
+            "/issue",
+            mapOf(
+                "title" to title,
+                "description" to body,
+                "appVersion" to BuildConfig.VERSION_NAME,
+                "deviceInfo" to "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} / Android ${android.os.Build.VERSION.RELEASE}",
+                "contact" to "未提供"
+            )
+        )?.get("ok")?.asBoolean == true
 }

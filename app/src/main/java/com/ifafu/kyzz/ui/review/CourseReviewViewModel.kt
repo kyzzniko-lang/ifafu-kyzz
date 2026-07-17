@@ -161,7 +161,7 @@ class CourseReviewViewModel @Inject constructor(
         _deleteState.value = DeleteState.Loading
         viewModelScope.launch {
             try {
-                val success = reviewApi.deleteReview(review.commentId)
+                val success = reviewApi.deleteReview(review.commentId, userId)
                 if (success) {
                     _deleteState.value = DeleteState.Success
                     delay(300)

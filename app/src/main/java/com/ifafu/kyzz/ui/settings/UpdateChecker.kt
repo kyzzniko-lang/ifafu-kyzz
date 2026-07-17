@@ -71,12 +71,6 @@ object UpdateChecker {
                 val request = Request.Builder()
                     .url(API_URL)
                     .header("Accept", "application/vnd.github.v3+json")
-                    .apply {
-                        val token = com.ifafu.kyzz.data.util.KeyGuard.decode(com.ifafu.kyzz.BuildConfig.GITHUB_TOKEN_ENC)
-                        if (token.isNotEmpty()) {
-                            header("Authorization", "token $token")
-                        }
-                    }
                     .build()
 
                 client.newCall(request).execute().use { response ->

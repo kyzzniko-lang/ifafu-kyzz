@@ -239,7 +239,7 @@ class DiscussionViewModel @Inject constructor(
         _deleteState.value = DeleteState.Loading
         viewModelScope.launch {
             try {
-                val success = commentRepository.deleteComment(objectId)
+                val success = commentRepository.deleteComment(objectId, userId)
                 if (success) {
                     comments.removeAll { it.objectId == objectId }
                     _deleteState.value = DeleteState.Success

@@ -25,7 +25,6 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "GITHUB_TOKEN_ENC", "\"${localProperties.getProperty("github.token.enc", "")}\"")
         buildConfigField("String", "ZHIPU_API_KEY_ENC", "\"${localProperties.getProperty("zhipu.api_key.enc", "")}\"")
         buildConfigField("String", "QWEN_API_KEY_ENC", "\"${localProperties.getProperty("qwen.api_key.enc", "")}\"")
 

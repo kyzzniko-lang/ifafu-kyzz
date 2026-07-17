@@ -1,50 +1,35 @@
 package com.ifafu.kyzz.data.api
 
 import android.util.Log
-import com.google.gson.Gson
 import com.google.gson.JsonParser
-import com.ifafu.kyzz.BuildConfig
 import com.ifafu.kyzz.data.model.CourseReview
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import javax.inject.Inject
 import javax.inject.Singleton
 
 @Singleton
 class CourseReviewApi @Inject constructor(
-    private val client: OkHttpClient
+    private val client: OkHttpClient,
+    private val feedbackWorkerApi: FeedbackWorkerApi
 ) {
     companion object {
         private const val TAG = "CourseReviewApi"
         private const val OWNER = "kyzzniko-lang"
         private const val REPO = "ifafu-kyzz-course-review"
         private const val ISSUE_NUMBER = 1
-        private val TOKEN = com.ifafu.kyzz.data.util.KeyGuard.decode(BuildConfig.GITHUB_TOKEN_ENC)
         private const val BASE = "https://api.github.com/repos/$OWNER/$REPO"
     }
 
-    private val gson = Gson()
-    private val JSON = "application/json; charset=utf-8".toMediaType()
-
-    private fun isConfigured(): Boolean = TOKEN.isNotBlank()
-
-    private fun authHeaders(): Map<String, String> = mapOf(
-        "Authorization" to "token $TOKEN",
-        "Accept" to "application/vnd.github.v3+json"
-    )
-
     suspend fun getReviews(page: Int = 1, perPage: Int = 20): List<CourseReview> = withContext(Dispatchers.IO) {
-        if (!isConfigured()) return@withContext emptyList()
         try {
             val url = "$BASE/issues/$ISSUE_NUMBER/comments?per_page=$perPage&page=$page&sort=created&direction=desc"
-            val request = Request.Builder().url(url).apply {
-                authHeaders().forEach { (k, v) -> header(k, v) }
-            }.get().build()
+            val request = Request.Builder().url(url)
+                .header("Accept", "application/vnd.github+json")
+                .get().build()
 
             client.newCall(request).execute().use { response ->
                 val body = response.body?.string() ?: return@withContext emptyList()
@@ -82,15 +67,9 @@ class CourseReviewApi @Inject constructor(
     }
 
     suspend fun postReview(review: CourseReview): Boolean = withContext(Dispatchers.IO) {
-        if (!isConfigured()) return@withContext false
         try {
-            val url = "$BASE/issues/$ISSUE_NUMBER/comments"
-            val bodyJson = gson.toJson(mapOf("body" to gson.toJson(review)))
-            val request = Request.Builder().url(url).apply {
-                authHeaders().forEach { (k, v) -> header(k, v) }
-            }.post(bodyJson.toRequestBody(JSON)).build()
-
-            client.newCall(request).execute().use { it.isSuccessful }
+            feedbackWorkerApi.post("/course-reviews", review)
+                ?.get("ok")?.asBoolean == true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -99,15 +78,12 @@ class CourseReviewApi @Inject constructor(
         }
     }
 
-    suspend fun deleteReview(commentId: String): Boolean = withContext(Dispatchers.IO) {
-        if (!isConfigured()) return@withContext false
+    suspend fun deleteReview(commentId: String, authorId: String): Boolean = withContext(Dispatchers.IO) {
         try {
-            val url = "$BASE/issues/comments/$commentId"
-            val request = Request.Builder().url(url).apply {
-                authHeaders().forEach { (k, v) -> header(k, v) }
-            }.delete().build()
-
-            client.newCall(request).execute().use { it.isSuccessful }
+            feedbackWorkerApi.delete(
+                "/course-reviews/$commentId",
+                mapOf("authorId" to authorId)
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
