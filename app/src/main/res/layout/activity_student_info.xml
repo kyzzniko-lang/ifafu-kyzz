@@ -23,20 +23,31 @@
         android:layout_width="match_parent"
         android:layout_height="match_parent">
 
-        <androidx.core.widget.NestedScrollView
-            android:id="@+id/scrollContent"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:visibility="gone">
+            android:orientation="vertical">
 
-            <LinearLayout
-                android:id="@+id/contentLayout"
+            <include
+                android:id="@+id/offlineBanner"
+                layout="@layout/layout_offline_banner" />
+
+            <androidx.core.widget.NestedScrollView
+                android:id="@+id/scrollContent"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp" />
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:visibility="gone">
 
-        </androidx.core.widget.NestedScrollView>
+                <LinearLayout
+                    android:id="@+id/contentLayout"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:padding="20dp" />
+
+            </androidx.core.widget.NestedScrollView>
+        </LinearLayout>
 
         <include
             android:id="@+id/petLoading"

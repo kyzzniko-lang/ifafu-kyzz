@@ -12,7 +12,7 @@
         android:layout_gravity="top|end"
         android:layout_marginTop="-60dp"
         android:layout_marginEnd="-60dp"
-        android:alpha="0.35"
+        android:alpha="0.14"
         android:background="@drawable/bg_ambient_glow" />
 
     <View
@@ -22,7 +22,7 @@
         android:layout_gravity="bottom|start"
         android:layout_marginStart="-40dp"
         android:layout_marginBottom="200dp"
-        android:alpha="0.2"
+        android:alpha="0.08"
         android:background="@drawable/bg_ambient_glow_secondary" />
 
     <androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -40,8 +40,8 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:paddingHorizontal="24dp"
-                android:paddingTop="48dp"
+                android:paddingHorizontal="20dp"
+                android:paddingTop="32dp"
                 android:paddingBottom="100dp">
 
                 <!-- Hidden legacy header anchors (kept for code compatibility) -->
@@ -72,11 +72,11 @@
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:fontFamily="@font/claude_display"
-                        android:letterSpacing="0.36"
+                        android:letterSpacing="0.28"
                         android:text="iFAFU"
                         android:textAllCaps="true"
-                        android:textColor="@color/claude_text_tertiary"
-                        android:textSize="11sp" />
+                        android:textColor="@color/claude_text_secondary"
+                        android:textSize="12sp" />
 
                     <ImageButton
                         android:id="@+id/btnSettings"
@@ -101,8 +101,8 @@
                     android:letterSpacing="-0.02"
                     android:lineSpacingMultiplier="1.08"
                     android:textColor="@color/claude_text_primary"
-                    android:textSize="40sp"
-                    android:textStyle="bold" />
+                    android:textSize="36sp"
+                    android:textStyle="normal" />
 
                 <!-- Date line: italic Playfair for the numerals/latin, sets a refined classical tone -->
                 <TextView
@@ -110,18 +110,17 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
-                    android:fontFamily="@font/claude_display"
-                    android:letterSpacing="0.01"
+                    android:fontFamily="@font/claude_serif"
+                    android:letterSpacing="0.02"
                     android:textColor="@color/claude_text_secondary"
-                    android:textSize="14sp"
-                    android:textStyle="italic" />
+                    android:textSize="13sp" />
 
                 <!-- Quick info chips (text-only, document style) -->
                 <HorizontalScrollView
                     android:id="@+id/chipsContainer"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="18dp"
                     android:clipToPadding="false"
                     android:scrollbars="none">
 
@@ -133,38 +132,38 @@
                         <TextView
                             android:id="@+id/chipWeek"
                             android:layout_width="wrap_content"
-                            android:layout_height="30dp"
+                            android:layout_height="28dp"
                             android:background="@drawable/bg_info_chip"
                             android:fontFamily="@font/claude_serif"
                             android:gravity="center"
                             android:letterSpacing="0.02"
-                            android:paddingHorizontal="14dp"
+                            android:paddingHorizontal="12dp"
                             android:textColor="@color/claude_text_secondary"
                             android:textSize="12sp" />
 
                         <TextView
                             android:id="@+id/chipCoursesCount"
                             android:layout_width="wrap_content"
-                            android:layout_height="30dp"
+                            android:layout_height="28dp"
                             android:layout_marginStart="8dp"
                             android:background="@drawable/bg_info_chip"
                             android:fontFamily="@font/claude_serif"
                             android:gravity="center"
                             android:letterSpacing="0.02"
-                            android:paddingHorizontal="14dp"
+                            android:paddingHorizontal="12dp"
                             android:textColor="@color/claude_text_secondary"
                             android:textSize="12sp" />
 
                         <TextView
                             android:id="@+id/chipExamCountdown"
                             android:layout_width="wrap_content"
-                            android:layout_height="30dp"
+                            android:layout_height="28dp"
                             android:layout_marginStart="8dp"
                             android:background="@drawable/bg_info_chip"
                             android:fontFamily="@font/claude_serif"
                             android:gravity="center"
                             android:letterSpacing="0.02"
-                            android:paddingHorizontal="14dp"
+                            android:paddingHorizontal="12dp"
                             android:textColor="@color/claude_text_secondary"
                             android:textSize="12sp" />
 
@@ -175,7 +174,7 @@
                 <View
                     android:layout_width="match_parent"
                     android:layout_height="1px"
-                    android:layout_marginTop="32dp"
+                    android:layout_marginTop="36dp"
                     android:background="@color/claude_divider" />
 
                 <!-- Update notification (kept for Kotlin compat, hidden by default) -->
@@ -407,8 +406,9 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="20dp"
                     android:visibility="gone"
-                    app:strokeColor="@color/claude_divider"
-                    app:strokeWidth="1px">
+                    app:cardBackgroundColor="@color/claude_bg_subtle"
+                    app:cardCornerRadius="12dp"
+                    app:strokeWidth="0dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -445,8 +445,9 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
                     android:visibility="gone"
-                    app:strokeColor="@color/claude_divider"
-                    app:strokeWidth="1px">
+                    app:cardBackgroundColor="@color/claude_bg_subtle"
+                    app:cardCornerRadius="12dp"
+                    app:strokeWidth="0dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"
@@ -483,8 +484,9 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
                     android:visibility="gone"
-                    app:strokeColor="@color/claude_divider"
-                    app:strokeWidth="1px">
+                    app:cardBackgroundColor="@color/claude_bg_subtle"
+                    app:cardCornerRadius="12dp"
+                    app:strokeWidth="0dp">
 
                     <LinearLayout
                         android:layout_width="match_parent"

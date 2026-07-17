@@ -30,6 +30,7 @@ import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.cache.CacheManager
+import com.ifafu.kyzz.data.util.GpaCalculator
 import com.ifafu.kyzz.data.model.CountdownEvent
 import com.ifafu.kyzz.data.model.Pet
 import com.ifafu.kyzz.data.repository.CommentRepository
@@ -70,6 +71,7 @@ class HomeFragment : Fragment() {
     private var bubbleRunnable: Runnable? = null
     private var bubbleAnimator: ValueAnimator? = null
     private var pulseAnimator: AnimatorSet? = null
+    private var petPositionBeforeBubble: Pair<Float, Float>? = null
     private val resumeRunnable = Runnable {
         if (isAdded && _binding != null) {
             val courses = viewModel.todayCourses.value ?: emptyList()
@@ -203,35 +205,35 @@ class HomeFragment : Fragment() {
             binding.gridToolbox.setOnClickListener {
                 startActivity(Intent(requireContext(), KyzzToolboxActivity::class.java))
             }
-            // Grid entry press feedback: scale on touch with haptics
+            // Restrained press feedback for quick entries.
             listOf(binding.gridSyllabus, binding.gridElective, binding.gridToolbox).forEach { entry ->
                 entry.setOnTouchListener { v, event ->
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
                             v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                            v.animate().scaleX(0.92f).scaleY(0.92f).setDuration(100).start()
+                            v.animate().alpha(0.62f).setDuration(80).start()
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            v.animate().scaleX(1f).scaleY(1f).setDuration(250)
-                                .setInterpolator(OvershootInterpolator(2.5f)).start()
+                            v.animate().alpha(1f).setDuration(160)
+                                .setInterpolator(AccelerateDecelerateInterpolator()).start()
                         }
                     }
                     false
                 }
             }
 
-            // Card press feedback: scale on touch with haptics
+            // Cards use a light opacity response instead of a spring-like bounce.
             listOf(binding.cardCountdown, binding.cardExamCountdown, binding.cardHotDiscussion).forEach { card ->
                 card.isClickable = true // Ensure view consumes touches and receives ACTION_UP/CANCEL
                 card.setOnTouchListener { v, event ->
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
                             v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
-                            v.animate().scaleX(0.96f).scaleY(0.96f).setDuration(100).start()
+                            v.animate().alpha(0.72f).setDuration(80).start()
                         }
                         MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                            v.animate().scaleX(1f).scaleY(1f).setDuration(250)
-                                .setInterpolator(OvershootInterpolator(2.5f)).start()
+                            v.animate().alpha(1f).setDuration(160)
+                                .setInterpolator(AccelerateDecelerateInterpolator()).start()
                         }
                     }
                     false
@@ -261,8 +263,8 @@ class HomeFragment : Fragment() {
 
         // Entrance animation for chips
         binding.chipsContainer.alpha = 0f
-        binding.chipsContainer.translationY = 20f
-        binding.chipsContainer.animate().alpha(1f).translationY(0f).setDuration(500).setStartDelay(200).start()
+        binding.chipsContainer.translationY = 8f
+        binding.chipsContainer.animate().alpha(1f).translationY(0f).setDuration(280).setStartDelay(80).start()
 
         setupHomeAmbientGlow()
     }
@@ -272,8 +274,8 @@ class HomeFragment : Fragment() {
 
     private fun setupHomeAmbientGlow() {
         binding.ambientGlowTop?.let { glow ->
-            homeGlowAnimator1 = ValueAnimator.ofFloat(0.25f, 0.4f, 0.25f).apply {
-                duration = 4500
+            homeGlowAnimator1 = ValueAnimator.ofFloat(0.08f, 0.15f, 0.08f).apply {
+                duration = 6000
                 repeatCount = ValueAnimator.INFINITE
                 interpolator = AccelerateDecelerateInterpolator()
                 addUpdateListener { glow.alpha = it.animatedValue as Float }
@@ -281,8 +283,8 @@ class HomeFragment : Fragment() {
             }
         }
         binding.ambientGlowBottom?.let { glow ->
-            homeGlowAnimator2 = ValueAnimator.ofFloat(0.15f, 0.28f, 0.15f).apply {
-                duration = 5500
+            homeGlowAnimator2 = ValueAnimator.ofFloat(0.04f, 0.09f, 0.04f).apply {
+                duration = 7000
                 repeatCount = ValueAnimator.INFINITE
                 interpolator = AccelerateDecelerateInterpolator()
                 addUpdateListener { glow.alpha = it.animatedValue as Float }
@@ -566,6 +568,7 @@ class HomeFragment : Fragment() {
                 petView.root.x = (maxX - 20f).coerceAtLeast(0f)
                 petView.root.y = (maxY - 48f).coerceAtLeast(0f)
             }
+            clampPetWidget(petView.root, parent, persist = true)
         }
 
         // Double-tap -> interact with pet, single tap -> show feed dialog
@@ -594,31 +597,44 @@ class HomeFragment : Fragment() {
         var downX = 0f
         var downY = 0f
         val longPressTimeout = android.view.ViewConfiguration.getLongPressTimeout().toLong()
+        fun localTouchX(event: MotionEvent): Float {
+            val location = IntArray(2)
+            parent.getLocationOnScreen(location)
+            return event.rawX - location[0]
+        }
+        fun localTouchY(event: MotionEvent): Float {
+            val location = IntArray(2)
+            parent.getLocationOnScreen(location)
+            return event.rawY - location[1]
+        }
 
         // Touch listener on root (the whole pet widget) so it can move freely
         petView.root.setOnTouchListener { v, event ->
             when (event.action) {
                 MotionEvent.ACTION_DOWN -> {
-                    dX = v.x - event.rawX
-                    dY = v.y - event.rawY
+                    dX = v.x - localTouchX(event)
+                    dY = v.y - localTouchY(event)
                     isDragging = false
-                    lastX = event.rawX
+                    lastX = localTouchX(event)
                     lastMoveTime = System.currentTimeMillis()
                     downTime = System.currentTimeMillis()
-                    downX = event.rawX
-                    downY = event.rawY
+                    downX = localTouchX(event)
+                    downY = localTouchY(event)
                     gestureDetector.onTouchEvent(event)
                     true
                 }
                 MotionEvent.ACTION_MOVE -> {
                     val elapsed = System.currentTimeMillis() - downTime
                     val moveDist = Math.sqrt(
-                        ((event.rawX - downX) * (event.rawX - downX) +
-                         (event.rawY - downY) * (event.rawY - downY)).toDouble()
+                        ((localTouchX(event) - downX) * (localTouchX(event) - downX) +
+                         (localTouchY(event) - downY) * (localTouchY(event) - downY)).toDouble()
                     ).toFloat()
                     // Start dragging immediately after exceeding touch slop
                     if (!isDragging && moveDist > touchSlop) {
                         isDragging = true
+                        // A deliberate drag overrides the temporary position
+                        // saved for restoring after a speech bubble.
+                        petPositionBeforeBubble = null
                         // Prevent all ancestors (CoordinatorLayout/AppBarLayout/SwipeRefreshLayout) from intercepting touch
                         var p = v.parent as? View
                         while (p != null) {
@@ -629,11 +645,11 @@ class HomeFragment : Fragment() {
                     if (isDragging) {
                         val maxX = (parent.width - v.width).toFloat().coerceAtLeast(0f)
                         val maxY = (parent.height - v.height).toFloat().coerceAtLeast(0f)
-                        val newX = (event.rawX + dX).coerceIn(0f, maxX)
-                        val newY = (event.rawY + dY).coerceIn(0f, maxY)
+                        val newX = (localTouchX(event) + dX).coerceIn(0f, maxX)
+                        val newY = (localTouchY(event) + dY).coerceIn(0f, maxY)
                         v.x = newX
                         v.y = newY
-                        lastX = event.rawX
+                        lastX = localTouchX(event)
                         lastMoveTime = System.currentTimeMillis()
                         spawnDragTrail(petView.root)
                     } else {
@@ -645,7 +661,7 @@ class HomeFragment : Fragment() {
                     if (isDragging) {
                         val elapsed = System.currentTimeMillis() - lastMoveTime
                         val velocityX = if (elapsed > 0 && elapsed < 200) {
-                            val dx = event.rawX - lastX
+                            val dx = localTouchX(event) - lastX
                             dx / elapsed * 1000
                         } else 0f
                         val petW = v.width.toFloat()
@@ -711,6 +727,9 @@ class HomeFragment : Fragment() {
         // Observe bubble text with typewriter effect
         petViewModel.bubbleText.observe(viewLifecycleOwner) { text ->
             if (text != null) {
+                if (petView.petBubble.visibility != View.VISIBLE) {
+                    petPositionBeforeBubble = petView.root.x to petView.root.y
+                }
                 petView.tvBubbleText.text = ""
                 petView.petBubble.visibility = View.VISIBLE
                 petView.petBubble.alpha = 0f
@@ -722,6 +741,9 @@ class HomeFragment : Fragment() {
                     .setDuration(240)
                     .setInterpolator(OvershootInterpolator(1.8f))
                     .start()
+                // Showing the bubble changes the wrap_content width of the root.
+                // Re-clamp after layout so the bubble cannot extend past the edge.
+                parent.post { clampPetWidget(petView.root, parent, persist = false) }
                 // Typewriter: reveal one char at a time
                 bubbleAnimator?.cancel()
                 val animator = ValueAnimator.ofInt(0, text.length)
@@ -730,6 +752,9 @@ class HomeFragment : Fragment() {
                 animator.addUpdateListener { a ->
                     val idx = a.animatedValue as Int
                     petView.tvBubbleText.text = text.substring(0, idx)
+                    // The bubble grows while the typewriter reveals text.
+                    // Re-clamp on every frame, not only when it first appears.
+                    parent.post { clampPetWidget(petView.root, parent, persist = false) }
                 }
                 bubbleAnimator = animator
                 animator.start()
@@ -743,6 +768,18 @@ class HomeFragment : Fragment() {
                         petView.petBubble.translationY = 0f
                         petView.petBubble.scaleX = 1f
                         petView.petBubble.scaleY = 1f
+                        val restorePosition = petPositionBeforeBubble
+                        petPositionBeforeBubble = null
+                        parent.post {
+                            if (restorePosition != null) {
+                                val maxX = (parent.width - petView.root.width).coerceAtLeast(0).toFloat()
+                                val maxY = (parent.height - petView.root.height).coerceAtLeast(0).toFloat()
+                                petView.root.x = restorePosition.first.coerceIn(0f, maxX)
+                                petView.root.y = restorePosition.second.coerceIn(0f, maxY)
+                                savePetPosition(petView.root.x, petView.root.y)
+                            }
+                            clampPetWidget(petView.root, parent, persist = true)
+                        }
                     }.start()
             }
         }
@@ -787,6 +824,47 @@ class HomeFragment : Fragment() {
             }
         }
         bubbleRunnable?.let { bubbleHandler.postDelayed(it, 60_000) }
+    }
+
+    /**
+     * Clamp the whole widget after any child (especially the speech bubble)
+     * changes its measured size. Positions are relative to the fragment parent,
+     * not the physical screen.
+     */
+    private fun clampPetWidget(widget: View, parent: ViewGroup, persist: Boolean) {
+        if (widget.width <= 0 || widget.height <= 0 || parent.width <= 0 || parent.height <= 0) return
+
+        // FrameLayout may measure the root from the centered pet image while a
+        // wrap_content speech bubble is allowed to draw beyond that width.
+        // Calculate the union of every visible child so the bubble is included.
+        var minLeft = 0f
+        var minTop = 0f
+        var maxRight = widget.width.toFloat()
+        var maxBottom = widget.height.toFloat()
+        if (widget is ViewGroup) {
+            for (index in 0 until widget.childCount) {
+                val child = widget.getChildAt(index)
+                if (child.visibility == View.GONE) continue
+                val left = child.left + child.translationX
+                val top = child.top + child.translationY
+                val right = left + child.width * child.scaleX
+                val bottom = top + child.height * child.scaleY
+                minLeft = minOf(minLeft, left)
+                minTop = minOf(minTop, top)
+                maxRight = maxOf(maxRight, right)
+                maxBottom = maxOf(maxBottom, bottom)
+            }
+        }
+
+        val minX = -minLeft
+        val maxX = (parent.width - maxRight).coerceAtLeast(minX)
+        val minY = -minTop
+        val maxY = (parent.height - maxBottom).coerceAtLeast(minY)
+        val x = widget.x.coerceIn(minX, maxX)
+        val y = widget.y.coerceIn(minY, maxY)
+        if (widget.x != x) widget.x = x
+        if (widget.y != y) widget.y = y
+        if (persist) savePetPosition(x, y)
     }
 
     private fun updatePetImage(state: PetState, petType: String = "cat") {
@@ -1058,9 +1136,10 @@ class HomeFragment : Fragment() {
         } ?: emptyList()
 
         val gpaSummary = if (!scores.isNullOrEmpty()) {
-            val avg = scores.map { it.score }.average()
-            val avgGpa = scores.map { it.scorePoint }.average()
-            "平均分${"%.1f".format(avg)}，平均绩点${"%.2f".format(avgGpa)}，共${scores.size}门课"
+            val valid = scores.filter { it.score > 0f && it.studyScore > 0f }
+            val avg = GpaCalculator.computeAvgScore(valid)
+            val gpa = GpaCalculator.computeGpa(valid)
+            "平均分${"%.1f".format(avg)}，平均绩点${"%.2f".format(gpa)}，共${scores.size}门课"
         } else ""
 
         val countdownDescs = getCountdownPairs()
@@ -1301,13 +1380,13 @@ class HomeFragment : Fragment() {
         }
     }
 
-    /** B1: Chip text flip animation — short scale Y collapse/expand to swap text */
+    /** Update chip content with a quiet cross-fade. */
     private fun animateChipText(chip: android.widget.TextView, newText: String) {
         if (chip.text == newText) return
-        chip.animate().scaleY(0f).setDuration(100).withEndAction {
+        chip.animate().alpha(0.35f).setDuration(80).withEndAction {
             chip.text = newText
-            chip.animate().scaleY(1f).setDuration(150)
-                .setInterpolator(OvershootInterpolator(2f)).start()
+            chip.animate().alpha(1f).setDuration(140)
+                .setInterpolator(AccelerateDecelerateInterpolator()).start()
         }.start()
     }
 
@@ -1321,19 +1400,15 @@ class HomeFragment : Fragment() {
             hour < 18 -> getString(R.string.greeting_afternoon, user.name)
             else -> getString(R.string.greeting_evening, user.name)
         }
-        // C3: Typewriter effect — reveal one character at a time
-        binding.tvWelcome.text = ""
-        binding.tvWelcome.alpha = 1f
-        val typeAnim = ValueAnimator.ofInt(0, greeting.length)
-        typeAnim.duration = (greeting.length * 45L).coerceIn(400L, 1200L)
-        typeAnim.interpolator = AccelerateDecelerateInterpolator()
-        typeAnim.addUpdateListener { a ->
-            val idx = a.animatedValue as Int
-            if (_binding != null) binding.tvWelcome.text = greeting.substring(0, idx)
-        }
-        typeAnim.start()
-        // A2: Time-aware header gradient
-        updateHeaderGradient(hour)
+        binding.tvWelcome.text = greeting
+        binding.tvWelcome.alpha = 0f
+        binding.tvWelcome.translationY = 6f
+        binding.tvWelcome.animate()
+            .alpha(1f)
+            .translationY(0f)
+            .setDuration(260)
+            .setInterpolator(AccelerateDecelerateInterpolator())
+            .start()
     }
 
     /** A2: Solid color header with breathing animation */

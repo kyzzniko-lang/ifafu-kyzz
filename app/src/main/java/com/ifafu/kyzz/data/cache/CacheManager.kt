@@ -14,6 +14,7 @@ import com.ifafu.kyzz.data.model.TrainingPlan
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlin.math.max
 
 @Singleton
 class CacheManager @Inject constructor(
@@ -36,6 +37,28 @@ class CacheManager @Inject constructor(
             .apply()
     }
 
+    /**
+     * 清理旧版本曾把不同学期写进同一主缓存的课表数据。
+     * 只执行一次，避免升级后继续展示错位学期内容。
+     *
+     * schema 4：旧版在用户显式选择"恰好等于推断当前学期"的学期时，走了默认 getSyllabus，
+     * 假期升级逻辑会把新学期数据写进旧学期 key（如 2025-2026_2 实际存了 2026-2027_1），
+     * 造成串台。升级后清空所有按学期分键的缓存，强制重新精确拉取。
+     */
+    fun migrateSyllabusCacheIfNeeded(account: String) {
+        val schemaKey = "syllabus_${account}_cache_schema"
+        if (prefs.getInt(schemaKey, 0) >= 4) return
+        prefs.edit().apply {
+            for ((key, _) in prefs.all) {
+                if (key == "syllabus_$account" || key.startsWith("syllabus_${account}_")) {
+                    remove(key)
+                }
+            }
+            putInt(schemaKey, 4)
+            apply()
+        }
+    }
+
     fun loadSyllabus(account: String): Syllabus? {
         val json = prefs.getString("syllabus_$account", null) ?: return null
         return try {
@@ -48,6 +71,22 @@ class CacheManager @Inject constructor(
 
     fun loadSyllabusTimestamp(account: String): Long =
         prefs.getLong("syllabus_${account}_ts", 0L)
+
+    fun loadSyllabusTimestamp(account: String, yearTermKey: String): Long {
+        val key = if (yearTermKey.isEmpty()) "syllabus_$account" else "syllabus_${account}_$yearTermKey"
+        return prefs.getLong("${key}_ts", 0L)
+    }
+
+    fun markSyllabusUpcomingProbe(account: String) {
+        prefs.edit()
+            .putLong("syllabus_${account}_upcoming_probe_ts", System.currentTimeMillis())
+            .apply()
+    }
+
+    fun isSyllabusUpcomingProbeStale(account: String, maxAgeMs: Long): Boolean {
+        val timestamp = prefs.getLong("syllabus_${account}_upcoming_probe_ts", 0L)
+        return timestamp == 0L || System.currentTimeMillis() - timestamp > maxAgeMs
+    }
 
     fun saveSyllabus(account: String, syllabus: Syllabus, yearTermKey: String) {
         val key = if (yearTermKey.isEmpty()) "syllabus_$account" else "syllabus_${account}_$yearTermKey"
@@ -222,6 +261,25 @@ class CacheManager @Inject constructor(
         return ts == 0L || System.currentTimeMillis() - ts > maxAgeMs
     }
 
+    /**
+     * 给页面统一展示缓存来源与更新时间，避免用户把缓存误认为刚刚从教务系统获取的数据。
+     */
+    fun cacheStatus(timestamp: Long, offline: Boolean = false): String {
+        val prefix = if (offline) "网络不可用 · 显示缓存" else "显示缓存"
+        if (timestamp <= 0L) return "$prefix · 更新时间未知"
+        val elapsed = max(0L, System.currentTimeMillis() - timestamp)
+        val age = when {
+            elapsed < 60_000L -> "刚刚更新"
+            elapsed < 60 * 60_000L -> "${elapsed / 60_000L}分钟前更新"
+            elapsed < 24 * 60 * 60_000L -> "${elapsed / (60 * 60_000L)}小时前更新"
+            else -> java.text.SimpleDateFormat(
+                "M月d日 HH:mm更新",
+                java.util.Locale.getDefault()
+            ).format(java.util.Date(timestamp))
+        }
+        return "$prefix · $age"
+    }
+
     fun saveWeather(campus: String, json: String) {
         prefs.edit()
             .putString("weather_${campus}", json)
@@ -369,6 +427,15 @@ class CacheManager @Inject constructor(
             s.firstSeenTs = map[scoreKey(s)] ?: 0L
         }
     }
+
+    /**
+     * 是否已建立过"成绩首次见到"基线表。该表会被 clearCache() 清掉，
+     * 可作为比 score_monitor_initialized_* 更可靠的"是否已初始化"信号——
+     * 后者存放在 ifafu_user prefs，clearCache 清不到，学期切换清缓存后仍为 true，
+     * 会让 ScoreCheckReceiver 把所有历史成绩误报为"新出分"。
+     */
+    fun hasScoreFirstSeenBaseline(account: String): Boolean =
+        loadScoreFirstSeenInternal(account).isNotEmpty()
 
     private fun loadScoreFirstSeenInternal(account: String): Map<String, Long> {
         val json = prefs.getString("score_first_seen_$account", null) ?: return emptyMap()

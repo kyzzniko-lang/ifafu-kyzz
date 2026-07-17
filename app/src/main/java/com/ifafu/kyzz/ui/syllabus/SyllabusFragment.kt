@@ -18,6 +18,7 @@ import com.ifafu.kyzz.data.model.PracticeCourse
 import com.ifafu.kyzz.data.model.Syllabus
 import com.ifafu.kyzz.data.model.UnscheduledCourse
 import com.ifafu.kyzz.databinding.FragmentSyllabusBinding
+import com.ifafu.kyzz.data.util.TermResolver
 import com.ifafu.kyzz.ui.base.UiState
 import dagger.hilt.android.AndroidEntryPoint
 
@@ -41,6 +42,7 @@ class SyllabusFragment : Fragment() {
         )
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadSyllabus(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadSyllabus() }
+        binding.tvSemesterLabel.text = TermResolver.inferCurrentTerm().display()
 
         viewModel.state.observe(viewLifecycleOwner) { state ->
             binding.swipeRefresh.isRefreshing = false
@@ -49,10 +51,13 @@ class SyllabusFragment : Fragment() {
                 is UiState.Loading -> showLoading()
                 is UiState.Success -> {
                     binding.offlineBanner.root.visibility = View.GONE
+                    updateSemesterLabel(state.data)
                     showSyllabus(state.data)
                 }
                 is UiState.Cached -> {
                     binding.offlineBanner.root.visibility = View.VISIBLE
+                    binding.offlineBanner.tvOfflineMessage.text = state.staleMessage
+                    updateSemesterLabel(state.data)
                     showSyllabus(state.data)
                 }
                 is UiState.Error -> showError(state.message)
@@ -60,6 +65,16 @@ class SyllabusFragment : Fragment() {
         }
 
         viewModel.loadSyllabus()
+    }
+
+    private fun updateSemesterLabel(syllabus: Syllabus) {
+        val year = syllabus.searchYearOptions.getOrNull(syllabus.selectedYearOption)
+        val term = syllabus.searchTermOptions.getOrNull(syllabus.selectedTermOption)
+        binding.tvSemesterLabel.text = if (!year.isNullOrEmpty() && !term.isNullOrEmpty()) {
+            "$year · 第${term}学期"
+        } else {
+            TermResolver.inferCurrentTerm().display()
+        }
     }
 
     private fun showLoading() {

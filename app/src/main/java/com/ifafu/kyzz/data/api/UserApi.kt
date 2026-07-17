@@ -135,12 +135,23 @@ class UserApi @Inject constructor(
             state = getResult.viewState
         )
 
-        val postHtml = htmlClient.postString(accessUrl, formBody)
+        // Password changes normally return a JavaScript success alert. Read the
+        // raw response so that a successful alert is not thrown as an exception.
+        val postHtml = htmlClient.postStringRaw(accessUrl, formBody)
         val alert = htmlClient.checkAlert(postHtml)
-        if (alert != null && !alert.message.contains("修改成功")) {
+        if (isSessionExpired(postHtml)) {
+            return Response(false, -1, "会话已过期，请重新登录")
+        }
+        if (alert != null && !alert.message.contains("成功")) {
             return Response(false, 0, alert.message)
         }
-        return Response(true, 0, "修改成功")
+        return if (alert?.message?.contains("成功") == true ||
+            postHtml.contains("修改成功") ||
+            postHtml.contains("密码修改成功")) {
+            Response(true, 0, "修改成功")
+        } else {
+            Response(false, 0, "教务系统未返回成功结果")
+        }
     }
 
     suspend fun relogin(): Response {

@@ -1,5 +1,8 @@
 package com.ifafu.kyzz.ui.studentinfo
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.Bundle
 import android.view.Gravity
 import android.view.View
@@ -31,8 +34,15 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
             when (state) {
                 is UiState.Idle -> {}
                 is UiState.Loading -> showLoading()
-                is UiState.Success -> showInfo(state.data)
-                is UiState.Cached -> showInfo(state.data)
+                is UiState.Success -> {
+                    binding.offlineBanner.root.visibility = View.GONE
+                    showInfo(state.data)
+                }
+                is UiState.Cached -> {
+                    binding.offlineBanner.root.visibility = View.VISIBLE
+                    binding.offlineBanner.tvOfflineMessage.text = state.staleMessage
+                    showInfo(state.data)
+                }
                 is UiState.Error -> showError(state.message)
             }
         }
@@ -41,12 +51,14 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
     }
 
     private fun showLoading() {
+        binding.offlineBanner.root.visibility = View.GONE
         binding.petLoading.root.startLoading()
         binding.scrollContent.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
+        binding.offlineBanner.root.visibility = View.GONE
         binding.petLoading.root.stopLoading()
         binding.scrollContent.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
@@ -141,12 +153,24 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
             }
 
             val valueView = TextView(this).apply {
-                text = value
+                text = maskSensitiveValue(label, value)
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
                 typeface = resources.getFont(R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3f)
                 gravity = Gravity.END
+                if (label == "身份证号" || label == "联系电话") {
+                    setOnLongClickListener {
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText(label, value))
+                        android.widget.Toast.makeText(
+                            this@StudentInfoActivity,
+                            "已复制$label",
+                            android.widget.Toast.LENGTH_SHORT
+                        ).show()
+                        true
+                    }
+                }
             }
 
             row.addView(labelView)
@@ -156,5 +180,15 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
 
         card.addView(content)
         binding.contentLayout.addView(card)
+    }
+
+    private fun maskSensitiveValue(label: String, value: String): String {
+        return when {
+            label == "联系电话" && value.length >= 7 ->
+                value.take(3) + "****" + value.takeLast(4)
+            label == "身份证号" && value.length >= 10 ->
+                value.take(4) + "**********" + value.takeLast(4)
+            else -> value
+        }
     }
 }

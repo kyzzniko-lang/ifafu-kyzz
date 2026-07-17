@@ -43,6 +43,7 @@ class SyllabusViewModel @Inject constructor(
     private var initialLoadedYear: String? = null
     private var initialLoadedTerm: String? = null
     private var loadJob: Job? = null
+    private var loadGeneration: Long = 0L
 
     init {
         _state.value = UiState.Idle
@@ -58,26 +59,43 @@ class SyllabusViewModel @Inject constructor(
             _state.value = UiState.Error("未登录")
             return
         }
+        cacheManager.migrateSyllabusCacheIfNeeded(user.account)
 
         selectedYear = year
         selectedTerm = term
+        val generation = ++loadGeneration
+        val explicitSelection = year != null || term != null
+        if (explicitSelection && loadJob?.isActive == true) {
+            // 用户连续切换学年/学期时，后一次选择优先，取消前一次请求。
+            loadJob?.cancel()
+        }
 
-        // 判断是否与初始 GET 加载的学期相同
-        val isInitialTerm = year != null && term != null &&
-                year == initialLoadedYear && term == initialLoadedTerm
         // 通过日期推断是否为当前学期（第一学期=9-1月，第二学期=2-7月）
         val isInferredCurrentTerm = year != null && term != null && isInferredCurrentTerm(year, term)
-        isCurrentTerm = (year == null && term == null) || isInitialTerm || isInferredCurrentTerm
+        // isCurrentTerm 只代表日期上的当前学期。假期已发布的新学期虽然是默认课表，
+        // 仍应按“未开学课表”计算周数，不能把旧学期的周数带过去。
+        isCurrentTerm = (year == null && term == null) || isInferredCurrentTerm
 
-        // 当前学期使用空 key（初始 GET 的缓存），其他学期用复合 key
-        val yearTermKey = if (year != null && term != null && !isCurrentTerm) "${year}_$term" else ""
+        // 初始默认课表可以复用主缓存；其它显式学期必须使用独立 key，
+        // 防止 2025-2026 第二学期和 2026-2027 第一学期互相覆盖。
+        val isInitialDefaultTerm = year != null && term != null &&
+            year == initialLoadedYear && term == initialLoadedTerm
+        val yearTermKey = if (year == null && term == null || isInitialDefaultTerm) {
+            ""
+        } else {
+            "${year}_$term"
+        }
 
         if (!forceRefresh) {
             val cached = cacheManager.loadSyllabus(user.account, yearTermKey)
             if (cached != null) {
+                adoptLoadedSelection(cached, year, term)
                 updateAvailableOptions(cached)
-                _state.value = UiState.Success(cached)
-                if (!isCacheStale(cached)) return
+                _state.value = UiState.Cached(
+                    cached,
+                    cacheManager.cacheStatus(cacheManager.loadSyllabusTimestamp(user.account, yearTermKey))
+                )
+                if (!isCacheStale(cached, yearTermKey)) return
             }
         }
 
@@ -88,24 +106,38 @@ class SyllabusViewModel @Inject constructor(
             }
             try {
                 val freshUser = userRepository.getUser()
-                val syllabus = if (year != null && term != null && !isCurrentTerm) {
+                // 用户显式指定了学年/学期时，必须精确拉取该学期，绝不能走默认 getSyllabus。
+                // 否则寒暑假"升级为新学期"逻辑会把用户选择的旧学期（恰好等于推断当前学期）
+                // 覆盖成已发布的新学期，造成串台。默认 getSyllabus 只用于无显式选择的初始加载。
+                val syllabus = if (explicitSelection) {
                     syllabusApi.getSyllabusWithTerm(
                         userRepository.host, freshUser.token, freshUser.account, freshUser.name,
-                        year, term
+                        year!!, term!!
                     )
                 } else {
                     syllabusApi.getSyllabus(
                         userRepository.host, freshUser.token, freshUser.account, freshUser.name
                     )
                 }
+                if (generation != loadGeneration) return@launch
                 if (syllabus != null) {
+                    if (year == null && term == null && TermResolver.breakTransition() != null) {
+                        cacheManager.markSyllabusUpcomingProbe(freshUser.account)
+                    }
                     cacheManager.saveSyllabus(freshUser.account, syllabus, yearTermKey)
+                    adoptLoadedSelection(syllabus, year, term)
                     updateAvailableOptions(syllabus)
                     _state.value = UiState.Success(syllabus)
                 } else {
                     val cached = cacheManager.loadSyllabus(freshUser.account, yearTermKey)
-                    if (cached != null && cached.courses.isNotEmpty()) {
-                        _state.value = UiState.Cached(cached, "离线模式 · 显示缓存数据")
+                    if (cached != null) {
+                        _state.value = UiState.Cached(
+                            cached,
+                            cacheManager.cacheStatus(
+                                cacheManager.loadSyllabusTimestamp(freshUser.account, yearTermKey),
+                                true
+                            )
+                        )
                     } else {
                         _state.value = UiState.Error("获取课表失败，请检查网络后重试")
                     }
@@ -113,12 +145,20 @@ class SyllabusViewModel @Inject constructor(
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: AlertException) {
+                if (generation != loadGeneration) return@launch
                 val msg = if (e.isSessionExpired) "会话已过期，请重新登录" else (e.message ?: "获取课表失败")
                 _state.value = UiState.Error(msg)
             } catch (e: Exception) {
+                if (generation != loadGeneration) return@launch
                 val cached = cacheManager.loadSyllabus(userRepository.getUser().account, yearTermKey)
-                if (cached != null && cached.courses.isNotEmpty()) {
-                    _state.value = UiState.Cached(cached, "离线模式 · 显示缓存数据")
+                if (cached != null) {
+                    _state.value = UiState.Cached(
+                        cached,
+                        cacheManager.cacheStatus(
+                            cacheManager.loadSyllabusTimestamp(userRepository.getUser().account, yearTermKey),
+                            true
+                        )
+                    )
                 } else {
                     _state.value = UiState.Error("网络异常，请稍后重试")
                 }
@@ -145,8 +185,8 @@ class SyllabusViewModel @Inject constructor(
                 (month == java.util.Calendar.JANUARY && currentYear == startYear + 1)
             }
             "2" -> {
-                // 第二学期：2-7月，当前年份应为 startYear+1
-                month in java.util.Calendar.FEBRUARY..java.util.Calendar.JULY && currentYear == startYear + 1
+                // 第二学期及暑假：2-8月；9月再切换到下一学年第一学期。
+                month in java.util.Calendar.FEBRUARY..java.util.Calendar.AUGUST && currentYear == startYear + 1
             }
             else -> false
         }
@@ -172,23 +212,59 @@ class SyllabusViewModel @Inject constructor(
         }
     }
 
+    private fun adoptLoadedSelection(syllabus: Syllabus, requestedYear: String?, requestedTerm: String?) {
+        if (requestedYear != null || requestedTerm != null) return
+        val loadedYear = syllabus.searchYearOptions.getOrNull(syllabus.selectedYearOption)
+        val loadedTerm = syllabus.searchTermOptions.getOrNull(syllabus.selectedTermOption)
+        if (loadedYear.isNullOrEmpty() || loadedTerm.isNullOrEmpty()) return
+        selectedYear = loadedYear
+        selectedTerm = loadedTerm
+        // 默认课表可能在假期探测后从旧学期升级为新学期，
+        // 不能只在 ViewModel 第一次加载时记录，否则旧学期会再次误用主缓存。
+        initialLoadedYear = loadedYear
+        initialLoadedTerm = loadedTerm
+        val inferred = TermResolver.inferCurrentTerm()
+        isCurrentTerm = loadedYear == inferred.year && loadedTerm == inferred.term
+    }
+
     /**
      * Detect if cached syllabus belongs to a different semester.
      * Two checks:
      * 1. Cache age > 30 days → stale
      * 2. Current week calculated from termFirstDay exceeds the course range (max week + 4 buffer) → stale (仅对当前学期)
      */
-    private fun isCacheStale(cached: Syllabus): Boolean {
+    private fun isCacheStale(cached: Syllabus, yearTermKey: String): Boolean {
         val account = userRepository.getUser().account
+        val transition = TermResolver.breakTransition()
+        val cachedYear = cached.searchYearOptions.getOrNull(cached.selectedYearOption)
+        val cachedTerm = cached.searchTermOptions.getOrNull(cached.selectedTermOption)
+        val isPublishedUpcoming = transition != null &&
+            cachedYear == transition.upcoming.year &&
+            cachedTerm == transition.upcoming.term &&
+            (cached.courses.isNotEmpty() ||
+                cached.practiceCourses.isNotEmpty() ||
+                cached.internshipCourses.isNotEmpty() ||
+                cached.unscheduledCourses.isNotEmpty())
+
+        // 普通课表缓存时间不能代表“已经检查过新学期”。升级后的第一次进入，
+        // 以及之后每十分钟，都要独立探测一次假期新课表。
+        if (transition != null && !isPublishedUpcoming &&
+            cacheManager.isSyllabusUpcomingProbeStale(account, UPCOMING_PROBE_MAX_AGE_MS)
+        ) {
+            return true
+        }
+
         // Check 1: time-based staleness
-        if (cacheManager.isCacheStale(account, "syllabus", CACHE_MAX_AGE_MS)) {
+        if (cacheManager.loadSyllabusTimestamp(account, yearTermKey) == 0L ||
+            System.currentTimeMillis() -
+            cacheManager.loadSyllabusTimestamp(account, yearTermKey) > CACHE_MAX_AGE_MS
+        ) {
             return true
         }
         if (isCurrentTerm) {
             val inferred = TermResolver.inferCurrentTerm()
-            val cachedYear = cached.searchYearOptions.getOrNull(cached.selectedYearOption)
-            val cachedTerm = cached.searchTermOptions.getOrNull(cached.selectedTermOption)
-            if (!cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty() &&
+            if (!isPublishedUpcoming &&
+                !cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty() &&
                 (cachedYear != inferred.year || cachedTerm != inferred.term)
             ) {
                 return true
@@ -228,5 +304,6 @@ class SyllabusViewModel @Inject constructor(
 
     companion object {
         private const val CACHE_MAX_AGE_MS = 10 * 60 * 1000L
+        private const val UPCOMING_PROBE_MAX_AGE_MS = 10 * 60 * 1000L
     }
 }

@@ -57,9 +57,9 @@
         app:iconSpaceReserved="false">
 
         <SwitchPreferenceCompat
-            android:key="notify_course"
-            android:title="课程提醒"
-            android:summary="每天早上提醒今日课程"
+              android:key="notify_course"
+              android:title="课程提醒"
+              android:summary="每日课程概览，并按设置时间进行课前提醒"
             android:defaultValue="true" />
 
         <SwitchPreferenceCompat

@@ -17,6 +17,8 @@ import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Exam
 import com.ifafu.kyzz.data.model.ExamProgress
 import com.ifafu.kyzz.databinding.FragmentExamBinding
+import com.ifafu.kyzz.data.model.ExamTable
+import com.ifafu.kyzz.data.util.TermResolver
 import com.ifafu.kyzz.ui.base.UiState
 import com.ifafu.kyzz.data.model.PetState
 import com.ifafu.kyzz.data.repository.PetRepository
@@ -51,6 +53,7 @@ class ExamFragment : Fragment() {
         )
         binding.swipeRefresh.setOnRefreshListener { viewModel.loadExams(forceRefresh = true) }
         binding.btnRetry.setOnClickListener { viewModel.loadExams(forceRefresh = true) }
+        binding.tvSemesterLabel.text = TermResolver.inferCurrentTerm().display()
 
         viewModel.state.observe(viewLifecycleOwner) { state ->
             binding.swipeRefresh.isRefreshing = false
@@ -59,10 +62,13 @@ class ExamFragment : Fragment() {
                 is UiState.Loading -> showLoading()
                 is UiState.Success -> {
                     binding.offlineBanner.root.visibility = View.GONE
+                    updateSemesterLabel(state.data)
                     showExams(state.data.exams)
                 }
                 is UiState.Cached -> {
                     binding.offlineBanner.root.visibility = View.VISIBLE
+                    binding.offlineBanner.tvOfflineMessage.text = state.staleMessage
+                    updateSemesterLabel(state.data)
                     showExams(state.data.exams)
                 }
                 is UiState.Error -> showError(state.message)
@@ -70,6 +76,16 @@ class ExamFragment : Fragment() {
         }
 
         viewModel.loadExams()
+    }
+
+    private fun updateSemesterLabel(table: ExamTable) {
+        val year = table.searchYearOptions.getOrNull(table.selectedYearOption)
+        val term = table.searchTermOptions.getOrNull(table.selectedTermOption)
+        binding.tvSemesterLabel.text = if (!year.isNullOrEmpty() && !term.isNullOrEmpty()) {
+            "$year · 第${term}学期"
+        } else {
+            TermResolver.inferCurrentTerm().display()
+        }
     }
 
     private fun showLoading() {

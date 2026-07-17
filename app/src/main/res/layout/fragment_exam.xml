@@ -6,14 +6,30 @@
     android:background="@color/claude_bg"
     android:orientation="vertical">
 
-    <TextView
-        android:layout_width="wrap_content"
+    <LinearLayout
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="20dp"
+        android:paddingEnd="20dp"
         android:layout_marginTop="16dp"
-        android:layout_marginBottom="8dp"
-        style="@style/ClaudeTitle"
-        android:text="@string/exam_title" />
+        android:layout_marginBottom="8dp">
+
+        <TextView
+            style="@style/ClaudeTitle"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="@string/exam_title" />
+
+        <TextView
+            android:id="@+id/tvSemesterLabel"
+            style="@style/ClaudeCaption"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="@color/claude_text_tertiary" />
+    </LinearLayout>
 
     <include layout="@layout/layout_offline_banner"
         android:id="@+id/offlineBanner" />

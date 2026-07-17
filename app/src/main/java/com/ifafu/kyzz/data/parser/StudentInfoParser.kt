@@ -24,6 +24,22 @@ class StudentInfoParser @Inject constructor(
             }
         }
 
+        // The page is an old table form and contains photo cells, empty cells and
+        // nested tables. Prefer the explicit label spans when available so one
+        // empty/photo cell cannot shift the label/value pairing for later fields.
+        doc.select("span[id^=lbxsgrxx_]").forEach { labelSpan ->
+            val label = labelSpan.text().trim()
+                .removeSuffix("：")
+                .removeSuffix(":")
+                .trim()
+            val labelCell = labelSpan.closest("td") ?: return@forEach
+            val valueCell = labelCell.nextElementSibling() ?: return@forEach
+            val value = htmlParser.cleanNbsp(valueCell.text())
+            if (label.isNotEmpty() && value.isNotEmpty()) {
+                fields[label] = value
+            }
+        }
+
         info.name = fields["姓名"] ?: ""
         info.formerName = fields["曾用名"] ?: ""
         info.gender = fields["性别"] ?: ""

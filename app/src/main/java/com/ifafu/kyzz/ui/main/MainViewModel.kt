@@ -108,6 +108,11 @@ class MainViewModel @Inject constructor(
                 fetchSyllabusAndShow()
                 return@launch
             }
+            if (isPublishedUpcomingBreakSyllabus(syllabus)) {
+                // 新课表已发布但尚未开学：首页不把它按旧学期周数计算成“今日课程”。
+                _todayCourses.postValue(emptyList())
+                return@launch
+            }
             val currentWeek = calculateCurrentWeek()
             val maxCourseWeek = if (syllabus.courses.isNotEmpty()) syllabus.courses.maxOf { it.weekEnd } else 20
             if (currentWeek > maxCourseWeek + 4) {
@@ -136,8 +141,22 @@ class MainViewModel @Inject constructor(
         val target = TermResolver.inferCurrentTerm()
         val cachedYear = syllabus.searchYearOptions.getOrNull(syllabus.selectedYearOption)
         val cachedTerm = syllabus.searchTermOptions.getOrNull(syllabus.selectedTermOption)
+        if (isPublishedUpcomingBreakSyllabus(syllabus)) return false
         return !cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty() &&
             (cachedYear != target.year || cachedTerm != target.term)
+    }
+
+    private fun isPublishedUpcomingBreakSyllabus(
+        syllabus: com.ifafu.kyzz.data.model.Syllabus
+    ): Boolean {
+        val upcoming = TermResolver.breakTransition()?.upcoming ?: return false
+        val year = syllabus.searchYearOptions.getOrNull(syllabus.selectedYearOption)
+        val term = syllabus.searchTermOptions.getOrNull(syllabus.selectedTermOption)
+        val hasContent = syllabus.courses.isNotEmpty() ||
+            syllabus.practiceCourses.isNotEmpty() ||
+            syllabus.internshipCourses.isNotEmpty() ||
+            syllabus.unscheduledCourses.isNotEmpty()
+        return year == upcoming.year && term == upcoming.term && hasContent
     }
 
     private fun fetchSyllabusAndShow() {
@@ -164,32 +183,17 @@ class MainViewModel @Inject constructor(
         if (firstDay.isEmpty()) { _todayCourses.postValue(emptyList()); return }
 
         try {
-            val parsed = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(firstDay)
-            if (parsed == null) {
-                _todayCourses.postValue(emptyList())
-                return
-            }
-            val termStart = Calendar.getInstance().apply {
-                time = parsed
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            val today = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
-            val currentWeek = (diffDays / 7) + 1
-            _currentWeek.postValue(currentWeek.coerceAtLeast(0))
+            // 复用 calculateCurrentWeek()：它带有 week>30→0 的上限（防止 termFirstDay
+            // 过期时算出"第40周"之类荒谬值）。旧实现在此独立重算且只 coerceAtLeast(0)，
+            // 会把荒谬周数顶到首页 chip 上，与 calculateCurrentWeek 自相矛盾。
+            val currentWeek = calculateCurrentWeek()
+            _currentWeek.postValue(currentWeek)
             // 学期开始前或假期中，不显示课程
             if (currentWeek <= 0) {
                 _todayCourses.postValue(emptyList())
                 return
             }
+            val today = Calendar.getInstance()
             val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
             val todayDay = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
 

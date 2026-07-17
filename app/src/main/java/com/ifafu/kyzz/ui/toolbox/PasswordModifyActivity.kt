@@ -34,6 +34,10 @@ class PasswordModifyActivity : BaseActivity<ActivityPasswordModifyBinding>() {
                 binding.tilNewPassword.error = "请输入新密码"
                 return@setOnClickListener
             }
+            if (newPwd.length !in 6..16) {
+                binding.tilNewPassword.error = "新密码长度应为 6～16 位"
+                return@setOnClickListener
+            }
             if (confirmPwd.isEmpty()) {
                 binding.tilConfirmPassword.error = "请输入确认密码"
                 return@setOnClickListener
@@ -57,8 +61,8 @@ class PasswordModifyActivity : BaseActivity<ActivityPasswordModifyBinding>() {
                     binding.btnSubmit.isEnabled = true
                     binding.btnSubmit.text = "修改密码"
                     binding.tvResult.visibility = View.VISIBLE
-                    binding.tvResult.text = "密码修改成功"
-                    Toast.makeText(this, "密码修改成功", Toast.LENGTH_SHORT).show()
+                    binding.tvResult.text = state.message
+                    Toast.makeText(this, state.message, Toast.LENGTH_SHORT).show()
                 }
                 is PasswordModifyViewModel.State.Error -> {
                     binding.btnSubmit.isEnabled = true

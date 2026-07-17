@@ -54,7 +54,10 @@ class ExamViewModel @Inject constructor(
                 if (cached != null) {
                     // 检测缓存中的考试是否都已过期（属于旧学期）
                     if (!isAllExamsExpired(cached.exams)) {
-                        _state.value = UiState.Success(cached)
+                        _state.value = UiState.Cached(
+                            cached,
+                            cacheManager.cacheStatus(cacheManager.loadExamTableTimestamp(user.account))
+                        )
                         if (!isStale &&
                             (cached.exams.isEmpty() || !isAllExamsExpired(cached.exams)) &&
                             !belongsToDifferentTerm(cached)
@@ -80,8 +83,11 @@ class ExamViewModel @Inject constructor(
                     _state.value = UiState.Success(examTable)
                 } else {
                     val cached = cacheManager.loadExamTable(freshUser.account)
-                    if (cached != null && cached.exams.isNotEmpty()) {
-                        _state.value = UiState.Cached(cached, "离线模式 · 显示缓存数据")
+                    if (cached != null) {
+                        _state.value = UiState.Cached(
+                            cached,
+                            cacheManager.cacheStatus(cacheManager.loadExamTableTimestamp(freshUser.account), true)
+                        )
                     } else {
                         _state.value = UiState.Error("获取考试信息失败，请检查网络后重试")
                     }
@@ -94,8 +100,14 @@ class ExamViewModel @Inject constructor(
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to load exams", e)
                 val cached = cacheManager.loadExamTable(userRepository.getUser().account)
-                if (cached != null && cached.exams.isNotEmpty()) {
-                    _state.value = UiState.Cached(cached, "离线模式 · 显示缓存数据")
+                if (cached != null) {
+                    _state.value = UiState.Cached(
+                        cached,
+                        cacheManager.cacheStatus(
+                            cacheManager.loadExamTableTimestamp(userRepository.getUser().account),
+                            true
+                        )
+                    )
                 } else {
                     _state.value = UiState.Error("网络异常，请稍后重试")
                 }

@@ -9,6 +9,7 @@ import com.ifafu.kyzz.data.parser.SyllabusParser
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.data.util.TermResolver
 import kotlinx.coroutines.CancellationException
+import org.jsoup.nodes.Document
 import java.net.URLEncoder
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -73,27 +74,57 @@ class SyllabusApi @Inject constructor(
                 Log.d("SyllabusApi", "Target matches server default ($serverYear-$serverTerm), using GET response directly")
                 syllabusParser.parseSyllabus(doc, number)
             } else {
-                val needYearChange = targetYear != serverYear
-                val eventTarget = if (needYearChange) "xnd" else "xqd"
                 Log.d(
                     "SyllabusApi",
-                    "POST xnd=$targetYear, xqd=$targetTerm (inferred=${inferred.year}-${inferred.term}, server=$serverYear-$serverTerm, usedInferred=$usedInferred, needYearChange=$needYearChange, eventTarget=$eventTarget)"
+                    "选择课表 xnd=$targetYear, xqd=$targetTerm (inferred=${inferred.year}-${inferred.term}, server=$serverYear-$serverTerm, usedInferred=$usedInferred)"
                 )
-                val state = htmlClient.parseViewState(html)
-                val formBody = htmlClient.buildFormBodyWithViewState(
-                    "__EVENTTARGET" to eventTarget,
-                    "__EVENTARGUMENT" to "",
-                    "xnd" to targetYear,
-                    "xqd" to targetTerm,
-                    state = state
+                val selectedDoc = selectTerm(
+                    accessUrl, doc, targetYear, targetTerm, serverYear, serverTerm
                 )
-                val postDoc = htmlClient.post(accessUrl, formBody)
-                htmlClient.throwIfAlert(postDoc.html())
-                syllabusParser.parseSyllabus(postDoc, number)
+                syllabusParser.parseSyllabus(selectedDoc, number)
+            }
+
+            val transition = TermResolver.breakTransition()
+            if (transition != null) {
+                val upcoming = transition.upcoming
+                val upcomingAvailable = yearResult.options.contains(upcoming.year) &&
+                    termResult.options.contains(upcoming.term)
+                val upcomingSyllabus = when {
+                    !upcomingAvailable -> null
+                    targetYear == upcoming.year && targetTerm == upcoming.term -> syllabus
+                    else -> getSyllabusWithTerm(
+                        host, userRepository.getUser().token, number, name,
+                        upcoming.year, upcoming.term
+                    )
+                }
+                if (upcomingSyllabus?.hasPublishedContent() == true) {
+                    Log.i("SyllabusApi", "检测到${upcoming.display()}课表已发布，提升为默认课表")
+                    return upcomingSyllabus
+                }
+
+                // 新课表尚未发布时继续使用上一学期，避免寒暑假进入空白课表。
+                val previous = transition.previous
+                val previousSyllabus = when {
+                    targetYear == previous.year && targetTerm == previous.term -> syllabus
+                    serverYear == previous.year && serverTerm == previous.term ->
+                        syllabusParser.parseSyllabus(doc, number)
+                    yearResult.options.contains(previous.year) &&
+                        termResult.options.contains(previous.term) ->
+                        getSyllabusWithTerm(
+                            host, userRepository.getUser().token, number, name,
+                            previous.year, previous.term
+                        )
+                    else -> null
+                }
+                if (previousSyllabus != null) {
+                    if (previous.year == inferred.year && previous.term == inferred.term) {
+                        saveTermFirstDayIfNeeded(previousSyllabus)
+                    }
+                    return previousSyllabus
+                }
             }
 
             if (usedInferred && syllabus.isEmpty()) {
-                // 当前学期暂无课表（大四实习/毕业学期等），返回空课表而非抛异常
                 Log.i("SyllabusApi", "当前学期（${inferred.display()}）暂无课表数据，返回空课表")
             }
 
@@ -150,32 +181,18 @@ class SyllabusApi @Inject constructor(
                 Log.d("SyllabusApi", "Target matches server default ($serverYear-$serverTerm), using GET response directly")
                 syllabusParser.parseSyllabus(initialDoc, number)
             } else {
-                val needYearChange = year != serverYear
-                val eventTarget = if (needYearChange) "xnd" else "xqd"
-
-                Log.d("SyllabusApi", "POST xnd=$year, xqd=$term (server=$serverYear-$serverTerm, needYearChange=$needYearChange, eventTarget=$eventTarget)")
-                val state = htmlClient.parseViewState(initialHtml)
-                val formBody = htmlClient.buildFormBodyWithViewState(
-                    "__EVENTTARGET" to eventTarget,
-                    "__EVENTARGUMENT" to "",
-                    "xnd" to year,
-                    "xqd" to term,
-                    state = state
+                Log.d("SyllabusApi", "选择课表 xnd=$year, xqd=$term (server=$serverYear-$serverTerm)")
+                val selectedDoc = selectTerm(
+                    accessUrl, initialDoc, year, term, serverYear, serverTerm
                 )
-
-                val doc = htmlClient.post(accessUrl, formBody)
-                val html = doc.html()
-                Log.d("SyllabusApi", "Response length=${html.length}")
-                if (userApi.isSessionExpired(html)) {
-                    Log.e("SyllabusApi", "Session expired after POST!")
-                    return null
-                }
-                htmlClient.throwIfAlert(html)
-                syllabusParser.parseSyllabus(doc, number)
+                syllabusParser.parseSyllabus(selectedDoc, number)
             }
 
             Log.d("SyllabusApi", "Parsed: courses=${syllabus.courses.size}")
-            saveTermFirstDayIfNeeded(syllabus)
+            val inferred = TermResolver.inferCurrentTerm()
+            if (year == inferred.year && term == inferred.term) {
+                saveTermFirstDayIfNeeded(syllabus)
+            }
             syllabus
         } catch (e: CancellationException) { throw e }
         catch (e: AlertException) { throw e }
@@ -201,10 +218,83 @@ class SyllabusApi @Inject constructor(
         userRepository.termFirstDay = termFirstDay
     }
 
+    /**
+     * 正方教务的学年下拉框是 AutoPostBack。跨学年选择时，第一次 POST 只更新学年，
+     * 学期可能仍停留在旧值，因此必须读取新 VIEWSTATE 后再补一次学期 POST。
+     */
+    private suspend fun selectTerm(
+        accessUrl: String,
+        initialDoc: Document,
+        targetYear: String,
+        targetTerm: String,
+        initialYear: String,
+        initialTerm: String
+    ): Document {
+        var doc = initialDoc
+        var selectedYear = initialYear
+        var selectedTerm = initialTerm
+
+        if (selectedYear != targetYear) {
+            doc = postTermSelection(accessUrl, doc, "xnd", targetYear, targetTerm)
+            selectedYear = selectedOption(doc, "xnd")
+            selectedTerm = selectedOption(doc, "xqd")
+        }
+
+        if (selectedYear != targetYear || selectedTerm != targetTerm) {
+            doc = postTermSelection(accessUrl, doc, "xqd", targetYear, targetTerm)
+            selectedYear = selectedOption(doc, "xnd")
+            selectedTerm = selectedOption(doc, "xqd")
+        }
+
+        if (selectedYear != targetYear || selectedTerm != targetTerm) {
+            Log.w(
+                "SyllabusApi",
+                "课表选择未完全生效: target=$targetYear-$targetTerm actual=$selectedYear-$selectedTerm"
+            )
+        }
+        return doc
+    }
+
+    private suspend fun postTermSelection(
+        accessUrl: String,
+        sourceDoc: Document,
+        eventTarget: String,
+        year: String,
+        term: String
+    ): Document {
+        val state = htmlClient.parseViewState(sourceDoc.html())
+        val formBody = htmlClient.buildFormBodyWithViewState(
+            "__EVENTTARGET" to eventTarget,
+            "__EVENTARGUMENT" to "",
+            "xnd" to year,
+            "xqd" to term,
+            state = state
+        )
+        val result = htmlClient.post(accessUrl, formBody)
+        val html = result.html()
+        if (userApi.isSessionExpired(html)) {
+            throw AlertException("会话已过期，请重新登录", true)
+        }
+        htmlClient.throwIfAlert(html)
+        return result
+    }
+
+    private fun selectedOption(doc: Document, selectId: String): String {
+        val options = htmlParser.parseSearchOptions(doc, "id=\"$selectId\"", "</select>")
+        return options.options.getOrElse(options.selectedIndex) { "" }
+    }
+
     private fun Syllabus.isEmpty(): Boolean {
         return courses.isEmpty() &&
             practiceCourses.isEmpty() &&
             internshipCourses.isEmpty() &&
             unscheduledCourses.isEmpty()
+    }
+
+    private fun Syllabus.hasPublishedContent(): Boolean {
+        return courses.isNotEmpty() ||
+            practiceCourses.isNotEmpty() ||
+            internshipCourses.isNotEmpty() ||
+            unscheduledCourses.isNotEmpty()
     }
 }

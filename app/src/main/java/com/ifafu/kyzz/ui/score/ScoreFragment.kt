@@ -19,6 +19,7 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Score
+import com.ifafu.kyzz.data.util.GpaCalculator
 import com.ifafu.kyzz.databinding.FragmentScoreBinding
 import com.ifafu.kyzz.ui.base.UiState
 import com.ifafu.kyzz.data.model.PetState
@@ -80,6 +81,7 @@ class ScoreFragment : Fragment() {
                 }
                 is UiState.Cached -> {
                     binding.offlineBanner.root.visibility = View.VISIBLE
+                    binding.offlineBanner.tvOfflineMessage.text = state.staleMessage
                     if (!spinnerReady) {
                         setupYearSpinner()
                         spinnerReady = true
@@ -114,6 +116,7 @@ class ScoreFragment : Fragment() {
         binding.spinnerYear.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
                 selectedYear = if (position == 0) null else options[position]
+                updateSemesterLabel()
                 viewModel.filter(selectedYear, selectedTerm)
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
@@ -123,11 +126,22 @@ class ScoreFragment : Fragment() {
     private fun setupTermButtons() {
         binding.btnTerm1.setOnClickListener {
             selectedTerm = "1"
+            updateSemesterLabel()
             viewModel.filter(selectedYear, selectedTerm)
         }
         binding.btnTerm2.setOnClickListener {
             selectedTerm = "2"
+            updateSemesterLabel()
             viewModel.filter(selectedYear, selectedTerm)
+        }
+    }
+
+    private fun updateSemesterLabel() {
+        binding.tvSemesterLabel.visibility = View.VISIBLE
+        binding.tvSemesterLabel.text = when {
+            selectedYear != null && selectedTerm != null -> "$selectedYear · 第${selectedTerm}学期"
+            selectedYear != null -> "$selectedYear · 全部学期"
+            else -> "全部学年"
         }
     }
 
@@ -180,19 +194,13 @@ class ScoreFragment : Fragment() {
         binding.statsCard.visibility = View.VISIBLE
 
         val totalCredits = scores.sumOf { it.studyScore.toDouble() }.toFloat()
-        val weightedSum = scores.sumOf { (it.score * it.studyScore).toDouble() }.toFloat()
-        val weightedAvg = if (totalCredits > 0) weightedSum / totalCredits else 0f
+        val weightedAvg = GpaCalculator.computeWeightedAvg(scores)
 
         // 算术平均分（不考虑学分权重）与已出成绩科目数
-        val avgScore = scores.map { it.score }.average().toFloat()
+        val avgScore = GpaCalculator.computeAvgScore(scores)
         val subjectCount = scores.size
 
-        val gpa = if (scores.any { it.scorePoint > 0f }) {
-            val gpSum = scores.sumOf { (it.scorePoint * it.studyScore).toDouble() }.toFloat()
-            if (totalCredits > 0) gpSum / totalCredits else 0f
-        } else {
-            if (totalCredits > 0) weightedSum / totalCredits / 25f else 0f
-        }
+        val gpa = GpaCalculator.computeGpa(scores)
 
         // Animated counter for stats
         binding.gpaRingView.setGpa(gpa)
@@ -220,15 +228,7 @@ class ScoreFragment : Fragment() {
         val grouped = scores.groupBy { "${it.year}\n第${it.term}学期" }
             .toSortedMap()
             .map { (label, list) ->
-                val credits = list.sumOf { it.studyScore.toDouble() }.toFloat()
-                val gpa = if (list.any { it.scorePoint > 0f }) {
-                    val gpSum = list.sumOf { (it.scorePoint * it.studyScore).toDouble() }.toFloat()
-                    if (credits > 0) gpSum / credits else 0f
-                } else {
-                    val wSum = list.sumOf { (it.score * it.studyScore).toDouble() }.toFloat()
-                    if (credits > 0) wSum / credits / 25f else 0f
-                }
-                GpaTrendView.Point(label, gpa)
+                GpaTrendView.Point(label, GpaCalculator.computeGpa(list))
             }
         return if (grouped.size >= 2) grouped else null
     }

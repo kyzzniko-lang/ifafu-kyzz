@@ -9,9 +9,10 @@
     android:visibility="gone">
 
     <TextView
+        android:id="@+id/tvOfflineMessage"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="离线模式 · 显示缓存数据"
+        android:text="当前显示缓存数据"
         android:textColor="@color/claude_offline_banner_text"
         android:textSize="13sp"
         android:fontFamily="sans-serif" />

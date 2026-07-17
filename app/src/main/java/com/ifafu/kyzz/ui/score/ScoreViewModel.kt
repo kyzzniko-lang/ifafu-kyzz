@@ -61,7 +61,10 @@ class ScoreViewModel @Inject constructor(
                 if (cached != null) {
                     allScores = cached
                     cacheManager.assignFirstSeenFromCache(user.account, allScores)
-                    _state.value = UiState.Success(filterScores())
+                    _state.value = UiState.Cached(
+                        filterScores(),
+                        cacheManager.cacheStatus(cacheManager.loadScoresTimestamp(user.account))
+                    )
                     if (!isStale) return
                 }
             }
@@ -69,7 +72,12 @@ class ScoreViewModel @Inject constructor(
 
         // Repeated pull-to-refresh gestures previously queued behind HtmlClient's mutex,
         // making a normal request look like a 30-second refresh.
-        if (loadJob?.isActive == true) return
+        // 用户手动下拉刷新(forceRefresh)时，若上次 stale-while-revalidate 加载还没结束，
+        // 旧逻辑直接 return 会把这次刷新静默丢弃（用户看到转圈以为刷新了其实没执行）。
+        // 改为：强制刷新取消在途任务，重新发起。
+        if (loadJob?.isActive == true) {
+            if (forceRefresh) loadJob?.cancel() else return
+        }
         loadJob = viewModelScope.launch {
             // Pull-to-refresh should keep the existing list visible. Showing the full-page
             // loading view here made a slow network request feel like the page was frozen.
@@ -91,10 +99,13 @@ class ScoreViewModel @Inject constructor(
                     _state.value = UiState.Success(filterScores())
                 } else {
                     val cached = cacheManager.loadScores(freshUser.account)
-                    if (cached != null && cached.isNotEmpty()) {
+                    if (cached != null) {
                         allScores = cached
                         cacheManager.assignFirstSeenFromCache(freshUser.account, allScores)
-                        _state.value = UiState.Cached(filterScores(), "离线模式 · 显示缓存数据")
+                        _state.value = UiState.Cached(
+                            filterScores(),
+                            cacheManager.cacheStatus(cacheManager.loadScoresTimestamp(freshUser.account), true)
+                        )
                     } else {
                         _state.value = UiState.Error("获取成绩失败，请检查网络后重试")
                     }
@@ -106,10 +117,16 @@ class ScoreViewModel @Inject constructor(
                 _state.value = UiState.Error(msg)
             } catch (e: Exception) {
                 val cached = cacheManager.loadScores(userRepository.getUser().account)
-                if (cached != null && cached.isNotEmpty()) {
+                if (cached != null) {
                     allScores = cached
                     cacheManager.assignFirstSeenFromCache(userRepository.getUser().account, allScores)
-                    _state.value = UiState.Cached(filterScores(), "离线模式 · 显示缓存数据")
+                    _state.value = UiState.Cached(
+                        filterScores(),
+                        cacheManager.cacheStatus(
+                            cacheManager.loadScoresTimestamp(userRepository.getUser().account),
+                            true
+                        )
+                    )
                 } else {
                     _state.value = UiState.Error("网络异常，请稍后重试")
                 }

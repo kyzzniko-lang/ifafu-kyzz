@@ -37,7 +37,10 @@ class StudentInfoViewModel @Inject constructor(
             run {
                 val cached = cacheManager.loadStudentInfo(user.account)
                 if (cached != null) {
-                    _state.value = UiState.Success(cached)
+                    _state.value = UiState.Cached(
+                        cached,
+                        cacheManager.cacheStatus(cacheManager.loadStudentInfoTimestamp(user.account))
+                    )
                     if (!isStale) return
                 }
             }
@@ -58,7 +61,13 @@ class StudentInfoViewModel @Inject constructor(
                 } else {
                     val cached = cacheManager.loadStudentInfo(freshUser.account)
                     if (cached != null) {
-                        _state.value = UiState.Cached(cached, "离线模式 · 显示缓存数据")
+                        _state.value = UiState.Cached(
+                            cached,
+                            cacheManager.cacheStatus(
+                                cacheManager.loadStudentInfoTimestamp(freshUser.account),
+                                true
+                            )
+                        )
                     } else {
                         _state.value = UiState.Error("获取信息失败，请检查网络后重试")
                     }
@@ -71,7 +80,13 @@ class StudentInfoViewModel @Inject constructor(
             } catch (e: Exception) {
                 val cached = cacheManager.loadStudentInfo(userRepository.getUser().account)
                 if (cached != null) {
-                    _state.value = UiState.Cached(cached, "离线模式 · 显示缓存数据")
+                    _state.value = UiState.Cached(
+                        cached,
+                        cacheManager.cacheStatus(
+                            cacheManager.loadStudentInfoTimestamp(userRepository.getUser().account),
+                            true
+                        )
+                    )
                 } else {
                     _state.value = UiState.Error("网络异常，请稍后重试")
                 }

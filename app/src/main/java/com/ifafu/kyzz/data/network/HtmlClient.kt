@@ -129,6 +129,25 @@ class HtmlClient @Inject constructor(
         }
     }
 
+    /**
+     * Submit a form and return the raw response.
+     *
+     * Legacy pages use JavaScript alert() for both success and failure. Callers
+     * that need to distinguish those messages must inspect the raw HTML instead
+     * of letting the generic client throw on every alert.
+     */
+    suspend fun postStringRaw(url: String, formBody: FormBody): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            val request = buildRequest(url).post(formBody).build()
+            client.newCall(request).execute().use { response ->
+                val bytes = response.body?.bytes() ?: ByteArray(0)
+                lastUrl = response.request.url.toString()
+                referer = lastUrl
+                bytesToString(bytes)
+            }
+        }
+    }
+
     fun buildFormBodyWithViewState(vararg pairs: Pair<String, String>, state: ViewStateData): FormBody {
         val builder = FormBody.Builder(gbkCharset)
             .add("__VIEWSTATE", state.viewState)
@@ -380,12 +399,18 @@ class HtmlClient @Inject constructor(
     /** 检查 alert 是否在 function 定义内部 (如 function Keykz() { alert(...) }) */
     private fun isAlertInsideFunction(html: String, alertPos: Int): Boolean {
         if (alertPos < 0) return false
-        val start = maxOf(0, alertPos - 400)
+        // 老教务系统的校验函数经常很长，alert 可能距离 function 关键字数千字符。
+        // 只看一个很短窗口会把函数内部的提示误判成页面级错误。
+        val start = maxOf(0, alertPos - 16_000)
         val before = html.substring(start, alertPos)
-        // 从 alert 位置向前找 function 关键字，确保没有被 } 闭合
-        val lastBrace = before.lastIndexOf('}')
-        val lastFunction = before.lastIndexOf("function")
-        return lastFunction >= 0 && lastFunction > lastBrace
+        val lastFunction = before.lastIndexOf("function", ignoreCase = true)
+        if (lastFunction < 0) return false
+
+        val functionBody = before.substring(lastFunction)
+        val openBraces = functionBody.count { it == '{' }
+        val closeBraces = functionBody.count { it == '}' }
+        // 仍有未闭合的大括号，说明 alert 仍处于最近一个 function 的作用域。
+        return openBraces > closeBraces
     }
 
     fun throwIfAlert(html: String) {
