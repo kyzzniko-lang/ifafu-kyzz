@@ -267,6 +267,8 @@ object UpdateChecker {
     private const val KEY_CACHED_SIZE = "cached_size"
     private const val KEY_CACHED_URL = "cached_url"
     private const val KEY_DISMISSED_VERSION = "dismissed_version"
+    private const val KEY_DISMISSED_UNTIL = "dismissed_until"
+    private const val DISMISS_DURATION_MS = 8 * 60 * 60 * 1000L
     private const val CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000L // 4 hours
 
     fun shouldCheck(context: Context): Boolean {
@@ -284,6 +286,7 @@ object UpdateChecker {
             putLong(KEY_CACHED_SIZE, asset.size)
             putString(KEY_CACHED_URL, asset.downloadUrl)
             remove(KEY_DISMISSED_VERSION)
+            remove(KEY_DISMISSED_UNTIL)
             apply()
         }
     }
@@ -314,12 +317,14 @@ object UpdateChecker {
     fun dismissVersion(context: Context, versionName: String) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .putString(KEY_DISMISSED_VERSION, versionName)
+            .putLong(KEY_DISMISSED_UNTIL, System.currentTimeMillis() + DISMISS_DURATION_MS)
             .apply()
     }
 
     fun isDismissed(context: Context, versionName: String): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val dismissed = prefs.getString(KEY_DISMISSED_VERSION, "") ?: ""
-        return dismissed.isNotEmpty() && dismissed == versionName
+        val dismissedUntil = prefs.getLong(KEY_DISMISSED_UNTIL, 0L)
+        return dismissed.isNotEmpty() && dismissed == versionName && dismissedUntil > System.currentTimeMillis()
     }
 }
