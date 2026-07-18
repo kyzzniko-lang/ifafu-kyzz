@@ -46,8 +46,12 @@ class FeedbackWorkerApi @Inject constructor(
             client.newCall(request).execute().use { response ->
                 val responseText = response.body?.string().orEmpty()
                 if (!response.isSuccessful) {
-                    Log.w(TAG, "$method $path failed with HTTP ${response.code}")
-                    return null
+                    Log.w(TAG, "$method $path failed with HTTP ${response.code}: ${responseText.take(200)}")
+                    return runCatching { JsonParser.parseString(responseText).asJsonObject }
+                        .getOrElse { JsonObject().apply {
+                            addProperty("ok", false)
+                            addProperty("message", "HTTP ${response.code}")
+                        } }
                 }
                 JsonParser.parseString(responseText).asJsonObject
             }

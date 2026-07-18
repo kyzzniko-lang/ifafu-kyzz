@@ -19,36 +19,43 @@ class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
 
     @Inject lateinit var feedbackWorkerApi: FeedbackWorkerApi
 
-    override fun createBinding(): ActivityKyzzToolboxBinding = ActivityKyzzToolboxBinding.inflate(layoutInflater)
+    override fun createBinding(): ActivityKyzzToolboxBinding =
+        ActivityKyzzToolboxBinding.inflate(layoutInflater)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding.toolbar.setNavigationOnClickListener { finish() }
 
         binding.btnSubmit.setOnClickListener {
-            val title = binding.etTitle.text?.toString()?.trim() ?: ""
-            val content = binding.etContent.text?.toString()?.trim() ?: ""
+            val title = binding.etTitle.text?.toString()?.trim().orEmpty()
+            val content = binding.etContent.text?.toString()?.trim().orEmpty()
 
-            if (title.isEmpty() || content.isEmpty()) {
-                Toast.makeText(this, "请填写标题和内容", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+            when {
+                title.length < 4 -> {
+                    Toast.makeText(this, "标题至少需要4个字", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
+                content.length < 10 -> {
+                    Toast.makeText(this, "反馈内容至少需要10个字", Toast.LENGTH_SHORT).show()
+                    return@setOnClickListener
+                }
             }
 
             binding.btnSubmit.isEnabled = false
-            binding.btnSubmit.text = "提交中..."
+            binding.btnSubmit.text = "提交中…"
 
             lifecycleScope.launch {
-                val success = withContext(Dispatchers.IO) {
+                val result = withContext(Dispatchers.IO) {
                     submitToGitHub(title, content)
                 }
                 binding.btnSubmit.isEnabled = true
                 binding.btnSubmit.text = "提交反馈"
-                if (success) {
+                if (result.first) {
                     Toast.makeText(this@KyzzToolboxActivity, "反馈提交成功，感谢你的建议！", Toast.LENGTH_SHORT).show()
                     binding.etTitle.text?.clear()
                     binding.etContent.text?.clear()
                 } else {
-                    Toast.makeText(this@KyzzToolboxActivity, "提交失败，请检查网络", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this@KyzzToolboxActivity, result.second, Toast.LENGTH_LONG).show()
                 }
             }
         }
@@ -62,15 +69,25 @@ class KyzzToolboxActivity : BaseActivity<ActivityKyzzToolboxBinding>() {
         }
     }
 
-    private fun submitToGitHub(title: String, body: String): Boolean =
-        feedbackWorkerApi.post(
-            "/issue",
-            mapOf(
-                "title" to title,
-                "description" to body,
-                "appVersion" to BuildConfig.VERSION_NAME,
-                "deviceInfo" to "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} / Android ${android.os.Build.VERSION.RELEASE}",
-                "contact" to "未提供"
+    private fun submitToGitHub(title: String, body: String): Pair<Boolean, String> {
+        return try {
+            val response = feedbackWorkerApi.post(
+                "/issue",
+                mapOf(
+                    "title" to title,
+                    "description" to body,
+                    "appVersion" to BuildConfig.VERSION_NAME,
+                    "deviceInfo" to "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL} / Android ${android.os.Build.VERSION.RELEASE}",
+                    "contact" to "未提供"
+                )
             )
-        )?.get("ok")?.asBoolean == true
+            if (response?.get("ok")?.asBoolean == true) {
+                true to ""
+            } else {
+                false to (response?.get("message")?.asString ?: "提交失败，请稍后重试")
+            }
+        } catch (_: Exception) {
+            false to "网络异常，请检查网络连接后重试"
+        }
+    }
 }
