@@ -24,6 +24,8 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
 
     override fun createBinding() = ActivityCourseReviewBinding.inflate(layoutInflater)
     private val viewModel: CourseReviewViewModel by viewModels()
+    private var writeDialog: AlertDialog? = null
+    private var writeSubmitButton: com.google.android.material.button.MaterialButton? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -217,6 +219,28 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
             binding.emptyLayout.visibility = if (reviews.isEmpty()) View.VISIBLE else View.GONE
         }
 
+        viewModel.postState.observe(this) { state ->
+            when (state) {
+                is CourseReviewViewModel.PostState.Loading -> {
+                    writeSubmitButton?.isEnabled = false
+                    writeSubmitButton?.text = "发布中…"
+                }
+                is CourseReviewViewModel.PostState.Success -> {
+                    writeSubmitButton?.isEnabled = true
+                    writeDialog?.dismiss()
+                    writeDialog = null
+                    writeSubmitButton = null
+                    android.widget.Toast.makeText(this, "课程评价发布成功", android.widget.Toast.LENGTH_SHORT).show()
+                }
+                is CourseReviewViewModel.PostState.Error -> {
+                    writeSubmitButton?.isEnabled = true
+                    writeSubmitButton?.text = "发布评价"
+                    android.widget.Toast.makeText(this, state.message, android.widget.Toast.LENGTH_LONG).show()
+                }
+                else -> Unit
+            }
+        }
+
         binding.btnRetry.setOnClickListener { viewModel.loadReviews() }
     }
 
@@ -239,8 +263,12 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
         val search = binding.etSearch.text?.toString()?.trim() ?: ""
         if (search.isNotEmpty()) etCourseName.setText(search)
 
+        val scrollView = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            addView(dialogView)
+        }
         val dialog = AlertDialog.Builder(this)
-            .setView(dialogView)
+            .setView(scrollView)
             .create()
         dialog.window?.setBackgroundDrawableResource(android.R.color.transparent)
 
@@ -260,10 +288,12 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                 comment = etComment.text?.toString()?.trim() ?: "",
                 nickname = etNickname.text?.toString()?.trim() ?: ""
             )
-            dialog.dismiss()
         }
 
         dialog.show()
+        writeDialog = dialog
+        writeSubmitButton = btnSubmit
+        dialog.window?.setSoftInputMode(android.view.WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
     }
 
     private fun showDeleteConfirmDialog(review: CourseReview) {
