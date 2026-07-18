@@ -128,6 +128,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 is DiscussionViewModel.DiscussionState.Loading -> {
                     binding.petLoading.root.startLoading()
                     binding.recyclerView.visibility = View.GONE
+                    binding.tvWatermark.visibility = View.GONE
                     binding.errorLayout.visibility = View.GONE
                     binding.tvEmpty.visibility = View.GONE
                 }
@@ -137,6 +138,8 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 is DiscussionViewModel.DiscussionState.Success -> {
                     binding.petLoading.root.stopLoading()
                     binding.swipeRefresh.isRefreshing = false
+                    // 水印只属于空状态，不能作为 FrameLayout 的顶层视图覆盖真实评论。
+                    binding.tvWatermark.visibility = View.GONE
                     if (state.comments.isEmpty()) {
                         binding.recyclerView.visibility = View.GONE
                         binding.tvEmpty.visibility = View.VISIBLE
@@ -151,6 +154,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 is DiscussionViewModel.DiscussionState.Error -> {
                     binding.petLoading.root.stopLoading()
                     binding.swipeRefresh.isRefreshing = false
+                    binding.tvWatermark.visibility = View.GONE
                     binding.errorLayout.visibility = View.VISIBLE
                     binding.tvError.text = state.message
                 }
