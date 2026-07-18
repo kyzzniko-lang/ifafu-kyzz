@@ -2,6 +2,33 @@
 
 福建农林大学校园助手 Android 客户端，提供课表、成绩、考试查询等功能。
 
+<p align="center">
+  <img src="docs/ifafu-logo.png" alt="iFAFU logo" width="180">
+</p>
+
+## 快速入口
+
+| 入口 | 地址 |
+| --- | --- |
+| 项目介绍页（杭州） | [116.62.222.192](http://116.62.222.192/) |
+| 直接下载最新版 APK | [下载 iFAFU v2.5.5](http://116.62.222.192/downloads/ifafu-latest.apk) |
+| 功能详情 | [features.html](http://116.62.222.192/features.html) |
+| 下载说明 | [download.html](http://116.62.222.192/download.html) |
+| 隐私与安全 | [privacy.html](http://116.62.222.192/privacy.html) |
+| 香港备用站点 | [47.243.155.188](http://47.243.155.188/) |
+
+> 国内用户建议优先使用杭州站点。香港站点在部分大陆运营商线路下可能出现延迟或下载中断。
+
+## 项目一览
+
+![iFAFU 应用图标](docs/ifafu-logo.png)
+
+当前版本：**v2.5.5** · Android · Kotlin · MVVM
+
+### 应用界面
+
+![iFAFU 首页](docs/screenshots/home.png)
+
 ## 功能
 
 ### 学业工具
