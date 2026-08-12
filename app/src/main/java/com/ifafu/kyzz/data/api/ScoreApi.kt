@@ -35,7 +35,7 @@ class ScoreApi @Inject constructor(
             val accessUrl = "${host}/(${token})/xscjcx_dq_fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
 
             val doc = withTimeoutOrNull(SCORE_REQUEST_TIMEOUT_MS) {
-                htmlClient.get(accessUrl)
+                htmlClient.getCancellable(accessUrl)
             } ?: return null
             val html = doc.html()
 
@@ -50,15 +50,15 @@ class ScoreApi @Inject constructor(
                 val retryUrl = "${host}/(${user.token})/xscjcx_dq_fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
                 htmlClient.setReferer("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
                 val retryDoc = withTimeoutOrNull(SCORE_REQUEST_TIMEOUT_MS) {
-                    htmlClient.get(retryUrl)
+                    htmlClient.getCancellable(retryUrl)
                 } ?: return null
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) {
                     // It still says system busy. The ZF system might be blocking us due to pending evaluation.
                     // Let's fetch the main pages to see if they contain the alert.
                     try {
-                        htmlClient.get("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
-                        htmlClient.get("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
+                        htmlClient.getCancellable("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
+                        htmlClient.getCancellable("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
                     } catch (e: AlertException) {
                         throw e
                     } catch (e: Exception) {
@@ -97,7 +97,7 @@ class ScoreApi @Inject constructor(
             .build()
 
         val resultHtml = withTimeoutOrNull(SCORE_POST_TIMEOUT_MS) {
-            htmlClient.postString(accessUrl, formBody)
+            htmlClient.postStringCancellable(accessUrl, formBody)
         } ?: return initialScores
         htmlClient.throwIfAlert(resultHtml)
         val allScores = scoreParser.parseScores(resultHtml)

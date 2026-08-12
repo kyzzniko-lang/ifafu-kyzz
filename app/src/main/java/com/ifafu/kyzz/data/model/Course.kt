@@ -16,3 +16,28 @@ data class Course(
     var examTime: String = "",
     var examAddress: String = ""
 )
+
+data class CourseScheduleIdentity(
+    val name: String,
+    val teacher: String,
+    val address: String,
+    val weekDay: Int,
+    val begin: Int,
+    val end: Int,
+    val weekBegin: Int,
+    val weekEnd: Int,
+    val oddOrTwice: Int
+)
+
+/** A concrete recurring entry; preserves room, teacher, week range and parity changes. */
+fun Course.scheduleIdentity() = CourseScheduleIdentity(
+    name = name,
+    teacher = teacher,
+    address = address,
+    weekDay = weekDay,
+    begin = begin,
+    end = end,
+    weekBegin = weekBegin,
+    weekEnd = weekEnd,
+    oddOrTwice = oddOrTwice
+)

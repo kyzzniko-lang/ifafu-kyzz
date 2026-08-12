@@ -256,7 +256,7 @@ class ElectiveParser @Inject constructor(
         val startIdx = html.indexOf(startTag)
         if (startIdx < 0) return
         val endIdx = if (endTag != null) html.indexOf(endTag) else html.length
-        if (endIdx < 0) return
+        if (endIdx < 0 || endIdx < startIdx) return
 
         val pattern = Regex("""<option( selected="selected")? value="([^"]*)">""")
         pattern.findAll(html.substring(startIdx, endIdx)).forEach { match ->

@@ -21,8 +21,10 @@ import com.facebook.shimmer.ShimmerFrameLayout
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.chip.Chip
+import com.google.android.material.snackbar.Snackbar
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Course
+import com.ifafu.kyzz.data.model.scheduleIdentity
 import com.ifafu.kyzz.databinding.ActivityGridSyllabusBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import com.ifafu.kyzz.ui.base.UiState
@@ -50,6 +52,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     private var yearList: List<String> = emptyList()
     private var termList: List<String> = emptyList()
     private var suppressSelection = false
+    private var manualRefreshPending = false
 
     private val timeMap = mapOf(
         1 to Pair("08:00", "08:45"), 2 to Pair("08:50", "09:35"), 3 to Pair("09:55", "10:40"),
@@ -79,6 +82,8 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         binding.toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.action_refresh -> {
+                    if (manualRefreshPending) return@setOnMenuItemClickListener true
+                    beginManualRefresh()
                     viewModel.loadSyllabus(viewModel.selectedYear, viewModel.selectedTerm, forceRefresh = true)
                     true
                 }
@@ -140,6 +145,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             getColor(R.color.claude_bg_elevated)
         )
         binding.swipeRefresh.setOnRefreshListener {
+            beginManualRefresh()
             viewModel.loadSyllabus(viewModel.selectedYear, viewModel.selectedTerm, forceRefresh = true)
         }
 
@@ -174,6 +180,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                     autoScrollToCurrentPeriod()
                     syncTermToggle()
                     suppressSelection = false
+                    finishManualRefresh(success = true)
                 }
                 is UiState.Cached -> {
                     hideLoading()
@@ -193,10 +200,12 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                     autoScrollToCurrentPeriod()
                     syncTermToggle()
                     suppressSelection = false
+                    finishManualRefresh(success = false)
                 }
                 is UiState.Error -> {
                     showError(state.message)
                     suppressSelection = false
+                    finishManualRefresh(success = false, message = state.message)
                 }
             }
         }
@@ -309,21 +318,15 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 } else if (w !in weekSet) {
                     alpha = 0.4f
                 }
-                setOnClickListener {
-                    currentWeek = w
-                    navigateToWeek(0)
-                }
             }
             chipGroup.addView(chip)
         }
 
         val dialog = com.google.android.material.bottomsheet.BottomSheetDialog(this)
         dialog.setContentView(view)
-        chipGroup.getChildAt(0)?.setOnClickListener {
-            currentWeek = minWeek + chipGroup.indexOfChild(it as View)
-            navigateToWeek(0)
-            dialog.dismiss()
-        }
+        // 统一为每个 chip 挂载点击监听：点击后切到对应周、刷新网格并关闭选择器。
+        // 此前存在三套重复监听（chip 构造内联、getChildAt(0)、for 循环），行为不一致，
+        // 这里只保留 for 循环这一套，保证点击行为可预测。
         for (i in 0 until chipGroup.childCount) {
             val chip = chipGroup.getChildAt(i)
             chip.setOnClickListener {
@@ -477,7 +480,8 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0) }
         }
         estimatedTermStart.set(Calendar.MILLISECOND, 0)
-        termStartDate = estimatedTermStart
+        val normalizedTermStart = normalizedWeekStart(estimatedTermStart)
+        termStartDate = normalizedTermStart
 
         val today = Calendar.getInstance()
         today.set(Calendar.HOUR_OF_DAY, 0)
@@ -485,7 +489,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         today.set(Calendar.SECOND, 0)
         today.set(Calendar.MILLISECOND, 0)
 
-        val diffDays = ((today.timeInMillis - estimatedTermStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
+        val diffDays = ((today.timeInMillis - normalizedTermStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
         val week = (diffDays / 7) + 1
         // Before term starts, show week 0 (will be coerced to minWeek=1)
         return week.coerceIn(minWeek, maxWeek)
@@ -701,7 +705,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         }
         val weekDays = arrayOf("", "MO", "TU", "WE", "TH", "FR", "SA", "SU")
 
-        for (course in allCourses.distinctBy { "${it.name}_${it.weekDay}_${it.begin}" }) {
+        for (course in allCourses.distinctBy { it.scheduleIdentity() }) {
             val dayOffset = course.weekDay - 1
             val eventCal = start.clone() as Calendar
 
@@ -793,8 +797,6 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
             val bgColor = resources.getColor(R.color.claude_bg, null)
             val terracotta = resources.getColor(R.color.claude_terracotta, null)
-            val terracottaLight = resources.getColor(R.color.claude_terracotta_100, null)
-            val textPrimary = resources.getColor(R.color.claude_text_primary, null)
             val textHint = resources.getColor(R.color.claude_text_hint, null)
             val white = resources.getColor(R.color.claude_bg_elevated, null)
 
@@ -882,6 +884,54 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         binding.errorLayout.visibility = View.GONE
     }
 
+    private fun beginManualRefresh() {
+        manualRefreshPending = true
+        binding.swipeRefresh.isRefreshing = true
+        binding.toolbar.menu.findItem(R.id.action_refresh)?.isEnabled = false
+    }
+
+    private fun finishManualRefresh(success: Boolean, message: String? = null) {
+        if (!manualRefreshPending) return
+        manualRefreshPending = false
+        binding.swipeRefresh.isRefreshing = false
+        binding.toolbar.menu.findItem(R.id.action_refresh)?.isEnabled = true
+        val text = when {
+            success -> "课表已刷新"
+            !message.isNullOrBlank() -> "刷新失败：$message"
+            else -> "刷新失败，已显示缓存课表"
+        }
+        showRefreshMessage(text, success)
+    }
+
+    private fun showRefreshMessage(text: String, success: Boolean) {
+        val snackbar = Snackbar.make(binding.root, text, Snackbar.LENGTH_SHORT)
+        val backgroundColor = getColor(R.color.claude_bg)
+        val textColor = getColor(
+            if (success) R.color.claude_terracotta_700 else R.color.claude_text_primary
+        )
+        // Use Snackbar's tint API. Setting View.background directly is overwritten
+        // by Material's default dark tint when the Snackbar is attached.
+        snackbar.setBackgroundTint(backgroundColor)
+        snackbar.setTextColor(textColor)
+        snackbar.view.apply {
+            elevation = dpToPx(8).toFloat()
+            val params = layoutParams
+            params.width = android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            if (params is android.view.ViewGroup.MarginLayoutParams) {
+                params.marginStart = dpToPx(24)
+                params.marginEnd = dpToPx(24)
+                params.bottomMargin = dpToPx(24)
+            }
+            layoutParams = params
+            findViewById<TextView>(com.google.android.material.R.id.snackbar_text)?.apply {
+                textSize = 14f
+                maxLines = 2
+                setPadding(dpToPx(4), 0, dpToPx(4), 0)
+            }
+        }
+        snackbar.show()
+    }
+
     private fun hideLoading() {
         binding.swipeRefresh.isRefreshing = false
         (binding.shimmerLoading.root as? ShimmerFrameLayout)?.stopShimmer()
@@ -924,7 +974,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 cal.set(startYear + 1, Calendar.MARCH, 2, 0, 0, 0)
             }
             cal.set(Calendar.MILLISECOND, 0)
-            termStartDate = cal
+            termStartDate = normalizedWeekStart(cal)
         } catch (_: Exception) {}
     }
 
@@ -946,23 +996,11 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             onReady()
             return
         }
-        // Term first day is stale — reset to default and clear old cache
+        // Term dates only affect week/date presentation. They must never evict
+        // timetable data: during summer break the next term start is naturally
+        // in the future, and the previous implementation deleted the cache on
+        // every entry before resetting the same future date again.
         setDefaultTermFirstDay(prefs)
-        // Clear syllabus cache so we don't show old semester data with new term start
-        val account = getSharedPreferences("ifafu_user", MODE_PRIVATE).getString("account", "") ?: ""
-        if (account.isNotEmpty()) {
-            val cachePrefs = getSharedPreferences("ifafu_cache", MODE_PRIVATE)
-            cachePrefs.edit().apply {
-                remove("syllabus_$account")
-                remove("syllabus_${account}_ts")
-                for ((key, _) in cachePrefs.all) {
-                    if (key.startsWith("syllabus_${account}_") && key != "syllabus_${account}_ts") {
-                        remove(key)
-                    }
-                }
-                apply()
-            }
-        }
         onReady()
     }
 
@@ -973,7 +1011,9 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             val termStart = Calendar.getInstance().apply { time = parsed }
             val now = Calendar.getInstance()
             val diffWeeks = ((now.timeInMillis - termStart.timeInMillis) / (7 * 24 * 60 * 60 * 1000L)).toInt()
-            diffWeeks in 0..24
+            // In a break transition the published upcoming term may start a few
+            // weeks later. Accept that date instead of repeatedly resetting it.
+            diffWeeks in -8..30
         } catch (_: Exception) { false }
     }
 
@@ -990,16 +1030,20 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0) }
         }
         termStart.set(Calendar.MILLISECOND, 0)
-        // Normalize to Monday of that week
-        val dayOfWeek = termStart.get(Calendar.DAY_OF_WEEK)
-        val daysToMonday = if (dayOfWeek == Calendar.SUNDAY) 6 else dayOfWeek - Calendar.MONDAY
-        termStart.add(Calendar.DAY_OF_YEAR, -daysToMonday)
-        termStart.set(Calendar.HOUR_OF_DAY, 0)
-        termStart.set(Calendar.MINUTE, 0)
-        termStart.set(Calendar.SECOND, 0)
-
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        prefs.edit().putString("termFirstDay", sdf.format(termStart.time)).apply()
+        prefs.edit().putString("termFirstDay", sdf.format(normalizedWeekStart(termStart).time)).apply()
+    }
+
+    private fun normalizedWeekStart(source: Calendar): Calendar {
+        return (source.clone() as Calendar).apply {
+            val dayOfWeek = get(Calendar.DAY_OF_WEEK)
+            val daysToMonday = if (dayOfWeek == Calendar.SUNDAY) 6 else dayOfWeek - Calendar.MONDAY
+            add(Calendar.DAY_OF_YEAR, -daysToMonday)
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }
     }
 
     // Feature 9: Custom color persistence

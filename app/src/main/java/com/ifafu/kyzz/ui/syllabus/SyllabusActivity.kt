@@ -95,7 +95,8 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
         val grouped = courses.groupBy { it.weekDay }
 
         for (day in 1..7) {
-            val dayCourses = grouped[day] ?: continue
+            val dayCourses = (grouped[day] ?: continue)
+                .sortedWith(compareBy<Course>({ it.weekBegin }, { it.begin }, { it.end }))
 
             val dayLabel = TextView(this).apply {
                 text = weekDays[day - 1]

@@ -11,6 +11,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 
 @HiltViewModel
@@ -27,6 +28,7 @@ class LoginViewModel @Inject constructor(
     val captchaBitmap: LiveData<Bitmap?> = _captchaBitmap
 
     private var autoCaptcha: String = ""
+    private var loginChallenge: UserApi.LoginChallenge? = null
     private var isLoadingCaptcha = false
     private var pendingErrorMessage: String? = null
 
@@ -49,14 +51,15 @@ class LoginViewModel @Inject constructor(
         isLoadingCaptcha = true
         viewModelScope.launch {
             try {
-                val bitmap = userApi.prepareLogin(userRepository.host)
-                if (bitmap == null) {
+                val challenge = userApi.prepareLogin(userRepository.host)
+                if (challenge == null) {
                     _loginState.value = LoginState.Error("无法连接教务系统")
                     return@launch
                 }
-                _captchaBitmap.value = bitmap
+                loginChallenge = challenge
+                _captchaBitmap.value = challenge.bitmap
                 autoCaptcha = if (zfVerify.initialized) {
-                    zfVerify.recognize(bitmap)
+                    zfVerify.recognize(challenge.bitmap)
                 } else {
                     ""
                 }
@@ -68,6 +71,8 @@ class LoginViewModel @Inject constructor(
                 } else {
                     _loginState.value = LoginState.CaptchaLoaded
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 autoCaptcha = ""
                 _loginState.value = LoginState.Error(e.message ?: "加载验证码失败")
@@ -98,8 +103,13 @@ class LoginViewModel @Inject constructor(
                     _loginState.value = LoginState.Error("验证码识别失败，请重试")
                     return@launch
                 }
+                val challenge = loginChallenge
+                if (challenge == null) {
+                    _loginState.value = LoginState.Error("验证码会话已失效，请刷新后重试")
+                    return@launch
+                }
                 var user = User()
-                var response = attemptLogin(account, password, captcha, user)
+                var response = attemptLogin(account, password, captcha, user, challenge)
 
                 // 自动识别失败或服务端判定验证码错误时，必须获取全新的图片再提交，不能复用旧验证码。
                 if (!response.success && manualCaptcha == null && isCaptchaError(response.message)) {
@@ -107,20 +117,22 @@ class LoginViewModel @Inject constructor(
                         if (response.success || !isCaptchaError(response.message)) return@repeat
                         val freshCaptcha = refreshCaptchaForRetry(MAX_RECOGNITION_RETRIES)
                             ?: return@repeat
+                        val freshChallenge = loginChallenge ?: return@repeat
                         user = User()
-                        response = attemptLogin(account, password, freshCaptcha, user)
+                        response = attemptLogin(account, password, freshCaptcha, user, freshChallenge)
                     }
                 }
 
                 if (response.success) {
-                    userRepository.saveUser(user)
-                    userRepository.savePassword(password)
+                    userRepository.saveAuthenticatedUser(user, password)
                     _loginState.value = LoginState.Success(user)
                 } else {
                     // 登录失败时保存错误消息，刷新验证码后重新显示
                     pendingErrorMessage = response.message
                     loadCaptcha()
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 _loginState.value = LoginState.Error(e.message ?: "登录失败")
             }
@@ -132,10 +144,11 @@ class LoginViewModel @Inject constructor(
         account: String,
         password: String,
         captcha: String,
-        user: User
+        user: User,
+        challenge: UserApi.LoginChallenge
     ): com.ifafu.kyzz.data.model.Response {
         return try {
-            userApi.login(account, password, captcha, user)
+            userApi.login(account, password, captcha, user, challenge)
         } catch (e: com.ifafu.kyzz.data.network.AlertException) {
             com.ifafu.kyzz.data.model.Response(false, -1, e.message ?: "登录失败")
         }
@@ -153,13 +166,16 @@ class LoginViewModel @Inject constructor(
     private suspend fun refreshCaptchaForRetry(maxRecognitionRetries: Int): String? {
         repeat(maxRecognitionRetries) {
             try {
-                val bitmap = userApi.prepareLogin(userRepository.host) ?: return@repeat
-                _captchaBitmap.postValue(bitmap)
-                val recognized = if (zfVerify.initialized) zfVerify.recognize(bitmap).trim() else ""
+                val challenge = userApi.prepareLogin(userRepository.host) ?: return@repeat
+                loginChallenge = challenge
+                _captchaBitmap.postValue(challenge.bitmap)
+                val recognized = if (zfVerify.initialized) zfVerify.recognize(challenge.bitmap).trim() else ""
                 if (recognized.isNotBlank()) {
                     autoCaptcha = recognized
                     return recognized
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 // 网络或识别失败时继续获取下一张验证码。
             }

@@ -83,10 +83,20 @@ async function deleteOwnedComment(env, repo, id, authorId) {
   return deleted.response.ok ? json({ ok: true }) : json({ ok: false, message: "删除失败" }, 502);
 }
 
+function homePage() {
+  const html = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>iFAFU · 校园助手</title><style>
+  :root{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif}*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#f8f7f4;color:#242321}main{width:min(720px,calc(100% - 32px));margin:auto;padding:72px 0 56px}.brand{letter-spacing:.22em;color:#9b958d;font-size:13px;margin-bottom:58px}h1{margin:0 0 14px;font-family:Georgia,"Songti SC",serif;font-size:clamp(42px,8vw,72px);font-weight:400;letter-spacing:-.04em}.lead{margin:0 0 46px;color:#77716a;font-size:18px;line-height:1.8}.card{background:#fff;border:1px solid #e8e4df;border-radius:18px;padding:28px;box-shadow:0 8px 30px rgba(48,40,30,.05)}h2{margin:0 0 22px;font-size:21px;font-weight:600}label{display:block;margin:16px 0 8px;color:#6e6861;font-size:14px}input,textarea{width:100%;border:1px solid #ded9d2;border-radius:10px;padding:13px 14px;color:#282623;background:#fff;font:inherit;outline:none}input:focus,textarea:focus{border-color:#d9774a;box-shadow:0 0 0 3px rgba(217,119,74,.12)}textarea{min-height:150px;resize:vertical}button{margin-top:20px;border:0;border-radius:10px;padding:13px 22px;background:#d9774a;color:#fff;font:inherit;cursor:pointer}button:disabled{opacity:.55;cursor:wait}#status{min-height:24px;margin:14px 0 0;color:#77716a;font-size:14px}footer{margin-top:26px;color:#9b958d;font-size:13px}
+  </style></head><body><main><div class="brand">iFAFU</div><h1>校园助手</h1><p class="lead">福农校园服务与反馈入口</p><section class="card"><h2>提交意见与问题</h2><form id="feedback"><label for="title">主题</label><input id="title" maxlength="120" placeholder="例如：成绩刷新较慢" required><label for="description">详细描述</label><textarea id="description" maxlength="10000" placeholder="请描述遇到的问题或建议（至少 10 个字）" required></textarea><button id="submit" type="submit">提交反馈</button><p id="status" role="status"></p></form></section><footer>感谢你的反馈，我们会持续改进 iFAFU。</footer></main><script>
+  const form=document.getElementById('feedback'),button=document.getElementById('submit'),status=document.getElementById('status');form.addEventListener('submit',async(e)=>{e.preventDefault();const title=document.getElementById('title').value.trim(),description=document.getElementById('description').value.trim();if(title.length<4||description.length<10){status.textContent='请填写完整内容后再提交。';return}button.disabled=true;status.textContent='正在提交…';try{const r=await fetch('/issue',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({title,description,contact:'网页提交'})}),d=await r.json();if(!r.ok||!d.ok)throw new Error(d.message||'提交失败');status.textContent='提交成功，感谢你的反馈。';form.reset()}catch(err){status.textContent=err.message||'网络异常，请稍后重试。'}finally{button.disabled=false}});
+  </script></body></html>`;
+  return new Response(html,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=300"}});
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204 });
+    if (request.method === "GET" && url.pathname === "/") return homePage();
     if (request.method === "GET" && url.pathname === "/health") {
       return json({ ok: true, service: "ifafu-feedback" });
     }

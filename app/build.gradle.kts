@@ -20,8 +20,8 @@ android {
         applicationId = "com.ifafu.kyzz"
         minSdk = 24
         targetSdk = 34
-        versionCode = 21
-        versionName = "2.5.5"
+        versionCode = 22
+        versionName = "2.5.6"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -86,6 +86,8 @@ dependencies {
     implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
     implementation("androidx.navigation:navigation-fragment-ktx:2.7.7")
     implementation("androidx.navigation:navigation-ui-ktx:2.7.7")
+    // 2.10+ requires compileSdk 35 / newer AGP; 2.9.1 matches this project's SDK 34 toolchain.
+    implementation("androidx.work:work-runtime-ktx:2.9.1")
 
 
 

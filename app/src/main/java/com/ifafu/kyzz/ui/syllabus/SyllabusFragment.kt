@@ -121,7 +121,8 @@ class SyllabusFragment : Fragment() {
         val grouped = courses.groupBy { it.weekDay }
 
         for (day in 1..7) {
-            val dayCourses = grouped[day] ?: continue
+            val dayCourses = (grouped[day] ?: continue)
+                .sortedWith(compareBy<Course>({ it.weekBegin }, { it.begin }, { it.end }))
 
             val dayLabel = TextView(requireContext()).apply {
                 text = weekDays[day - 1]

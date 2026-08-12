@@ -65,7 +65,7 @@ class SyllabusViewModel @Inject constructor(
         selectedTerm = term
         val generation = ++loadGeneration
         val explicitSelection = year != null || term != null
-        if (explicitSelection && loadJob?.isActive == true) {
+        if ((explicitSelection || forceRefresh) && loadJob?.isActive == true) {
             // 用户连续切换学年/学期时，后一次选择优先，取消前一次请求。
             loadJob?.cancel()
         }
@@ -106,6 +106,13 @@ class SyllabusViewModel @Inject constructor(
             }
             try {
                 val freshUser = userRepository.getUser()
+                // A transition probe is a network attempt, regardless of whether the
+                // school has published the new timetable or the request succeeds.
+                // Record it before requesting so reopening the page does not hammer
+                // the server repeatedly while it is unavailable/not yet published.
+                if (!explicitSelection && TermResolver.breakTransition() != null) {
+                    cacheManager.markSyllabusUpcomingProbe(freshUser.account)
+                }
                 // 用户显式指定了学年/学期时，必须精确拉取该学期，绝不能走默认 getSyllabus。
                 // 否则寒暑假"升级为新学期"逻辑会把用户选择的旧学期（恰好等于推断当前学期）
                 // 覆盖成已发布的新学期，造成串台。默认 getSyllabus 只用于无显式选择的初始加载。
@@ -121,9 +128,6 @@ class SyllabusViewModel @Inject constructor(
                 }
                 if (generation != loadGeneration) return@launch
                 if (syllabus != null) {
-                    if (year == null && term == null && TermResolver.breakTransition() != null) {
-                        cacheManager.markSyllabusUpcomingProbe(freshUser.account)
-                    }
                     cacheManager.saveSyllabus(freshUser.account, syllabus, yearTermKey)
                     adoptLoadedSelection(syllabus, year, term)
                     updateAvailableOptions(syllabus)
@@ -270,6 +274,11 @@ class SyllabusViewModel @Inject constructor(
                 return true
             }
         }
+        // During winter/summer break, the dedicated upcoming-term probe above owns
+        // refresh timing. The old term naturally exceeds its maximum course week;
+        // treating that as immediately stale caused a request on every page entry.
+        if (transition != null && !isPublishedUpcoming) return false
+
         // Check 2: semester boundary — 仅对当前学期检查，历史学期的缓存不应因当前周数判断为过期
         if (!isCurrentTerm) return false
         val firstDay = userRepository.termFirstDay
@@ -303,7 +312,7 @@ class SyllabusViewModel @Inject constructor(
     }
 
     companion object {
-        private const val CACHE_MAX_AGE_MS = 10 * 60 * 1000L
-        private const val UPCOMING_PROBE_MAX_AGE_MS = 10 * 60 * 1000L
+        private const val CACHE_MAX_AGE_MS = 24 * 60 * 60 * 1000L
+        private const val UPCOMING_PROBE_MAX_AGE_MS = 6 * 60 * 60 * 1000L
     }
 }

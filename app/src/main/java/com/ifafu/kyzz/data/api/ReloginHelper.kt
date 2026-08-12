@@ -18,14 +18,48 @@ class ReloginHelper @Inject constructor(
 ) {
     private val mutex = Mutex()
 
+    /** 上一次成功 relogin 的时间与完成后写入的 token，用于并发幂等去重。 */
+    @Volatile private var lastReloginAt = 0L
+    @Volatile private var lastReloginToken: String = ""
+    @Volatile private var lastReloginAccount: String = ""
+
     companion object {
         private const val TAG = "ReloginHelper"
+        /** 视为"近期已重登录"的窗口：若另一并发 caller 在此窗口内已成功重登录，则复用其结果。 */
+        private const val RELOGIN_FRESH_WINDOW_MS = 10_000L
     }
 
     suspend fun relogin(): Response {
+        // 进入锁前快照当前 token，用于拿到锁后判断是否已被并发 caller 刷新
+        val userBefore = userRepository.getUser()
+        val tokenBefore = userBefore.token
+        val hostBefore = userRepository.host
         return mutex.withLock {
-            htmlClient.clearCookies()
-            userApi.relogin()
+            // 并发幂等：若在等待锁期间已有 caller 完成重登录，则直接复用，避免 clearCookies 把新会话冲掉。
+            // 判定条件——token 已变化，且该变化发生在近期的成功 relogin 窗口内。
+            val userAfterLock = userRepository.getUser()
+            if (userAfterLock.account != userBefore.account || userRepository.host != hostBefore) {
+                Log.w(TAG, "Relogin cancelled because account/host changed while waiting")
+                return@withLock Response(false, -1, "账号或教务地址已变更，本次自动登录已取消")
+            }
+            if (tokenBefore != userAfterLock.token &&
+                userAfterLock.token == lastReloginToken &&
+                userAfterLock.account == userBefore.account &&
+                userAfterLock.account == lastReloginAccount &&
+                lastReloginAt > 0L &&
+                System.currentTimeMillis() - lastReloginAt < RELOGIN_FRESH_WINDOW_MS
+            ) {
+                Log.d(TAG, "Relogin skipped: a concurrent caller just relogged in within the fresh window")
+                return@withLock Response(true, 0, "已复用并发重登录的会话")
+            }
+            val response = userApi.relogin()
+            if (response.success) {
+                val saved = userRepository.getUser()
+                lastReloginToken = saved.token
+                lastReloginAccount = saved.account
+                lastReloginAt = System.currentTimeMillis()
+            }
+            response
         }
     }
 
@@ -59,16 +93,20 @@ class ReloginHelper @Inject constructor(
         }
 
         val user = userRepository.getUser()
+        if (user.account != account || userRepository.host != host) {
+            Log.w(TAG, "Relogin retry cancelled because the active account or host changed")
+            return null
+        }
         Log.d(TAG, "Relogin ok, retrying with token=${user.token.take(10)}...")
 
         // 用新 token 重试
-        val retryHtml = action(host, user.token, user.account)
+        val retryHtml = action(userRepository.host, user.token, user.account)
         if (userApi.isSessionExpired(retryHtml)) {
             Log.w(TAG, "Session still expired after relogin")
             // 尝试探测主页面获取 alert
             try {
-                htmlClient.get("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
-                htmlClient.get("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
+                htmlClient.getCancellable("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
+                htmlClient.getCancellable("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
             } catch (e: AlertException) { throw e } catch (_: Exception) {}
             return null
         }
@@ -97,7 +135,8 @@ class ReloginHelper @Inject constructor(
         if (!response.success) return null
 
         val user = userRepository.getUser()
-        val retryHtml = action(host, user.token, user.account)
+        if (user.account != account || userRepository.host != host) return null
+        val retryHtml = action(userRepository.host, user.token, user.account)
         if (userApi.isSessionExpired(retryHtml)) return null
 
         try {

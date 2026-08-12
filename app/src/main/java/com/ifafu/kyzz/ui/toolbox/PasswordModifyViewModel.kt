@@ -5,6 +5,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.api.UserApi
+import com.ifafu.kyzz.data.api.ReloginHelper
 import com.ifafu.kyzz.data.repository.UserRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.launch
@@ -16,7 +17,8 @@ import javax.inject.Inject
 class PasswordModifyViewModel @Inject constructor(
     private val htmlClient: HtmlClient,
     private val userRepository: UserRepository,
-    private val userApi: UserApi
+    private val userApi: UserApi,
+    private val reloginHelper: ReloginHelper
 ) : ViewModel() {
 
     private val _state = MutableLiveData<State>()
@@ -66,7 +68,7 @@ class PasswordModifyViewModel @Inject constructor(
                     // 教务系统修改成功后，旧会话可能立即失效。先保存新密码，
                     // 再主动建立新会话，避免用户返回其它页面后才突然报登录过期。
                     userRepository.savePassword(newPwd)
-                    val relogin = withTimeoutOrNull(20_000L) { userApi.relogin() }
+                    val relogin = withTimeoutOrNull(20_000L) { reloginHelper.relogin() }
                     _state.value = if (relogin?.success == true) {
                         State.Success("密码修改成功，登录状态已同步")
                     } else {

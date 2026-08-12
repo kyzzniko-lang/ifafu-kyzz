@@ -2,16 +2,20 @@ package com.ifafu.kyzz.data.network
 
 import com.ifafu.kyzz.data.model.Response
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
+import java.io.IOException
 import java.nio.charset.Charset
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -48,6 +52,36 @@ class HtmlClient @Inject constructor(
             val request = buildRequest(url).get().build()
             execute(request)
         }
+    }
+
+    /** Cancelling the caller also cancels the underlying OkHttp request. */
+    suspend fun getCancellable(url: String): Document = mutex.withLock {
+        val request = buildRequest(url).get().build()
+        val result = executeRawCancellable(request)
+        if (result.code !in 200..299) {
+            throw HttpException(result.code, "HTTP ${result.code}: ${result.message}")
+        }
+        lastUrl = result.url
+        referer = lastUrl
+        val html = bytesToString(result.bytes)
+        checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
+        Jsoup.parse(html).also(::extractViewState)
+    }
+
+    /** Cancellable GET that returns request-local navigation state. */
+    suspend fun getCancellableWithState(url: String): GetResult = mutex.withLock {
+        val request = buildRequest(url).get().build()
+        val result = executeRawCancellable(request)
+        if (result.code !in 200..299) {
+            throw HttpException(result.code, "HTTP ${result.code}: ${result.message}")
+        }
+        lastUrl = result.url
+        referer = lastUrl
+        val html = bytesToString(result.bytes)
+        checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
+        val doc = Jsoup.parse(html)
+        extractViewState(doc)
+        GetResult(doc, viewState, viewStateGenerator, result.url)
     }
 
     suspend fun getWithState(url: String): GetResult = withContext(Dispatchers.IO) {
@@ -127,6 +161,32 @@ class HtmlClient @Inject constructor(
                 html
             }
         }
+    }
+
+    /** Cancelling the caller also cancels the captcha/image download. */
+    suspend fun getBytesCancellable(url: String): ByteArray = mutex.withLock {
+        val request = buildRequest(url).get().build()
+        val result = executeRawCancellable(request)
+        if (result.code !in 200..299) {
+            throw HttpException(result.code, "HTTP ${result.code}: ${result.message}")
+        }
+        lastUrl = result.url
+        referer = lastUrl
+        result.bytes
+    }
+
+    /** Cancellable POST variant for time-bounded background work. */
+    suspend fun postStringCancellable(url: String, formBody: FormBody): String = mutex.withLock {
+        val request = buildRequest(url).post(formBody).build()
+        val result = executeRawCancellable(request)
+        if (result.code !in 200..299) {
+            throw HttpException(result.code, "HTTP ${result.code}: ${result.message}")
+        }
+        lastUrl = result.url
+        referer = lastUrl
+        val html = bytesToString(result.bytes)
+        checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
+        html
     }
 
     /**
@@ -293,6 +353,40 @@ class HtmlClient @Inject constructor(
         }
     }
 
+    private data class RawHttpResult(
+        val bytes: ByteArray,
+        val code: Int,
+        val message: String,
+        val url: String
+    )
+
+    private suspend fun executeRawCancellable(request: Request): RawHttpResult =
+        suspendCancellableCoroutine { continuation ->
+            val call = client.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isActive) continuation.resumeWith(Result.failure(e))
+                }
+
+                override fun onResponse(call: Call, response: okhttp3.Response) {
+                    try {
+                        response.use {
+                            val result = RawHttpResult(
+                                bytes = it.body?.bytes() ?: ByteArray(0),
+                                code = it.code,
+                                message = it.message,
+                                url = it.request.url.toString()
+                            )
+                            if (continuation.isActive) continuation.resumeWith(Result.success(result))
+                        }
+                    } catch (e: Exception) {
+                        if (continuation.isActive) continuation.resumeWith(Result.failure(e))
+                    }
+                }
+            })
+        }
+
     class HttpException(val statusCode: Int, override val message: String) : Exception(message)
 
     fun extractViewState(html: String) {
@@ -436,5 +530,21 @@ class HtmlClient @Inject constructor(
                 PostResult(html, finalUrl)
             }
         }
+    }
+
+
+    /** Cancellable login form submission with the final redirect URL. */
+    suspend fun postWithFollowCancellable(url: String, formBody: FormBody): PostResult = mutex.withLock {
+        val request = buildRequest(url).post(formBody).build()
+        val result = executeRawCancellable(request)
+        if (result.code !in 200..299) {
+            throw HttpException(result.code, "HTTP ${result.code}: ${result.message}")
+        }
+        val html = bytesToString(result.bytes)
+        checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
+        lastUrl = result.url
+        referer = result.url
+        extractViewState(html)
+        PostResult(html, result.url)
     }
 }

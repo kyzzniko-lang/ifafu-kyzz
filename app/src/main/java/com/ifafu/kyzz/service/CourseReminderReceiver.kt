@@ -192,7 +192,12 @@ class CourseReminderReceiver : BroadcastReceiver() {
             }.timeInMillis
             if (trigger <= now) return@forEachIndexed
 
-            val requestCode = Calendar.getInstance().get(Calendar.DAY_OF_YEAR) * 100 + index + 10
+            // requestCode 须全局唯一。原仅用 DAY_OF_YEAR（每年重复），跨年的 PendingIntent
+            // 会因 FLAG_UPDATE_CURRENT 互相覆盖，导致旧一年同一天的提醒顶掉新一年的。
+            // 这里乘入年份，保证不同年份的 PendingIntent 互不冲突。
+            val cal = Calendar.getInstance()
+            val requestCode = cal.get(Calendar.YEAR) * 100000 +
+                cal.get(Calendar.DAY_OF_YEAR) * 100 + index + 10
             val reminder = Intent(context, CourseReminderReceiver::class.java).apply {
                 putExtra(EXTRA_COURSE_NAME, course.name)
                 putExtra(

@@ -8,7 +8,9 @@ import com.ifafu.kyzz.data.model.Pet
 import com.ifafu.kyzz.data.model.PetState
 import com.ifafu.kyzz.data.repository.PetRepository
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.util.Logger
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -17,6 +19,22 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import javax.inject.Inject
+
+/**
+ * 安全启动协程：捕获非 CancellationException 的异常，避免未捕获异常导致进程崩溃。
+ * loadPet/savePet/tick 等 IO 与解析逻辑一旦抛异常会被吞掉并记录日志，
+ * CancellationException 仍正常传播以保证协程取消语义。
+ */
+private fun ViewModel.launchSafe(block: suspend kotlinx.coroutines.CoroutineScope.() -> Unit) =
+    viewModelScope.launch {
+        try {
+            block()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            Logger.e("PetViewModel", "launchSafe swallowed exception", e)
+        }
+    }
 
 @HiltViewModel
 class PetViewModel @Inject constructor(
@@ -46,7 +64,7 @@ class PetViewModel @Inject constructor(
     data class CheckInResult(val points: Int, val streak: Int, val alreadyChecked: Boolean)
 
     init {
-        viewModelScope.launch {
+        launchSafe {
             val loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 petRepository.loadPet()
             }
@@ -56,7 +74,7 @@ class PetViewModel @Inject constructor(
     }
 
     private fun startAutoUpdate() {
-        viewModelScope.launch {
+        launchSafe {
             while (true) {
                 delay(60_000) // 每分钟更新一次
                 // 后台暂停时跳过 tick + 磁盘读写，回到前台首次 tick 会补偿衰减
@@ -79,7 +97,7 @@ class PetViewModel @Inject constructor(
     }
 
     fun updateState() {
-        viewModelScope.launch {
+        launchSafe {
             petMutex.withLock {
                 // 先从磁盘读取最新数据，避免覆盖其他组件的修改
                 val fresh = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
@@ -96,7 +114,7 @@ class PetViewModel @Inject constructor(
     }
 
     fun reloadPet() {
-        viewModelScope.launch {
+        launchSafe {
             val loaded = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                 petRepository.loadPet()
             }
@@ -147,7 +165,7 @@ class PetViewModel @Inject constructor(
     }
 
     fun onPetClicked() {
-        viewModelScope.launch {
+        launchSafe {
             petMutex.withLock {
                 val pet = _pet.value ?: return@withLock
                 pet.lastInteractTime = System.currentTimeMillis()
@@ -383,7 +401,7 @@ class PetViewModel @Inject constructor(
     }
 
     fun feed() {
-        viewModelScope.launch {
+        launchSafe {
             var fed = false
             var cooldownMessageShown = false
             petMutex.withLock {
@@ -407,7 +425,7 @@ class PetViewModel @Inject constructor(
                     delay(2000)
                     _bubbleText.value = null
                 }
-                return@launch
+                return@launchSafe
             }
             delay(3000)
             _bubbleText.value = null
@@ -477,7 +495,7 @@ class PetViewModel @Inject constructor(
     }
 
     fun play() {
-        viewModelScope.launch {
+        launchSafe {
             var played = false
             var cooldownMessageShown = false
             petMutex.withLock {
@@ -501,7 +519,7 @@ class PetViewModel @Inject constructor(
                     delay(2000)
                     _bubbleText.value = null
                 }
-                return@launch
+                return@launchSafe
             }
             delay(3000)
             _bubbleText.value = null
@@ -568,7 +586,7 @@ class PetViewModel @Inject constructor(
     }
 
     fun onGradeChanged(isImproved: Boolean, courseName: String) {
-        viewModelScope.launch {
+        launchSafe {
             petMutex.withLock {
                 val pet = _pet.value ?: return@withLock
                 val isCrab = pet.petType == "crab"
@@ -632,7 +650,7 @@ class PetViewModel @Inject constructor(
     }
 
     fun onExamComing(courseName: String, daysLeft: Int) {
-        viewModelScope.launch {
+        launchSafe {
             petMutex.withLock {
                 val pet = _pet.value ?: return@withLock
                 pet.state = PetState.EXAM_REMIND
@@ -713,7 +731,7 @@ class PetViewModel @Inject constructor(
     fun getLastGradeAdvice(): String? = lastGradeAdvice
 
     fun checkIn() {
-        viewModelScope.launch {
+        launchSafe {
             petMutex.withLock {
                 val pet = _pet.value ?: return@withLock
                 if (pet.isCheckedInToday()) {
@@ -912,7 +930,7 @@ class PetViewModel @Inject constructor(
 
         lastBubbleTime = now
         _bubbleText.value = messages.random()
-        viewModelScope.launch {
+        launchSafe {
             delay(4000)
             _bubbleText.value = null
         }
@@ -948,7 +966,7 @@ class PetViewModel @Inject constructor(
     }
 
     fun onExamProgressUpdate(examName: String, newStatus: Int) {
-        viewModelScope.launch {
+        launchSafe {
             petMutex.withLock {
                 val pet = _pet.value ?: return@withLock
                 when (newStatus) {

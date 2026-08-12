@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Syllabus
+import com.ifafu.kyzz.data.model.scheduleIdentity
 import com.ifafu.kyzz.databinding.ActivityCalendarExportBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import java.io.File
@@ -40,7 +41,7 @@ class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
             return
         }
 
-        val courseCount = syllabus.courses.distinctBy { "${it.name}_${it.weekDay}_${it.begin}" }.size
+        val courseCount = syllabus.courses.distinctBy { it.scheduleIdentity() }.size
         binding.tvCourseCount.text = courseCount.toString()
 
         binding.btnExport.setOnClickListener { export(syllabus, termFirstDay, openCalendar = true) }
@@ -75,19 +76,28 @@ class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
         sb.appendLine("VERSION:2.0")
         sb.appendLine("PRODID:-//iFAFU//KYZZ//CN")
 
-        for (course in syllabus.courses.distinctBy { "${it.name}_${it.weekDay}_${it.begin}" }) {
+        for (course in syllabus.courses.distinctBy { it.scheduleIdentity() }) {
             val dayOffset = course.weekDay - 1
             val eventCal = start.clone() as Calendar
-            eventCal.add(Calendar.DAY_OF_YEAR, (course.weekBegin - 1) * 7 + dayOffset)
+            val firstActiveWeek = when (course.oddOrTwice) {
+                1 -> if (course.weekBegin % 2 == 0) course.weekBegin + 1 else course.weekBegin
+                2 -> if (course.weekBegin % 2 == 1) course.weekBegin + 1 else course.weekBegin
+                else -> course.weekBegin
+            }
+            if (firstActiveWeek > course.weekEnd) continue
+            eventCal.add(Calendar.DAY_OF_YEAR, (firstActiveWeek - 1) * 7 + dayOffset)
             val times = timeMap[course.begin] ?: timeMap[1]!!
             val endTime = timeMap[course.end.coerceAtMost(12)]?.second ?: times.second
             val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
             val byDay = weekDays.getOrElse(course.weekDay) { "MO" }
-            val totalWeeks = course.weekEnd - course.weekBegin + 1
+            val actualCount = when (course.oddOrTwice) {
+                1, 2 -> ((firstActiveWeek..course.weekEnd step 2).count())
+                else -> course.weekEnd - course.weekBegin + 1
+            }
+            if (actualCount <= 0) continue
             val rrule = when (course.oddOrTwice) {
-                1 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=${(totalWeeks + 1) / 2};BYDAY=$byDay"
-                2 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=${totalWeeks / 2 + 1};BYDAY=$byDay"
-                else -> "FREQ=WEEKLY;COUNT=$totalWeeks;BYDAY=$byDay"
+                1, 2 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=$actualCount;BYDAY=$byDay"
+                else -> "FREQ=WEEKLY;COUNT=$actualCount;BYDAY=$byDay"
             }
             sb.appendLine("BEGIN:VEVENT")
             sb.appendLine("DTSTART:${dateStr}T${times.first}00")

@@ -21,7 +21,9 @@ import androidx.core.view.GestureDetectorCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.fragment.app.viewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.observe
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
@@ -43,6 +45,7 @@ import com.ifafu.kyzz.ui.syllabus.GridSyllabusActivity
 import com.ifafu.kyzz.ui.toolbox.KyzzToolboxActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -72,6 +75,7 @@ class HomeFragment : Fragment() {
     private var bubbleAnimator: ValueAnimator? = null
     private var pulseAnimator: AnimatorSet? = null
     private var petPositionBeforeBubble: Pair<Float, Float>? = null
+    private var autoRefreshMonitorStarted = false
     private val resumeRunnable = Runnable {
         if (isAdded && _binding != null) {
             val courses = viewModel.todayCourses.value ?: emptyList()
@@ -121,28 +125,34 @@ class HomeFragment : Fragment() {
         setupViews()
         observeUser()
         setupPet()
+        startAutoRefreshMonitor()
         loadData()
     }
 
     private var hasLoadedData = false
     private var simpleMode = false
     private var cachedCountdownEvents: List<CountdownEvent> = emptyList()
+    private var lastDataRefreshDayKey: Int = -1
+
+    companion object {
+        private const val AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000L
+        private const val HOME_REFRESH_TS_PREFIX = "home_refresh_ts_"
+    }
 
     private fun loadData() {
         if (hasLoadedData) return
         hasLoadedData = true
-        viewModel.refreshUser()
-        if (!simpleMode) {
-            loadHotDiscussion()
-            loadCountdownEvents()
-            loadWeather()
-        }
-        checkForUpdate()
+        lastDataRefreshDayKey = currentDayKey()
+        refreshHomeContent(markRefreshTime = true)
     }
 
     override fun onResume() {
         super.onResume()
         updateGreeting()
+        if (lastDataRefreshDayKey != currentDayKey()) {
+            lastDataRefreshDayKey = currentDayKey()
+            refreshHomeContent(markRefreshTime = true)
+        }
         if (!simpleMode) {
             petViewModel.reloadPet()
             petViewModel.resumeBackgroundUpdates()
@@ -159,6 +169,86 @@ class HomeFragment : Fragment() {
         }
     }
 
+    private fun startAutoRefreshMonitor() {
+        if (autoRefreshMonitorStarted) return
+        autoRefreshMonitorStarted = true
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (isActive) {
+                    maybeAutoRefreshHome()
+                    delay(nextAutoRefreshDelayMs())
+                    maybeAutoRefreshHome()
+                }
+            }
+        }
+    }
+
+    private fun maybeAutoRefreshHome() {
+        if (!isAdded || _binding == null || simpleMode) return
+        val todayKey = currentDayKey()
+        if (lastDataRefreshDayKey != todayKey) {
+            lastDataRefreshDayKey = todayKey
+            refreshHomeContent(markRefreshTime = true)
+            return
+        }
+        val lastRefreshAt = getHomeRefreshTimestamp()
+        if (System.currentTimeMillis() - lastRefreshAt >= AUTO_REFRESH_INTERVAL_MS) {
+            refreshHomeContent(markRefreshTime = true)
+        }
+    }
+
+    private fun refreshHomeContent(markRefreshTime: Boolean) {
+        if (markRefreshTime) {
+            lastDataRefreshDayKey = currentDayKey()
+            setHomeRefreshTimestamp(System.currentTimeMillis())
+        }
+        viewModel.refreshUser(force = true)
+        if (!simpleMode) {
+            loadHotDiscussion()
+            loadCountdownEvents()
+            loadWeather()
+        }
+        checkForUpdate()
+        if (!simpleMode) petViewModel.onPetClicked()
+    }
+
+    private fun getHomeRefreshTimestamp(): Long {
+        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+        val account = prefs.getString("account", "") ?: ""
+        return prefs.getLong(homeRefreshKey(account), 0L)
+    }
+
+    private fun setHomeRefreshTimestamp(timestamp: Long) {
+        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+        val account = prefs.getString("account", "") ?: ""
+        prefs.edit().putLong(homeRefreshKey(account), timestamp).apply()
+    }
+
+    private fun homeRefreshKey(account: String): String = HOME_REFRESH_TS_PREFIX + account
+
+    private fun nextAutoRefreshDelayMs(): Long {
+        val now = System.currentTimeMillis()
+        val lastRefreshAt = getHomeRefreshTimestamp()
+        val nextAutoRefreshAt = if (lastRefreshAt > 0L) {
+            lastRefreshAt + AUTO_REFRESH_INTERVAL_MS
+        } else {
+            now + AUTO_REFRESH_INTERVAL_MS
+        }
+        val nextMidnightAt = nextMidnightMillis(now)
+        return minOf(nextAutoRefreshAt - now, nextMidnightAt - now).coerceAtLeast(1L)
+    }
+
+    private fun nextMidnightMillis(now: Long): Long {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = now
+        cal.add(Calendar.DAY_OF_YEAR, 1)
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        return cal.timeInMillis
+    }
+
     override fun onPause() {
         super.onPause()
         // App/Fragment 不可见时暂停宠物 tick 循环与首页无限动画，降低后台耗电
@@ -168,6 +258,11 @@ class HomeFragment : Fragment() {
             // 暂停首页常驻的无限动画，回前台时由 onResume 恢复
             breathingAnimator?.pause()
         }
+    }
+
+    private fun currentDayKey(): Int {
+        val cal = Calendar.getInstance()
+        return cal.get(Calendar.YEAR) * 10000 + (cal.get(Calendar.MONTH) + 1) * 100 + cal.get(Calendar.DAY_OF_MONTH)
     }
 
     private fun showCachedUpdateIfNeeded() {
@@ -247,14 +342,7 @@ class HomeFragment : Fragment() {
             requireContext().getColor(R.color.claude_bg_elevated)
         )
         binding.swipeRefresh.setOnRefreshListener {
-            viewModel.refreshUser(force = true)
-            if (!simpleMode) {
-                loadHotDiscussion()
-                loadCountdownEvents()
-                loadWeather()
-            }
-            checkForUpdate()
-            if (!simpleMode) petViewModel.onPetClicked()
+            refreshHomeContent(markRefreshTime = true)
             viewLifecycleOwner.lifecycleScope.launch {
                 delay(800)
                 if (isAdded) binding.swipeRefresh.isRefreshing = false
@@ -1821,6 +1909,7 @@ class HomeFragment : Fragment() {
 
     override fun onDestroyView() {
         super.onDestroyView()
+        autoRefreshMonitorStarted = false
         breathingAnimator?.cancel()
         breathingAnimator = null
         bubbleRunnable?.let { bubbleHandler.removeCallbacks(it) }
