@@ -7,7 +7,7 @@
 | 入口 | 地址 |
 | --- | --- |
 | 项目介绍页（杭州） | [116.62.222.192](http://116.62.222.192/) |
-| 直接下载最新版 APK | [下载 iFAFU v2.5.9](https://github.com/kyzzniko-lang/ifafu-kyzz/releases/download/v2.5.9/iFAFU-v2.5.9.apk) |
+| 直接下载最新版 APK | [下载 iFAFU v2.5.8](https://github.com/kyzzniko-lang/ifafu-kyzz/releases/download/v2.5.8/iFAFU-v2.5.8.apk) |
 | GitHub Releases | [查看全部版本](https://github.com/kyzzniko-lang/ifafu-kyzz/releases) |
 | 功能详情 | [features.html](http://116.62.222.192/features.html) |
 | 下载说明 | [download.html](http://116.62.222.192/download.html) |
@@ -18,7 +18,7 @@
 
 ## 项目一览
 
-当前版本：**v2.5.9** · Android · Kotlin · MVVM
+当前版本：**v2.5.8** · Android · Kotlin · MVVM
 
 <p align="center">
   <img src="docs/screenshots/hero.png" alt="iFAFU 产品介绍" width="760">
@@ -74,11 +74,6 @@
 - Material Design 3（Claude 风格主题）
 
 ## 更新日志
-
-### v2.5.9
-- **首页更新检测验证版本**
-  - 用于验证 v2.5.8 首页自动发现、展示和下载新版本的完整流程。
-  - 功能代码与 v2.5.8 保持一致，仅提升应用版本号。
 
 ### v2.5.8
 - **首页更新检测修复**
