@@ -160,6 +160,10 @@ class HomeFragment : Fragment() {
         }
         // Show cached update result if available
         showCachedUpdateIfNeeded()
+        // Revalidate when Home becomes visible again. A previous "up to date"
+        // result must not hide a release published during the 4-hour interval.
+        // The in-flight guard merges this with the initial onViewCreated check.
+        checkForUpdate(force = true)
         // Auto bubble on resume
         if (!simpleMode) {
             bubbleHandler.removeCallbacks(resumeRunnable)
@@ -198,7 +202,7 @@ class HomeFragment : Fragment() {
         }
     }
 
-    private fun refreshHomeContent(markRefreshTime: Boolean) {
+    private fun refreshHomeContent(markRefreshTime: Boolean, forceUpdateCheck: Boolean = false) {
         if (markRefreshTime) {
             lastDataRefreshDayKey = currentDayKey()
             setHomeRefreshTimestamp(System.currentTimeMillis())
@@ -209,7 +213,7 @@ class HomeFragment : Fragment() {
             loadCountdownEvents()
             loadWeather()
         }
-        checkForUpdate()
+        checkForUpdate(force = forceUpdateCheck)
         if (!simpleMode) petViewModel.onPetClicked()
     }
 
@@ -343,7 +347,7 @@ class HomeFragment : Fragment() {
             requireContext().getColor(R.color.claude_bg_elevated)
         )
         binding.swipeRefresh.setOnRefreshListener {
-            refreshHomeContent(markRefreshTime = true)
+            refreshHomeContent(markRefreshTime = true, forceUpdateCheck = true)
             viewLifecycleOwner.lifecycleScope.launch {
                 delay(800)
                 if (isAdded) binding.swipeRefresh.isRefreshing = false
@@ -1857,24 +1861,53 @@ class HomeFragment : Fragment() {
     // --- Auto update check ---
 
     private var cachedUpdateRelease: com.ifafu.kyzz.ui.settings.UpdateChecker.ReleaseInfo? = null
+    private var updateCheckAttempted = false
+    private var updateCheckInProgress = false
 
-    private fun checkForUpdate() {
+    private fun checkForUpdate(force: Boolean = false) {
         val ctx = context ?: return
-        if (!com.ifafu.kyzz.ui.settings.UpdateChecker.shouldCheck(ctx)) return
+        if (updateCheckInProgress && com.ifafu.kyzz.ui.settings.UpdateChecker.isChecking()) return
+        updateCheckInProgress = false
+        val hasCachedUpdate = com.ifafu.kyzz.ui.settings.UpdateChecker.loadCachedResult(ctx) != null
+        // Check at least once for every HomeFragment instance. The persisted
+        // interval only throttles additional checks in the same process.
+        if (!force && !hasCachedUpdate && updateCheckAttempted &&
+            !com.ifafu.kyzz.ui.settings.UpdateChecker.shouldCheck(ctx)
+        ) return
+        updateCheckAttempted = true
+        updateCheckInProgress = true
         android.util.Log.i("HomeFragment", "checkForUpdate called")
-        com.ifafu.kyzz.ui.settings.UpdateChecker.checkForUpdate(ctx) { release ->
-            android.util.Log.i("HomeFragment", "checkForUpdate callback: release=${release?.versionName}, binding=${_binding != null}")
-            if (release != null) {
-                com.ifafu.kyzz.ui.settings.UpdateChecker.saveCheckResult(ctx, release)
-                val dismissed = com.ifafu.kyzz.ui.settings.UpdateChecker.isDismissed(ctx, release.versionName)
-                android.util.Log.i("HomeFragment", "isDismissed=$dismissed for ${release.versionName}")
-                if (!dismissed) {
-                    showUpdateCard(release)
+        com.ifafu.kyzz.ui.settings.UpdateChecker.checkForUpdate(ctx) { result ->
+            updateCheckInProgress = false
+            when (result) {
+                is com.ifafu.kyzz.ui.settings.UpdateChecker.CheckResult.UpdateAvailable -> {
+                    val release = result.release
+                    android.util.Log.i("HomeFragment", "Latest installable release=${release.versionName}")
+                    com.ifafu.kyzz.ui.settings.UpdateChecker.saveCheckResult(ctx, release)
+                    val dismissed = com.ifafu.kyzz.ui.settings.UpdateChecker.isDismissed(ctx, release.versionName)
+                    if (!dismissed) {
+                        showUpdateCard(release)
+                    } else if (_binding != null) {
+                        binding.cardUpdate.visibility = View.GONE
+                    }
                 }
-            } else {
-                com.ifafu.kyzz.ui.settings.UpdateChecker.clearCachedResult(ctx)
-                if (_binding != null) {
-                    binding.cardUpdate.visibility = View.GONE
+                is com.ifafu.kyzz.ui.settings.UpdateChecker.CheckResult.UpToDate -> {
+                    com.ifafu.kyzz.ui.settings.UpdateChecker.markChecked(ctx)
+                    com.ifafu.kyzz.ui.settings.UpdateChecker.clearCachedResult(ctx)
+                    cachedUpdateRelease = null
+                    if (_binding != null) binding.cardUpdate.visibility = View.GONE
+                }
+                is com.ifafu.kyzz.ui.settings.UpdateChecker.CheckResult.Failed -> {
+                    // Keep the last known update card on transient network/API failures.
+                    android.util.Log.w("HomeFragment", "Update check failed: ${result.message}")
+                }
+                is com.ifafu.kyzz.ui.settings.UpdateChecker.CheckResult.ReleaseNotReady -> {
+                    // A release can become visible before GitHub finishes its APK upload.
+                    // Preserve the last installable card and retry next entry/refresh.
+                    android.util.Log.i(
+                        "HomeFragment",
+                        "Release ${result.latestVersion} exists but its APK is not ready"
+                    )
                 }
             }
         }

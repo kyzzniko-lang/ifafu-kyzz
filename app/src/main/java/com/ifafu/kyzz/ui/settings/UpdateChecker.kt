@@ -15,24 +15,37 @@ import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicLong
 
 object UpdateChecker {
 
     private const val REPO = "kyzzniko-lang/ifafu-kyzz"
     private const val API_URL = "https://api.github.com/repos/$REPO/releases/latest"
+    private const val APK_NOT_READY_RETRY_COUNT = 3
+    private const val APK_NOT_READY_RETRY_DELAY_MS = 10_000L
 
     // 单例协程 scope：用于无显式 scope 传入时的兜底。
     // 通过 currentCheckJob 跟踪并取消上一次未完成的检查，避免多个并发检查叠加，
     // 也避免旧回调（持有已销毁的 Fragment/Activity）在协程里继续持有引用。
     private val checkScope = CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+    private val client = OkHttpClient.Builder()
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
 
     @Volatile
     private var currentCheckJob: kotlinx.coroutines.Job? = null
+    private val checkGeneration = AtomicLong(0L)
 
     data class ReleaseInfo(
         @SerializedName("tag_name") val tagName: String,
@@ -46,7 +59,16 @@ object UpdateChecker {
         )
 
         val versionName: String get() = tagName.removePrefix("v")
-        val apkAsset: Asset? get() = assets?.find { it.name.endsWith(".apk") }
+        val apkAsset: Asset? get() = assets
+            ?.filter { it.name.endsWith(".apk", ignoreCase = true) }
+            ?.maxByOrNull { it.size }
+    }
+
+    sealed class CheckResult {
+        data class UpdateAvailable(val release: ReleaseInfo) : CheckResult()
+        data class UpToDate(val latestVersion: String) : CheckResult()
+        data class ReleaseNotReady(val latestVersion: String) : CheckResult()
+        data class Failed(val message: String? = null) : CheckResult()
     }
 
     /**
@@ -55,38 +77,31 @@ object UpdateChecker {
      * 注意：context 仅用于读取应用版本号（内部转 applicationContext），不会跨协程持有
      * 调用方的 Activity/Fragment 引用。若连续调用，会取消上一次未完成的检查。
      */
-    fun checkForUpdate(context: Context, callback: (ReleaseInfo?) -> Unit) {
+    fun checkForUpdate(context: Context, callback: (CheckResult) -> Unit) {
         // 取消上一次未完成的检查，避免并发叠加 & 旧回调持有已销毁组件
         currentCheckJob?.cancel()
+        val generation = checkGeneration.incrementAndGet()
         val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
         val appContext = context.applicationContext // 仅持有 application context，避免泄漏 Activity
+        fun deliver(result: CheckResult) {
+            mainHandler.post {
+                // Blocking OkHttp calls may finish after coroutine cancellation.
+                // Never let an older response overwrite a newer release card.
+                if (generation == checkGeneration.get()) callback(result)
+            }
+        }
         currentCheckJob = checkScope.launch {
             try {
-                val client = OkHttpClient.Builder()
-                    .connectTimeout(15, TimeUnit.SECONDS)
-                    .readTimeout(15, TimeUnit.SECONDS)
-                    .build()
-
-                android.util.Log.i("UpdateChecker", "Checking: $API_URL")
-                val request = Request.Builder()
-                    .url(API_URL)
-                    .header("Accept", "application/vnd.github.v3+json")
-                    .build()
-
-                client.newCall(request).execute().use { response ->
-                    android.util.Log.i("UpdateChecker", "Response code: ${response.code}")
-                    if (!response.isSuccessful) {
-                        android.util.Log.w("UpdateChecker", "Non-success: ${response.code}")
-                        mainHandler.post { callback(null) }
-                        return@launch
-                    }
-
-                    val body = response.body?.string() ?: run {
-                        android.util.Log.w("UpdateChecker", "Empty body")
-                        mainHandler.post { callback(null) }
-                        return@launch
-                    }
-
+                var latestVersionWithoutApk: String? = null
+                repeat(APK_NOT_READY_RETRY_COUNT) { attempt ->
+                    android.util.Log.i("UpdateChecker", "Checking: $API_URL, attempt=${attempt + 1}")
+                    val request = Request.Builder()
+                        .url(API_URL)
+                        .header("Accept", "application/vnd.github.v3+json")
+                        .header("Cache-Control", "no-cache")
+                        .header("Pragma", "no-cache")
+                        .build()
+                    val body = executeCancellable(request)
                     val release = Gson().fromJson(body, ReleaseInfo::class.java)
                     val currentVersion = getCurrentVersion(appContext)
                     val isNewer = isNewerVersion(release.versionName, currentVersion)
@@ -94,19 +109,52 @@ object UpdateChecker {
                     android.util.Log.i("UpdateChecker", "Remote: ${release.versionName}, Local: $currentVersion, isNewer: $isNewer, hasApk: $hasApk, APK: ${release.apkAsset?.name}")
 
                     if (isNewer && hasApk) {
-                        mainHandler.post { callback(release) }
-                    } else {
-                        mainHandler.post { callback(null) }
+                        deliver(CheckResult.UpdateAvailable(release))
+                        return@launch
+                    }
+                    if (!isNewer) {
+                        deliver(CheckResult.UpToDate(release.versionName))
+                        return@launch
+                    }
+                    latestVersionWithoutApk = release.versionName
+                    if (attempt < APK_NOT_READY_RETRY_COUNT - 1) {
+                        delay(APK_NOT_READY_RETRY_DELAY_MS)
                     }
                 }
+                deliver(CheckResult.ReleaseNotReady(latestVersionWithoutApk ?: "unknown"))
             } catch (e: kotlinx.coroutines.CancellationException) {
                 // 协程取消（被新的检查取消或调用方主动取消），不回调
             } catch (e: Exception) {
                 android.util.Log.e("UpdateChecker", "Check failed: ${e.javaClass.simpleName}: ${e.message}")
-                mainHandler.post { callback(null) }
+                deliver(CheckResult.Failed(e.message))
             }
         }
     }
+
+    fun isChecking(): Boolean = currentCheckJob?.isActive == true
+
+    private suspend fun executeCancellable(request: Request): String =
+        suspendCancellableCoroutine { continuation ->
+            val call = client.newCall(request)
+            continuation.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
+                    if (continuation.isActive) continuation.resumeWith(Result.failure(e))
+                }
+
+                override fun onResponse(call: Call, response: okhttp3.Response) {
+                    try {
+                        response.use {
+                            if (!it.isSuccessful) throw IOException("HTTP ${it.code}")
+                            val body = it.body?.string() ?: throw IOException("响应内容为空")
+                            if (continuation.isActive) continuation.resumeWith(Result.success(body))
+                        }
+                    } catch (e: Exception) {
+                        if (continuation.isActive) continuation.resumeWith(Result.failure(e))
+                    }
+                }
+            })
+        }
 
     fun getCurrentVersion(context: Context): String {
         return try {
@@ -147,6 +195,11 @@ object UpdateChecker {
         if (isDownloading) return
         val asset = release.apkAsset ?: return
         isDownloading = true
+        // DownloadManager does not reliably replace an existing destination.
+        // Remove the previous installer before enqueuing a newer release.
+        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+            ?.resolve("ifafu-update.apk")
+            ?.delete()
         val originalUrl = asset.downloadUrl
         tryDownload(context, release, originalUrl, 0)
     }
@@ -277,16 +330,26 @@ object UpdateChecker {
         return System.currentTimeMillis() - lastTs > CHECK_INTERVAL_MS
     }
 
+    fun markChecked(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putLong(KEY_LAST_CHECK_TS, System.currentTimeMillis())
+            .apply()
+    }
+
     fun saveCheckResult(context: Context, release: ReleaseInfo) {
         val asset = release.apkAsset ?: return
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().apply {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val dismissedVersion = prefs.getString(KEY_DISMISSED_VERSION, "") ?: ""
+        prefs.edit().apply {
             putLong(KEY_LAST_CHECK_TS, System.currentTimeMillis())
             putString(KEY_CACHED_TAG, release.tagName)
             putString(KEY_CACHED_BODY, release.body ?: "")
             putLong(KEY_CACHED_SIZE, asset.size)
             putString(KEY_CACHED_URL, asset.downloadUrl)
-            remove(KEY_DISMISSED_VERSION)
-            remove(KEY_DISMISSED_UNTIL)
+            if (dismissedVersion.isNotEmpty() && dismissedVersion != release.versionName) {
+                remove(KEY_DISMISSED_VERSION)
+                remove(KEY_DISMISSED_UNTIL)
+            }
             apply()
         }
     }

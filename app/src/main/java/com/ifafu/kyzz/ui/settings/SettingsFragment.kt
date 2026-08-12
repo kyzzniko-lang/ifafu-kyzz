@@ -289,13 +289,29 @@ class SettingsFragment : PreferenceFragmentCompat() {
         val pref = findPreference<Preference>("check_update") ?: return
         pref.setOnPreferenceClickListener {
             Toast.makeText(requireContext(), "正在检查更新...", Toast.LENGTH_SHORT).show()
-            UpdateChecker.checkForUpdate(requireContext()) { release ->
+            UpdateChecker.checkForUpdate(requireContext()) { result ->
                 activity?.runOnUiThread {
                     val ctx = context ?: return@runOnUiThread
-                    if (release != null) {
-                        showUpdateDialog(release)
-                    } else {
-                        Toast.makeText(ctx, "已是最新版本", Toast.LENGTH_SHORT).show()
+                    when (result) {
+                        is UpdateChecker.CheckResult.UpdateAvailable -> {
+                            UpdateChecker.saveCheckResult(ctx, result.release)
+                            showUpdateDialog(result.release)
+                        }
+                        is UpdateChecker.CheckResult.UpToDate -> {
+                            UpdateChecker.markChecked(ctx)
+                            UpdateChecker.clearCachedResult(ctx)
+                            Toast.makeText(ctx, "已是最新版本 v${result.latestVersion}", Toast.LENGTH_SHORT).show()
+                        }
+                        is UpdateChecker.CheckResult.Failed -> {
+                            Toast.makeText(ctx, "检查更新失败，请稍后重试", Toast.LENGTH_SHORT).show()
+                        }
+                        is UpdateChecker.CheckResult.ReleaseNotReady -> {
+                            Toast.makeText(
+                                ctx,
+                                "发现新版本 v${result.latestVersion}，安装包正在上传，请稍后重试",
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
                     }
                 }
             }

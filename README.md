@@ -7,7 +7,7 @@
 | 入口 | 地址 |
 | --- | --- |
 | 项目介绍页（杭州） | [116.62.222.192](http://116.62.222.192/) |
-| 直接下载最新版 APK | [下载 iFAFU v2.5.7](https://github.com/kyzzniko-lang/ifafu-kyzz/releases/download/v2.5.7/iFAFU-v2.5.7.apk) |
+| 直接下载最新版 APK | [下载 iFAFU v2.5.8](https://github.com/kyzzniko-lang/ifafu-kyzz/releases/download/v2.5.8/iFAFU-v2.5.8.apk) |
 | GitHub Releases | [查看全部版本](https://github.com/kyzzniko-lang/ifafu-kyzz/releases) |
 | 功能详情 | [features.html](http://116.62.222.192/features.html) |
 | 下载说明 | [download.html](http://116.62.222.192/download.html) |
@@ -18,7 +18,7 @@
 
 ## 项目一览
 
-当前版本：**v2.5.7** · Android · Kotlin · MVVM
+当前版本：**v2.5.8** · Android · Kotlin · MVVM
 
 <p align="center">
   <img src="docs/screenshots/hero.png" alt="iFAFU 产品介绍" width="760">
@@ -74,6 +74,15 @@
 - Material Design 3（Claude 风格主题）
 
 ## 更新日志
+
+### v2.5.8
+- **首页更新检测修复**
+  - 每次进入首页都会重新校验 GitHub 最新版本，修复检查时间缓存导致首页无法及时发现新版的问题。
+  - 首页下拉刷新可强制检查更新，并阻止重复请求和旧响应覆盖最新结果。
+  - 区分检查失败、已是最新版和安装包尚未上传，网络异常不再清除已有更新提示。
+  - 新版本已发布但 APK 尚在上传时自动短暂重试，并保留上一个可安装版本的信息。
+- **更新下载稳定性**
+  - 自动选择 Release 中有效的 APK，并在下载前清理旧安装包，避免同名文件导致下载失败。
 
 ### v2.5.7
 - **更新说明支持 Markdown 渲染**
