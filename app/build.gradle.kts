@@ -20,8 +20,8 @@ android {
         applicationId = "com.ifafu.kyzz"
         minSdk = 24
         targetSdk = 34
-        versionCode = 24
-        versionName = "2.5.8"
+        versionCode = 25
+        versionName = "2.5.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
