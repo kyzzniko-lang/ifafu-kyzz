@@ -3,6 +3,7 @@ package com.ifafu.kyzz.ui.settings
 import android.app.DatePickerDialog
 import android.os.Bundle
 import android.widget.Toast
+import android.text.method.LinkMovementMethod
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.preference.EditTextPreference
 import androidx.preference.ListPreference
@@ -303,15 +304,17 @@ class SettingsFragment : PreferenceFragmentCompat() {
     }
 
     private fun showUpdateDialog(release: UpdateChecker.ReleaseInfo) {
-        val sizeText = release.apkAsset?.let { " (${UpdateChecker.formatSize(it.size)})" } ?: ""
-        androidx.appcompat.app.AlertDialog.Builder(requireContext())
+        val sizeText = release.apkAsset?.let { UpdateChecker.formatSize(it.size) } ?: "未知"
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(requireContext())
             .setTitle("发现新版本 v${release.versionName}")
-            .setMessage("${release.body ?: "修复已知问题并优化体验"}\n\n大小: $sizeText")
+            .setMessage(UpdateMarkdown.render(requireContext(), release.body, "安装包大小：$sizeText"))
             .setPositiveButton("立即更新") { _, _ ->
                 UpdateChecker.downloadAndInstall(requireContext(), release)
             }
             .setNegativeButton("稍后", null)
             .show()
+        dialog.findViewById<android.widget.TextView>(android.R.id.message)?.movementMethod =
+            LinkMovementMethod.getInstance()
     }
 
     private fun setupFeedback() {

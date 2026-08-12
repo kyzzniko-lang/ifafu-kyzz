@@ -16,6 +16,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
+import android.text.method.LinkMovementMethod
 import androidx.appcompat.app.AlertDialog
 import androidx.core.view.GestureDetectorCompat
 import androidx.fragment.app.Fragment
@@ -1884,15 +1885,21 @@ class HomeFragment : Fragment() {
         cachedUpdateRelease = release
         binding.cardUpdate.visibility = View.VISIBLE
         binding.tvUpdateVersion.text = "v${release.versionName}"
-        binding.tvUpdateBody.text = release.body?.take(200) ?: ""
+        binding.tvUpdateBody.text = com.ifafu.kyzz.ui.settings.UpdateMarkdown.summary(release.body)
         val size = release.apkAsset?.size ?: 0L
         binding.tvUpdateSize.text = com.ifafu.kyzz.ui.settings.UpdateChecker.formatSize(size)
         binding.cardUpdate.setOnClickListener {
             val ctx = context ?: return@setOnClickListener
             val sizeText = release.apkAsset?.let { com.ifafu.kyzz.ui.settings.UpdateChecker.formatSize(it.size) } ?: ""
-            com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
+            val dialog = com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
                 .setTitle("发现新版本 v${release.versionName}")
-                .setMessage("${release.body ?: "修复已知问题并优化体验"}\n\n大小: $sizeText")
+                .setMessage(
+                    com.ifafu.kyzz.ui.settings.UpdateMarkdown.render(
+                        ctx,
+                        release.body,
+                        "安装包大小：$sizeText"
+                    )
+                )
                 .setPositiveButton("下载更新") { _, _ ->
                     com.ifafu.kyzz.ui.settings.UpdateChecker.downloadAndInstall(ctx, release)
                 }
@@ -1904,6 +1911,8 @@ class HomeFragment : Fragment() {
                     dialog.dismiss()
                 }
                 .show()
+            dialog.findViewById<TextView>(android.R.id.message)?.movementMethod =
+                LinkMovementMethod.getInstance()
         }
     }
 
