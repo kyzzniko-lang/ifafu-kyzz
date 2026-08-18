@@ -7,7 +7,7 @@
 | 入口 | 地址 |
 | --- | --- |
 | 项目介绍页（杭州） | [116.62.222.192](http://116.62.222.192/) |
-| 直接下载最新版 APK | [下载 iFAFU v2.5.8](https://github.com/kyzzniko-lang/ifafu-kyzz/releases/download/v2.5.8/iFAFU-v2.5.8.apk) |
+| 直接下载最新版 APK | [下载 iFAFU v2.5.9](https://github.com/kyzzniko-lang/ifafu-kyzz/releases/download/v2.5.9/iFAFU-v2.5.9.apk) |
 | GitHub Releases | [查看全部版本](https://github.com/kyzzniko-lang/ifafu-kyzz/releases) |
 | 功能详情 | [features.html](http://116.62.222.192/features.html) |
 | 下载说明 | [download.html](http://116.62.222.192/download.html) |
@@ -18,7 +18,7 @@
 
 ## 项目一览
 
-当前版本：**v2.5.8** · Android · Kotlin · MVVM
+当前版本：**v2.5.9** · Android · Kotlin · MVVM
 
 <p align="center">
   <img src="docs/screenshots/hero.png" alt="iFAFU 产品介绍" width="760">
@@ -74,6 +74,22 @@
 - Material Design 3（Claude 风格主题）
 
 ## 更新日志
+
+### v2.5.9
+- **AI 密钥安全架构重构**
+  - 宠物聊天/AI 归类的模型请求全部改经自建代理服务器转发，API 密钥不再随 APK 分发，从源头杜绝反编译提取密钥盗刷额度的风险。
+  - 服务端按设备限流（20 次/天）并设全局用量上限，超限返回友好提示；日志不记录任何聊天内容。
+- **稳定性修复**
+  - 修复补考查询在网络异常或会话过期时闪退的问题。
+  - 修复一键评教保存完全部课程后再次点击保存按钮的越界闪退。
+  - 修复备忘录录音在麦克风被占用时的崩溃。
+  - 修复部分厂商 ROM 上每日成绩检查闹钟注册失败导致提醒静默失效的问题（Android 14+ 无精确闹钟权限时自动降级）。
+  - 修复早上重启手机后当日课程摘要提醒丢失的问题。
+  - 成绩单页面不再把免修/缺考课程计入平均分与绩点，特殊成绩显示为 `--`。
+  - 课表考试信息支持非补零日期（如"2026年1月8日"）的解析。
+- **性能优化**
+  - 登录与成绩查询的 HTML 解析移出主线程，低端机显著减少卡顿。
+  - 验证码识别改为懒加载并在后台线程执行，登录页启动更流畅。
 
 ### v2.5.8
 - **首页更新检测修复**

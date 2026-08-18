@@ -30,7 +30,11 @@ class ElectiveCourseApi @Inject constructor(
         return try {
             val accessUrl = "${host}/(${token})/xf_xsqxxxk.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121203"
 
-            val html = htmlClient.getString(accessUrl)
+            // 用 Raw 变体取回原始页面：选课入口页可能以顶层 alert 提示
+            // "现在不是选课时间"等，若让 getString 抛 AlertException，
+            // 下方 parseElectiveCourseIndex 的 alert 分类就永远走不到，
+            // 用户只能看到笼统的"网络异常"。
+            val html = htmlClient.getStringRaw(accessUrl)
             if (html.isBlank()) return Response(false, -1, "网络异常")
 
             if (userApi.isSessionExpired(html)) {
@@ -38,7 +42,7 @@ class ElectiveCourseApi @Inject constructor(
                 if (!reloginResp.success) return Response(false, -1, reloginResp.message)
                 val user = userRepository.getUser()
                 val retryUrl = "${host}/(${user.token})/xf_xsqxxxk.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121203"
-                val retryHtml = htmlClient.getString(retryUrl)
+                val retryHtml = htmlClient.getStringRaw(retryUrl)
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return Response(false, -1, "会话已过期，请重新登录")
                 }
@@ -54,6 +58,10 @@ class ElectiveCourseApi @Inject constructor(
     }
 
     private fun parseElectiveCourseIndex(html: String, courseList: ElectiveCourseList): Response {
+        val errorPage = htmlClient.checkErrorPage(html)
+        if (errorPage != null) {
+            return Response(false, -1, errorPage.message)
+        }
         val alert = htmlClient.checkAlert(html)
         if (alert != null) {
             Log.w(TAG, "Alert found: ${alert.message}")
@@ -106,7 +114,9 @@ class ElectiveCourseApi @Inject constructor(
             "dpkcmcGrid:txtPageSize" to "15"
         )
 
-        val html = htmlClient.postString(accessUrl, formBody)
+        // Raw 变体：筛选请求的响应可能带顶层 alert（如防刷/未开放提示），
+        // 抛异常会被外层 catch 吞成"网络异常"，这里取回后自行分类。
+        val html = htmlClient.postStringRaw(accessUrl, formBody)
         if (html.isBlank()) return Response(false, 0, "网络异常")
 
         if (userApi.isSessionExpired(html)) {
@@ -115,7 +125,20 @@ class ElectiveCourseApi @Inject constructor(
             val reloginResp = reloginHelper.relogin()
             if (!reloginResp.success) return Response(false, -1, reloginResp.message)
             val user = userRepository.getUser()
+            // 重登后旧 __VIEWSTATE 失效：先重新拉取列表页刷新状态再重试搜索。
+            val indexResp = getElectiveCourseIndex(host, user.token, user.account, user.name, courseList)
+            if (!indexResp.success) return indexResp
             return searchElectiveCourseInternal(host, user.token, user.account, user.name, courseList, depth + 1)
+        }
+
+        val searchError = htmlClient.checkErrorPage(html)
+        if (searchError != null) {
+            return Response(false, -1, searchError.message)
+        }
+
+        val searchAlert = htmlClient.checkAlert(html)
+        if (searchAlert != null) {
+            return Response(false, 0, searchAlert.message)
         }
 
         val vs = htmlClient.parseViewState(html)
@@ -164,7 +187,10 @@ class ElectiveCourseApi @Inject constructor(
             "Button1" to "提  交"
         )
 
-        val html = htmlClient.postString(accessUrl, formBody)
+        // 必须用 postStringRaw：正方选课提交后无论成功（"选课成功"）还是失败
+        // （"该课堂人数已满"）都以顶层 alert 返回。postString 会对 alert 抛
+        // AlertException，被外层 catch 吞成"网络异常"——明明选上了却提示失败。
+        val html = htmlClient.postStringRaw(accessUrl, formBody)
         if (html.isBlank()) return Response(false, 0, "网络异常")
 
         if (userApi.isSessionExpired(html)) {
@@ -173,6 +199,11 @@ class ElectiveCourseApi @Inject constructor(
             val reloginResp = reloginHelper.relogin()
             if (!reloginResp.success) return Response(false, -1, reloginResp.message)
             val user = userRepository.getUser()
+            // 重登后是全新 ASP.NET 会话，旧的 __VIEWSTATE 大概率失效，
+            // 直接原样重发 POST 只会拿到校验失败页；先重新拉取列表页刷新
+            // viewState/筛选项，再重试提交。
+            val indexResp = getElectiveCourseIndex(host, user.token, user.account, user.name, courseList)
+            if (!indexResp.success) return indexResp
             return electiveCourseInternal(host, user.token, user.account, user.name, courseList, courseIndex, depth + 1)
         }
 
@@ -180,10 +211,13 @@ class ElectiveCourseApi @Inject constructor(
         courseList.viewState = vs.viewState
         courseList.viewStateGenerator = vs.viewStateGenerator
         val alert = htmlClient.checkAlert(html)
-        return if (alert != null) {
-            Response(false, 0, alert.message)
-        } else {
-            Response(true, 0, "选课成功")
+        // 错误页（如 __VIEWSTATE 校验失败返回"出错啦"）既无会话过期标记也无
+        // alert，不检查会被误报成"选课成功"。
+        val errorPage = htmlClient.checkErrorPage(html)
+        return when {
+            errorPage != null -> Response(false, -1, errorPage.message)
+            alert != null -> Response(false, 0, alert.message)
+            else -> Response(true, 0, "选课成功")
         }
     }
 }

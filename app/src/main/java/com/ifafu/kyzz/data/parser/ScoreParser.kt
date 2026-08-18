@@ -81,7 +81,9 @@ class ScoreParser @Inject constructor(
     private fun parseScoresFromRegex(html: String, scores: MutableList<Score>) {
         val tableBegin = html.indexOf("补考备注")
         val tableEnd = html.indexOf("footbox")
-        if (tableBegin < 0 || tableEnd < 0) return
+        // 还要校验顺序：两个标记都存在但 footbox 在前时，substring(end < begin)
+        // 会抛 StringIndexOutOfBoundsException（服务端可控的 HTML 顺序）。
+        if (tableBegin < 0 || tableEnd <= tableBegin) return
 
         val tableContent = html.substring(tableBegin, tableEnd)
         val pattern = Regex(
@@ -99,7 +101,7 @@ class ScoreParser @Inject constructor(
                 courseName = match.groupValues[4],
                 courseType = match.groupValues[5],
                 courseOwner = htmlParser.cleanNbsp(match.groupValues[6]),
-                studyScore = match.groupValues[7].toFloatOrNull() ?: 0f,
+                studyScore = htmlParser.cleanNbspFloat(match.groupValues[7]),
                 score = scoreText.toFloatOrNull() ?: textGradeToScore(scoreText),
                 makeupScore = htmlParser.cleanNbspFloat(match.groupValues[9]),
                 isRestudy = match.groupValues[10] == "是",

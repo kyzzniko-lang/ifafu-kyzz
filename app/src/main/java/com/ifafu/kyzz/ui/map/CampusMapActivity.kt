@@ -139,10 +139,13 @@ class CampusMapActivity : BaseActivity<ActivityCampusMapBinding>(), LocationList
     }
 
     override fun onLocationChanged(location: Location) {
+        // 定位回调可能在退出页面后送达，此时 WebView 已 destroy，再调用会崩溃
+        if (isFinishing || isDestroyed) return
         // GPS returns WGS-84, AMap tiles use GCJ-02, convert before showing on map
         val gcj = wgs84ToGcj02(location.latitude, location.longitude)
         val acc = location.accuracy
         runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
             binding.webView.evaluateJavascript(
                 "showUserLocation(${gcj.first},${gcj.second},$acc)", null
             )

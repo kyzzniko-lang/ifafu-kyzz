@@ -1,0 +1,126 @@
+
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<HTML lang="gb2312">
+	<HEAD>
+		<title>现代教学管理信息系统</title><meta http-equiv="X-UA-Compatible" content="IE=EmulateIE7" />
+		<meta http-equiv="Content-Type" content="text/html; charset=gb2312">
+		<meta http-equiv="Content-Language" content="gb2312">
+		<meta content="all" name="robots">
+		<meta name="author" content="作者信息">
+		<meta name="Copyright" content="版权信息">
+		<meta name="description" content="站点介绍">
+		<meta name="keywords" content="站点关键词">
+		<link rel="icon" href="style/base/favicon.ico" type="image/x-icon">
+			<link rel="stylesheet" href="style/base/jw.css" type="text/css" media="all">
+				<link rel="stylesheet" href="style/standard/jw.css" type="text/css" media="all">
+					<script src="js/xtwh.js" type="text/javascript"></script>
+	</HEAD>
+	<BODY onload="reMoveCh('form1','Iframe1')">
+		<form name="form1" method="post" action="xskscx.aspx?xh=3246017002&amp;xm=%D3%A6%EA%BB%D4%F3&amp;gnmkdm=N121604" id="form1">
+<input type="hidden" name="__EVENTTARGET" value="" />
+<input type="hidden" name="__EVENTARGUMENT" value="" />
+<input type="hidden" name="__VIEWSTATE" value="dDwtMTI2NjY4NjY5MTt0PDtsPGk8MT47PjtsPHQ8O2w8aTwxPjtpPDU+Oz47bDx0PHQ8cDxwPGw8RGF0YVRleHRGaWVsZDtEYXRhVmFsdWVGaWVsZDs+O2w8eG47eG47Pj47Pjt0PGk8Mz47QDxcZTsyMDI1LTIwMjY7MjAyNC0yMDI1Oz47QDxcZTsyMDI1LTIwMjY7MjAyNC0yMDI1Oz4+O2w8aTwxPjs+Pjs7Pjt0PHQ8OztsPGk8MT47Pj47Oz47Pj47Pj47PlHbUgXVwvyBm9awFjNYMEsXfVHw" />
+
+<script language="javascript" type="text/javascript">
+<!--
+	function __doPostBack(eventTarget, eventArgument) {
+		var theform;
+		if (window.navigator.appName.toLowerCase().indexOf("microsoft") > -1) {
+			theform = document.form1;
+		}
+		else {
+			theform = document.forms["form1"];
+		}
+		theform.__EVENTTARGET.value = eventTarget.split("$").join(":");
+		theform.__EVENTARGUMENT.value = eventArgument;
+		theform.submit();
+	}
+// -->
+</script>
+
+			<div class="toolbox">
+				<!-- 按钮 -->
+				<div class="buttonbox">
+				</div>
+				<!-- 按钮 -->
+				<!-- 过滤条件开始 -->
+				<div class="searchbox">
+					<p class="search_con">
+						<select name="xnd" onchange="__doPostBack('xnd','')" language="javascript" id="xnd">
+	<option value=""></option>
+	<option selected="selected" value="2025-2026">2025-2026</option>
+	<option value="2024-2025">2024-2025</option>
+
+</select>
+						<span id="Label2">学年第</span>
+						<select name="xqd" onchange="__doPostBack('xqd','')" language="javascript" id="xqd">
+	<option value="1">1</option>
+	<option selected="selected" value="2">2</option>
+	<option value="3">3</option>
+
+</select><span id="Label1">学期学生考试查询</span>
+						
+						
+						&nbsp;&nbsp;&nbsp;
+						
+						
+					</p>
+					<p class="search_title"><em></em></p>
+				</div>
+				<!-- 过滤条件结束 -->
+				<!-- 过滤条件结束 -->
+				<p class="toolbox_fot"><em></em></p>
+			</div>
+			<!-- 多功能操作区 -->
+			<!-- 内容显示区开始 -->
+			<div class="main_box">
+				<div class="mid_box">
+					<div class="title">
+						<p>
+							<!-- 查询得到的数据量显示区域 -->
+						</p>
+					</div>
+					<!-- From内容 -->
+					<span class="formbox">
+						<table class="datelist" cellspacing="0" cellpadding="3" border="0" id="DataGrid1" width="100%">
+	<tr class="datelisthead">
+		<td>选课课号</td><td>课程名称</td><td>姓名</td><td>考试时间</td><td>考试地点</td><td>考试形式</td><td>座位号</td><td>校区</td>
+	</tr><tr>
+		<td>(2025-2026-2)-60016060-19960084-1</td><td>嵌入式系统概论</td><td>应昊泽</td><td>2026年05月08日(18:30-20:30)</td><td>安105</td><td>&nbsp;</td><td>6</td><td>安溪校区</td>
+	</tr><tr class="alt">
+		<td>(2025-2026-2)-79019003-19960040-7</td><td>大学实用写作</td><td>应昊泽</td><td>2026年05月17日(08:30-10:30)</td><td>安106</td><td>&nbsp;</td><td>5</td><td>安溪校区</td>
+	</tr><tr>
+		<td>(2025-2026-2)-65019052-20060045-3</td><td>毛泽东思想和中国特色社会主义理论体系概论</td><td>应昊泽</td><td>2026年06月14日(14:30-16:30)</td><td>安107</td><td>&nbsp;</td><td>6</td><td>安溪校区</td>
+	</tr><tr class="alt">
+		<td>(2025-2026-2)-60018173-20230018-1</td><td>离散数学</td><td>应昊泽</td><td>2026年06月15日(18:30-20:30)</td><td>安200-1</td><td>&nbsp;</td><td>12</td><td>安溪校区</td>
+	</tr><tr>
+		<td>(2025-2026-2)-27019002-19950048-2</td><td>信息检索与利用</td><td>应昊泽</td><td>2026年06月22日(18:30-20:30)</td><td>安106</td><td>&nbsp;</td><td>5</td><td>安溪校区</td>
+	</tr><tr class="alt">
+		<td>(2025-2026-2)-65019053-19950071-2</td><td>习近平新时代中国特色社会主义思想概论</td><td>应昊泽</td><td>2026年06月25日(18:30-20:30)</td><td>安105</td><td>&nbsp;</td><td>6</td><td>安溪校区</td>
+	</tr><tr>
+		<td>(2025-2026-2)-60017096-20000043-1</td><td>操作系统</td><td>应昊泽</td><td>2026年06月27日(08:30-10:30)</td><td>安105</td><td>&nbsp;</td><td>7</td><td>安溪校区</td>
+	</tr><tr class="alt">
+		<td>(2025-2026-2)-79019007-19960056-3</td><td>拓展英语Ⅱ</td><td>应昊泽</td><td>2026年07月01日(08:30-10:30)</td><td>安106</td><td>&nbsp;</td><td>6</td><td>安溪校区</td>
+	</tr><tr>
+		<td>(2025-2026-2)-60017051-20240168-1</td><td>计算机网络协议分析</td><td>应昊泽</td><td>2026年07月03日(14:30-16:30)</td><td>安105</td><td>&nbsp;</td><td>6</td><td>安溪校区</td>
+	</tr><tr class="alt">
+		<td>(2025-2026-2)-60016233-20240168-1</td><td>物联网导论</td><td>应昊泽</td><td>2026年07月06日(14:30-16:30)</td><td>安108</td><td>&nbsp;</td><td>7</td><td>安溪校区</td>
+	</tr><tr>
+		<td>(2025-2026-2)-60018002-19990012-1</td><td>高等数学A2</td><td>应昊泽</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+	</tr><tr class="alt">
+		<td>(2025-2026-2)-60018230-19950005-1</td><td>Java语言程序设计</td><td>应昊泽</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td><td>&nbsp;</td>
+	</tr>
+</table>
+					</span>
+					<div class="footbox">
+						<em class="footbox_con">
+							<span class="pagination"></span>
+							<span class="footbutton"></span>
+							<!-- 底部按钮位置 -->
+						</em>
+					</div>
+				</div>
+			</div>
+		</form>
+	</BODY>
+</HTML>

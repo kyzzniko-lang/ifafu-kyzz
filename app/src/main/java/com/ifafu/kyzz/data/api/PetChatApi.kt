@@ -1,6 +1,5 @@
 package com.ifafu.kyzz.data.api
 
-import com.ifafu.kyzz.BuildConfig
 import com.ifafu.kyzz.data.model.Pet
 import com.ifafu.kyzz.data.model.PetState
 import kotlinx.coroutines.CancellationException
@@ -12,15 +11,19 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import javax.inject.Inject
-import javax.inject.Singleton
 
-@Singleton
-class PetChatApi @Inject constructor() {
+/**
+ * 手动构造（调用处传入 deviceId），不参与 Hilt 图：
+ * @Inject constructor 携带默认参数时 Dagger 会生成两个注入构造器导致 kapt 编译失败。
+ */
+class PetChatApi(
+    /** 设备标识（学号哈希），服务器按它做每设备限流；为空时服务器会拒绝请求 */
+    private val deviceId: String = ""
+) {
 
-    enum class AiModel(val displayName: String, val description: String) {
-        GLM("GLM (高质量)", "回复慢，质量高"),
-        QWEN("Qwen (快速)", "回复快，质量一般")
+    enum class AiModel(val displayName: String, val description: String, val wireName: String) {
+        GLM("GLM (高质量)", "回复慢，质量高", "glm"),
+        QWEN("Qwen (快速)", "回复快，质量一般", "qwen")
     }
 
     private val client by lazy {
@@ -32,8 +35,24 @@ class PetChatApi @Inject constructor() {
             .build()
     }
 
-    private val glmApiKey: String get() = com.ifafu.kyzz.data.util.KeyGuard.decode(BuildConfig.ZHIPU_API_KEY_ENC)
-    private val qwenApiKey: String get() = com.ifafu.kyzz.data.util.KeyGuard.decode(BuildConfig.QWEN_API_KEY_ENC)
+    companion object {
+        /**
+         * LLM 请求走自建代理（杭州服务器），密钥只存在服务端——
+         * 旧方案把 XOR 编码的密钥编进 APK，反编译即可还原，已废弃。
+         * 证书为 Let's Encrypt IP 证书，OkHttp 默认信任。
+         */
+        private const val BASE_URL = "https://116.62.222.192/ifafu/api/pet-chat"
+
+        /** 与评论模块同源：学号 SHA-256 前 16 位 hex，未登录时回退随机 ID */
+        fun deviceIdOf(account: String): String {
+            if (account.isNotEmpty()) {
+                val digest = java.security.MessageDigest.getInstance("SHA-256")
+                    .digest(account.toByteArray())
+                return "d_" + digest.take(8).joinToString("") { "%02x".format(it.toInt() and 0xFF) }
+            }
+            return "d_" + java.util.UUID.randomUUID().toString().replace("-", "").take(16)
+        }
+    }
 
     data class UserContext(
         val userName: String = "",
@@ -56,11 +75,7 @@ class PetChatApi @Inject constructor() {
         userContext: UserContext = UserContext(),
         model: AiModel = AiModel.GLM
     ): String = withContext(Dispatchers.IO) {
-        val apiKey = when (model) {
-            AiModel.GLM -> glmApiKey
-            AiModel.QWEN -> qwenApiKey
-        }
-        if (apiKey.isEmpty()) return@withContext "呜...我好像走神了，稍后再聊吧~"
+        if (deviceId.isEmpty()) return@withContext "呜...我好像走神了，稍后再聊吧~"
 
         val systemPrompt = buildSystemPrompt(pet, userContext)
         val messagesJson = JSONArray()
@@ -83,13 +98,8 @@ class PetChatApi @Inject constructor() {
             put("content", userMessage)
         })
 
-        val (modelName, url) = when (model) {
-            AiModel.GLM -> "GLM-4.5-Flash" to "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-            AiModel.QWEN -> "Qwen/Qwen2.5-7B-Instruct" to "https://api.siliconflow.cn/v1/chat/completions"
-        }
-
         val body = JSONObject().apply {
-            put("model", modelName)
+            put("model", model.wireName)
             put("messages", messagesJson)
             put("stream", false)
             put("temperature", 0.9)
@@ -97,8 +107,8 @@ class PetChatApi @Inject constructor() {
         }
 
         val request = Request.Builder()
-            .url(url)
-            .header("Authorization", "Bearer $apiKey")
+            .url(BASE_URL)
+            .header("X-Device-Id", deviceId)
             .header("Content-Type", "application/json")
             .post(body.toString().toRequestBody("application/json".toMediaType()))
             .build()
@@ -107,6 +117,11 @@ class PetChatApi @Inject constructor() {
             val response = executeWithRetry(request)
             response.use {
                 val responseBody = it.body?.string() ?: return@withContext "喵...信号不太好~"
+                if (it.code == 429) {
+                    // 服务端限流文案已是宠物口吻（如"今天已经和小宠物聊了很多啦"）
+                    return@withContext JSONObject(responseBody).optString("error")
+                        .ifBlank { "今天聊得有点多啦，明天再来吧~" }
+                }
                 if (!it.isSuccessful) return@withContext "呜...说不出话来了~"
 
                 val json = JSONObject(responseBody)
@@ -237,37 +252,4 @@ $personalityBlock"""
     }
 
     data class ChatMessage(val content: String, val isUser: Boolean)
-
-    suspend fun classify(systemPrompt: String, userMessage: String): String = withContext(Dispatchers.IO) {
-        if (glmApiKey.isEmpty()) return@withContext "[err]API Key未配置"
-        val messagesJson = JSONArray()
-        messagesJson.put(JSONObject().apply { put("role", "system"); put("content", systemPrompt) })
-        messagesJson.put(JSONObject().apply { put("role", "user"); put("content", userMessage) })
-        val body = JSONObject().apply {
-            put("model", "GLM-4.5-Flash")
-            put("messages", messagesJson)
-            put("stream", false)
-            put("temperature", 0.3)
-            put("max_tokens", 64)
-        }
-        val request = Request.Builder()
-            .url("https://open.bigmodel.cn/api/paas/v4/chat/completions")
-            .header("Authorization", "Bearer $glmApiKey")
-            .header("Content-Type", "application/json")
-            .post(body.toString().toRequestBody("application/json".toMediaType()))
-            .build()
-        try {
-            val response = executeWithRetry(request)
-            response.use {
-                val responseBody = it.body?.string()
-                if (!it.isSuccessful) return@withContext "[err]HTTP ${it.code}: ${responseBody?.take(100)}"
-                if (responseBody.isNullOrEmpty()) return@withContext "[err]空响应"
-                val json = JSONObject(responseBody)
-                val result = json.optJSONArray("choices")?.optJSONObject(0)
-                    ?.optJSONObject("message")?.optString("content")?.trim() ?: ""
-                if (result.isEmpty()) "[err]AI返回空" else result
-            }
-        } catch (e: CancellationException) { throw e }
-        catch (e: Exception) { "[err]${e.message?.take(50) ?: "网络异常"}" }
-    }
 }

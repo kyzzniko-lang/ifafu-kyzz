@@ -43,6 +43,8 @@ class DiscussionViewModel @Inject constructor(
     private var currentPage = 1
     private var hasMore = true
     private var isLoading = false
+    private var cacheHydrated = false
+    private var networkLoadStarted = false
 
     val userId: String
         get() {
@@ -106,7 +108,10 @@ class DiscussionViewModel @Inject constructor(
         }
 
         val uid = userId
-        if (uid.isEmpty()) return
+        if (uid.isEmpty()) {
+            _nicknameState.value = NicknameState.Error("请先登录后再设置昵称")
+            return
+        }
         viewModelScope.launch {
             try {
                 val success = commentRepository.saveNickname(uid, nickname)
@@ -124,35 +129,68 @@ class DiscussionViewModel @Inject constructor(
     }
 
     fun loadComments(refresh: Boolean = false) {
-        if (isLoading) return
         if (refresh) {
+            if (isLoading) return
             currentPage = 1
             hasMore = true
-            comments.clear()
+            networkLoadStarted = false
+            fetchComments(page = 1, refresh = true)
+            return
         }
-        if (!hasMore && !refresh) return
 
+        if (!cacheHydrated) {
+            cacheHydrated = true
+            viewModelScope.launch {
+                val cached = commentRepository.loadCachedComments()
+                if (!cached.isNullOrEmpty()) {
+                    comments.clear()
+                    comments.addAll(cached)
+                    currentPage = 2
+                    hasMore = true
+                    emitFiltered()
+                }
+                if (commentRepository.isDiscussionCacheStale() || comments.isEmpty()) {
+                    fetchComments(page = 1)
+                }
+            }
+            return
+        }
+
+        if (!hasMore || isLoading) return
+        fetchComments(page = currentPage)
+    }
+
+    private fun fetchComments(page: Int, refresh: Boolean = false) {
+        if (isLoading || networkLoadStarted && !refresh && page == 1) return
         isLoading = true
+        networkLoadStarted = true
         _state.value = if (comments.isEmpty()) DiscussionState.Loading else DiscussionState.LoadingMore
 
         viewModelScope.launch {
             try {
-                val newComments = commentRepository.getComments(page = currentPage)
-                if (newComments.isEmpty()) {
+                val newComments = commentRepository.getComments(page = page, perPage = 100)
+                // API 将网络异常与空页都降级为空列表；已有缓存时不能因为一次
+                // 网络失败就清空评论，否则用户会看到短暂的空页面。
+                if (newComments.isEmpty() && comments.isNotEmpty()) {
                     hasMore = false
-                } else {
-                    comments.addAll(newComments)
-                    currentPage++
+                    emitFiltered()
+                    return@launch
                 }
+                if (refresh || page == 1) {
+                    comments.clear()
+                    comments.addAll(newComments)
+                    currentPage = 2
+                } else if (newComments.isNotEmpty()) {
+                    comments.addAll(newComments.filter { fresh -> comments.none { it.objectId == fresh.objectId } })
+                    currentPage = page + 1
+                }
+                hasMore = newComments.size >= 100
                 emitFiltered()
             } catch (e: CancellationException) {
                 throw e
-            } catch (e: Exception) {
-                _state.value = if (comments.isEmpty()) {
-                    DiscussionState.Error("加载失败，请重试")
-                } else {
-                    DiscussionState.Success(comments.toList(), userId)
-                }
+            } catch (_: Exception) {
+                if (comments.isEmpty()) _state.value = DiscussionState.Error("加载失败，请重试")
+                else emitFiltered()
             } finally {
                 isLoading = false
             }
@@ -179,8 +217,10 @@ class DiscussionViewModel @Inject constructor(
                     if (comments.none { it.objectId == comment.objectId }) {
                         comments.add(0, comment)
                     }
-                    _postState.value = PostState.Success
+                    // 先更新列表再通知 Success，避免 Activity 在旧列表上 scrollToPosition(0) 失效
+                    commentRepository.saveCachedComments(comments)
                     emitFiltered()
+                    _postState.value = PostState.Success
                 } else {
                     _postState.value = PostState.Error("发送失败")
                 }
@@ -206,6 +246,7 @@ class DiscussionViewModel @Inject constructor(
                 if (updated != null) {
                     val idx = comments.indexOfFirst { it.objectId == comment.objectId }
                     if (idx >= 0) comments[idx] = updated
+                    commentRepository.saveCachedComments(comments)
                     emitFiltered()
                 }
             } catch (e: CancellationException) {
@@ -242,6 +283,7 @@ class DiscussionViewModel @Inject constructor(
                 val success = commentRepository.deleteComment(objectId, userId)
                 if (success) {
                     comments.removeAll { it.objectId == objectId }
+                    commentRepository.saveCachedComments(comments)
                     _deleteState.value = DeleteState.Success
                     emitFiltered()
                 } else {

@@ -345,6 +345,14 @@ class ScoreFragment : Fragment() {
                     text = infoParts.joinToString(" | "); setTextAppearance(R.style.ClaudeCaption)
                     typeface = resources.getFont(R.font.claude_serif)
                 })
+
+                holder.itemView.isClickable = true
+                holder.itemView.isFocusable = true
+                holder.itemView.contentDescription = "查看${score.courseName}的成绩详情"
+                holder.itemView.setOnClickListener {
+                    ScoreDetailBottomSheet.newInstance(score)
+                        .show(parentFragmentManager, "score_detail")
+                }
             }
         }
 

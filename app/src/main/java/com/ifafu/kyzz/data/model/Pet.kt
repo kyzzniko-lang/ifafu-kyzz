@@ -83,18 +83,28 @@ data class Pet(
     fun recoverCharges() {
         val now = System.currentTimeMillis()
         // 恢复喂食次数
-        val feedElapsed = now - lastFeedRecoverTime
-        val feedRecovered = (feedElapsed / RECOVER_INTERVAL_MS).toInt()
-        if (feedRecovered > 0 && feedCount < MAX_CHARGE) {
-            feedCount = (feedCount + feedRecovered).coerceAtMost(MAX_CHARGE)
-            lastFeedRecoverTime = now - (feedElapsed % RECOVER_INTERVAL_MS)
+        if (feedCount >= MAX_CHARGE) {
+            // 满额时冻结恢复时钟：否则 elapsed 一直累积，消耗一次后
+            // 下一次恢复判定会把次数瞬间回满，违背"每小时恢复 1 次"。
+            lastFeedRecoverTime = now
+        } else {
+            val feedElapsed = now - lastFeedRecoverTime
+            val feedRecovered = (feedElapsed / RECOVER_INTERVAL_MS).toInt()
+            if (feedRecovered > 0) {
+                feedCount = (feedCount + feedRecovered).coerceAtMost(MAX_CHARGE)
+                lastFeedRecoverTime = now - (feedElapsed % RECOVER_INTERVAL_MS)
+            }
         }
         // 恢复玩耍次数
-        val playElapsed = now - lastPlayRecoverTime
-        val playRecovered = (playElapsed / RECOVER_INTERVAL_MS).toInt()
-        if (playRecovered > 0 && playCount < MAX_CHARGE) {
-            playCount = (playCount + playRecovered).coerceAtMost(MAX_CHARGE)
-            lastPlayRecoverTime = now - (playElapsed % RECOVER_INTERVAL_MS)
+        if (playCount >= MAX_CHARGE) {
+            lastPlayRecoverTime = now
+        } else {
+            val playElapsed = now - lastPlayRecoverTime
+            val playRecovered = (playElapsed / RECOVER_INTERVAL_MS).toInt()
+            if (playRecovered > 0) {
+                playCount = (playCount + playRecovered).coerceAtMost(MAX_CHARGE)
+                lastPlayRecoverTime = now - (playElapsed % RECOVER_INTERVAL_MS)
+            }
         }
     }
 

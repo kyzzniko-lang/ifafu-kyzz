@@ -28,7 +28,9 @@ class MainApplication : Application() {
 
         // 3. 日间/夜间模式
         val prefs = getSharedPreferences("ifafu_user", MODE_PRIVATE)
-        val darkMode = prefs.getInt("dark_mode", AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM)
+        // 首次安装没有保存过主题偏好时固定使用浅色模式，避免跟随系统深色主题
+        // 导致应用第一次启动直接进入黑色 UI；用户手动切换后仍使用已保存的值。
+        val darkMode = prefs.getInt("dark_mode", AppCompatDelegate.MODE_NIGHT_NO)
         AppCompatDelegate.setDefaultNightMode(darkMode)
 
         // 4. 轻量 ANR 监测（主线程阻塞 > 5s 时记录日志）

@@ -44,7 +44,11 @@
     <color name="claude_offline_banner_text">#E8A07A</color>
 
     <color name="claude_ink">#1A1715</color>
+    <color name="claude_ink_ripple">#33E8A07A</color>
     <color name="claude_ink_disabled">#605A52</color>
+
+    <color name="claude_shimmer_base">#3A3632</color>
+    <color name="claude_shimmer_highlight">#4A4540</color>
 
     <color name="login_page_bg">#1F1E1D</color>
     <color name="login_page_accent">#10E8A07A</color>

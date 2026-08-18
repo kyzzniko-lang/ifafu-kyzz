@@ -12,6 +12,8 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import javax.inject.Inject
 
 @HiltViewModel
@@ -58,10 +60,9 @@ class LoginViewModel @Inject constructor(
                 }
                 loginChallenge = challenge
                 _captchaBitmap.value = challenge.bitmap
-                autoCaptcha = if (zfVerify.initialized) {
+                autoCaptcha = withContext(Dispatchers.Default) {
+                    // 识别含数万次 BigDecimal 运算（首次还会懒加载权重文件），必须在后台线程
                     zfVerify.recognize(challenge.bitmap)
-                } else {
-                    ""
                 }
                 // 如果有等待显示的错误消息（登录失败后刷新验证码），重新显示错误
                 val errorMsg = pendingErrorMessage
@@ -169,7 +170,9 @@ class LoginViewModel @Inject constructor(
                 val challenge = userApi.prepareLogin(userRepository.host) ?: return@repeat
                 loginChallenge = challenge
                 _captchaBitmap.postValue(challenge.bitmap)
-                val recognized = if (zfVerify.initialized) zfVerify.recognize(challenge.bitmap).trim() else ""
+                val recognized = withContext(Dispatchers.Default) {
+                    zfVerify.recognize(challenge.bitmap).trim()
+                }
                 if (recognized.isNotBlank()) {
                     autoCaptcha = recognized
                     return recognized

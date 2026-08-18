@@ -161,7 +161,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
             set(java.util.Calendar.HOUR_OF_DAY, 12); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0)
             if (timeInMillis <= System.currentTimeMillis()) add(java.util.Calendar.DAY_OF_YEAR, 1)
         }
-        am.setRepeating(android.app.AlarmManager.RTC_WAKEUP, scoreCal.timeInMillis, android.app.AlarmManager.INTERVAL_DAY, scorePending)
+        try {
+            am.setRepeating(android.app.AlarmManager.RTC_WAKEUP, scoreCal.timeInMillis, android.app.AlarmManager.INTERVAL_DAY, scorePending)
+        } catch (_: SecurityException) {
+            // 部分厂商 ROM 禁止应用调度闹钟时 setRepeating 也可能抛 SecurityException
+            am.setWindow(android.app.AlarmManager.RTC_WAKEUP, scoreCal.timeInMillis, android.app.AlarmManager.INTERVAL_HOUR, scorePending)
+        } catch (_: Exception) {
+        }
     }
 
     override fun onResume() {

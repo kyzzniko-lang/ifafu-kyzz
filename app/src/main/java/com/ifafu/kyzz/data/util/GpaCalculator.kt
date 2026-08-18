@@ -13,12 +13,21 @@ import com.ifafu.kyzz.data.model.Score
 object GpaCalculator {
 
     /**
-     * 计算学分加权 GPA。调用方应先过滤出有效成绩（score>0 且 studyScore>0）。
+     * 过滤有效成绩：解析器用负数哨兵标记免修(-1)/缺考(-2)/未知(-2)课程，
+     * 学分为 0 的课也不参与统计。此前依赖调用方自觉过滤，成绩单等页面漏过滤
+     * 会导致平均分/绩点被拉成负数，这里统一强制执行。
+     */
+    private fun valid(scores: List<Score>): List<Score> =
+        scores.filter { it.score > 0f && it.studyScore > 0f }
+
+    /**
+     * 计算学分加权 GPA。
      *
      * - 若存在 scorePoint>0 的课：用这些课的 scorePoint*学分 之和 / 这些课的学分之和。
      * - 否则（纯百分制成绩）：用 (百分制加权平均 / 25) 近似 GPA。
      */
     fun computeGpa(scores: List<Score>): Float {
+        val scores = valid(scores)
         if (scores.isEmpty()) return 0f
         val withPoint = scores.filter { it.scorePoint > 0f && it.studyScore > 0f }
         return if (withPoint.isNotEmpty()) {
@@ -32,8 +41,9 @@ object GpaCalculator {
         }
     }
 
-    /** 学分加权平均分。调用方应先过滤出有效成绩。 */
+    /** 学分加权平均分。 */
     fun computeWeightedAvg(scores: List<Score>): Float {
+        val scores = valid(scores)
         if (scores.isEmpty()) return 0f
         val credits = scores.sumOf { it.studyScore.toDouble() }.toFloat()
         if (credits <= 0) return 0f
@@ -41,8 +51,9 @@ object GpaCalculator {
         return weightedSum / credits
     }
 
-    /** 算术平均分（不按学分加权）。调用方应先过滤出有效成绩。 */
+    /** 算术平均分（不按学分加权）。 */
     fun computeAvgScore(scores: List<Score>): Float {
+        val scores = valid(scores)
         if (scores.isEmpty()) return 0f
         return scores.map { it.score }.average().toFloat()
     }

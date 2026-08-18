@@ -56,7 +56,9 @@ class PetViewModel @Inject constructor(
 
     private var lastGradeAdvice: String? = null
     private var lastBubbleTime = 0L
+    private var lastExamRemindKey: String? = null
     private val petMutex = Mutex()
+    private var bubbleHideJob: kotlinx.coroutines.Job? = null
 
     // 后台暂停控制：App 切到后台时停止每分钟 tick + 写盘，避免无谓耗电与磁盘 IO
     @Volatile private var backgroundPaused = false
@@ -93,6 +95,19 @@ class PetViewModel @Inject constructor(
         if (backgroundPaused) {
             backgroundPaused = false
             updateState()
+        }
+    }
+
+    /**
+     * 显示气泡并自动隐藏。新气泡会取消上一个未完成的隐藏任务，
+     * 避免多个 delay 定时器互相竞争把后显示的气泡提前清掉。
+     */
+    fun showBubble(text: String, autoHideMs: Long) {
+        bubbleHideJob?.cancel()
+        _bubbleText.value = text
+        bubbleHideJob = viewModelScope.launch {
+            delay(autoHideMs)
+            _bubbleText.value = null
         }
     }
 
@@ -172,14 +187,11 @@ class PetViewModel @Inject constructor(
                 pet.mood = (pet.mood + 3).coerceAtMost(100)
                 val leveled = pet.addExp(2)
                 val dialogue = getRandomDialogue(pet)
-                _bubbleText.value = dialogue
+                showBubble(dialogue, 3000L)
                 if (leveled) { _showLevelUp.value = pet.level }
                 _pet.value = pet
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
             }
-            // 3秒后隐藏气泡（在 Mutex 外，不阻塞其他交互）
-            delay(3000)
-            _bubbleText.value = null
         }
     }
 
@@ -403,32 +415,22 @@ class PetViewModel @Inject constructor(
     fun feed() {
         launchSafe {
             var fed = false
-            var cooldownMessageShown = false
             petMutex.withLock {
                 val pet = _pet.value ?: return@withLock
                 if (!pet.canFeed()) {
                     val mins = (pet.nextFeedRecoverIn() / 60_000).toInt()
-                    _bubbleText.value = "肚子还饱着呢~ ${mins}分钟后再喂我吧，你以为我是饭桶吗？"
-                    cooldownMessageShown = true
+                    showBubble("肚子还饱着呢~ ${mins}分钟后再喂我吧，你以为我是饭桶吗？", 2000L)
                     return@withLock
                 }
                 pet.feed()
                 pet.lastInteractTime = System.currentTimeMillis()
                 pet.state = PetState.EATING
-                _bubbleText.value = getFeedResponse()
+                showBubble(getFeedResponse(), 3000L)
                 _pet.value = pet
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
                 fed = true
             }
-            if (!fed) {
-                if (cooldownMessageShown) {
-                    delay(2000)
-                    _bubbleText.value = null
-                }
-                return@launchSafe
-            }
-            delay(3000)
-            _bubbleText.value = null
+            if (!fed) return@launchSafe
             petMutex.withLock {
                 val current = _pet.value ?: return@withLock
                 updatePetState(current)
@@ -497,32 +499,22 @@ class PetViewModel @Inject constructor(
     fun play() {
         launchSafe {
             var played = false
-            var cooldownMessageShown = false
             petMutex.withLock {
                 val pet = _pet.value ?: return@withLock
                 if (!pet.canPlay()) {
                     val mins = (pet.nextPlayRecoverIn() / 60_000).toInt()
-                    _bubbleText.value = "我有点累了~ ${mins}分钟后再陪我玩吧，你以为我是永动机吗？"
-                    cooldownMessageShown = true
+                    showBubble("我有点累了~ ${mins}分钟后再陪我玩吧，你以为我是永动机吗？", 2000L)
                     return@withLock
                 }
                 pet.play()
                 pet.lastInteractTime = System.currentTimeMillis()
                 pet.state = PetState.HAPPY
-                _bubbleText.value = getPlayResponse()
+                showBubble(getPlayResponse(), 3000L)
                 _pet.value = pet
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
                 played = true
             }
-            if (!played) {
-                if (cooldownMessageShown) {
-                    delay(2000)
-                    _bubbleText.value = null
-                }
-                return@launchSafe
-            }
-            delay(3000)
-            _bubbleText.value = null
+            if (!played) return@launchSafe
             petMutex.withLock {
                 val current = _pet.value ?: return@withLock
                 updatePetState(current)
@@ -640,18 +632,21 @@ class PetViewModel @Inject constructor(
                     ).random()
                 }
                 lastGradeAdvice = advice
-                _bubbleText.value = advice
+                showBubble(advice, 5000L)
                 _pet.value = pet
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
             }
-            delay(5000)
-            _bubbleText.value = null
         }
     }
 
     fun onExamComing(courseName: String, daysLeft: Int) {
         launchSafe {
             petMutex.withLock {
+                // 同一场考试同一剩余天数只提醒一次：HomeFragment 每次下拉/自动刷新
+                // 都会重发 nextExam（LiveData 不去重），不节流会反复弹气泡并覆盖宠物状态。
+                val remindKey = "$courseName#$daysLeft"
+                if (remindKey == lastExamRemindKey) return@withLock
+                lastExamRemindKey = remindKey
                 val pet = _pet.value ?: return@withLock
                 pet.state = PetState.EXAM_REMIND
                 val isCrab = pet.petType == "crab"
@@ -715,12 +710,10 @@ class PetViewModel @Inject constructor(
                     ).random()
                     else -> return@withLock
                 }
-                _bubbleText.value = msg
+                showBubble(msg, 5000L)
                 _pet.value = pet
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
             }
-            delay(5000)
-            _bubbleText.value = null
         }
     }
 
@@ -929,11 +922,7 @@ class PetViewModel @Inject constructor(
         }
 
         lastBubbleTime = now
-        _bubbleText.value = messages.random()
-        launchSafe {
-            delay(4000)
-            _bubbleText.value = null
-        }
+        showBubble(messages.random(), 4000L)
     }
 
     fun getChatGreeting(todayCourseCount: Int, nextExamName: String?): String {
@@ -972,19 +961,17 @@ class PetViewModel @Inject constructor(
                 when (newStatus) {
                     1 -> {
                         pet.mood = (pet.mood + 3).coerceAtMost(100)
-                        _bubbleText.value = "${examName}开始复习了，加油${if (pet.petType in listOf("crab", "cloudling")) "！" else "喵~"}"
+                        showBubble("${examName}开始复习了，加油${if (pet.petType in listOf("crab", "cloudling")) "！" else "喵~"}", 3000L)
                     }
                     2 -> {
                         pet.mood = (pet.mood + 10).coerceAtMost(100)
                         pet.state = PetState.HAPPY
-                        _bubbleText.value = "太棒了，${examName}搞定了！"
+                        showBubble("太棒了，${examName}搞定了！", 3000L)
                     }
                 }
                 _pet.value = pet
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
             }
-            delay(3000)
-            _bubbleText.value = null
         }
     }
 }

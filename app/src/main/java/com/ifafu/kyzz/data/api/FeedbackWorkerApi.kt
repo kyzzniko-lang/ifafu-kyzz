@@ -2,6 +2,7 @@ package com.ifafu.kyzz.data.api
 
 import android.util.Log
 import com.google.gson.Gson
+import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import okhttp3.MediaType.Companion.toMediaType
@@ -27,6 +28,8 @@ class FeedbackWorkerApi @Inject constructor(
     private val gson = Gson()
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+    fun get(path: String): JsonObject? = execute("GET", path, null)
+
     fun post(path: String, payload: Any): JsonObject? = execute("POST", path, payload)
 
     fun put(path: String, payload: Any): JsonObject? = execute("PUT", path, payload)
@@ -34,9 +37,9 @@ class FeedbackWorkerApi @Inject constructor(
     fun delete(path: String, payload: Any): Boolean = execute("DELETE", path, payload)
         ?.get("ok")?.asBoolean == true
 
-    private fun execute(method: String, path: String, payload: Any): JsonObject? {
+    private fun execute(method: String, path: String, payload: Any?): JsonObject? {
         return try {
-            val body = gson.toJson(payload).toRequestBody(jsonMediaType)
+            val body = payload?.let { gson.toJson(it).toRequestBody(jsonMediaType) }
             val request = Request.Builder()
                 .url("$BASE_URL/${path.trimStart('/')}")
                 .header("Accept", "application/json")

@@ -129,7 +129,10 @@ class SyllabusParser @Inject constructor(
                     val weekDay = colIndex + 1
                     val rowspan = cell.attr("rowspan").toIntOrNull() ?: 1
                     if (rowspan > 1) {
-                        rowspanOccupied[colIndex] = rowspan - 1
+                        // 计数器在每行开头统一减 1，因此这里必须存完整 rowspan：
+                        // 若存 rowspan-1，下一行开头的减法会立即清零，rowspan=2 的课
+                        // 实际上一行也不占用，导致下方课程整体左移一天。
+                        rowspanOccupied[colIndex] = rowspan
                     }
                     colIndex++
 
@@ -240,7 +243,8 @@ class SyllabusParser @Inject constructor(
                 }
             }
 
-            val examRegex = Regex("(\\d{4})年(\\d{2})月(\\d{2})日\\((.*?)\\)")
+            // 月/日允许不补零（如"2026年1月8日"），否则考试信息解析失败、考试倒计时漏课
+            val examRegex = Regex("(\\d{4})年(\\d{1,2})月(\\d{1,2})日\\((.*?)\\)")
             for (part in parts) {
                 val examMatch = examRegex.find(part)
                 if (examMatch != null) {
@@ -294,12 +298,30 @@ class SyllabusParser @Inject constructor(
             val course = Course()
             course.account = account
             course.name = match.groupValues[5].trim()
-            course.teacher = match.groupValues[9].trim()
-            course.address = match.groupValues[11].trim()
+            // 单元格段落顺序与 jsoup 路径一致：课程名<br>时间<br>教师<br>教室<br>[考试信息]。
+            // 分组编号：g5=名称 g6=时间 g7=教师 g8=教室，g9~g14 是可选的考试时间块
+            // （g9=整块、g11=年、g12=月、g13=日+节次、g14=考场）。
+            // 旧代码误用 g9/g11（考试块/年份数字）且把教师段当时间解析，
+            // 导致回退路径解析不出任何课程。
+            if (parseCourseTime(course, match.groupValues[6])) {
+                course.teacher = match.groupValues[7].trim()
+                course.address = match.groupValues[8].trim()
+            } else if (parseCourseTime(course, match.groupValues[7])) {
+                // 个别学校顺序为：课程名<br>教师<br>时间<br>教室
+                course.teacher = match.groupValues[6].trim()
+                course.address = match.groupValues[8].trim()
+            } else {
+                return@forEach
+            }
+            val examMatch = Regex("(\\d{4})年(\\d{1,2})月(\\d{1,2})日\\((.*?)\\)").find(match.groupValues[9])
+            if (examMatch != null) {
+                course.examDate = "${examMatch.groupValues[1]}-${examMatch.groupValues[2]}-${examMatch.groupValues[3]}"
+                course.examTime = examMatch.groupValues[4]
+                course.examAddress = match.groupValues[14].trim()
+            }
             if (syllabus.campus == 0 && course.address.contains("旗教")) {
                 syllabus.campus = 1
             }
-            parseCourseTime(course, match.groupValues[7])
             if (course.name.isNotEmpty() && course.weekDay > 0) {
                 courses.add(course)
             }
@@ -335,7 +357,7 @@ class SyllabusParser @Inject constructor(
         course.begin = match.groupValues[3].toIntOrNull() ?: 1
         val extraSections = match.groupValues[4]
         if (extraSections.isNotEmpty()) {
-            val allNums = Regex("\\d+").findAll(extraSections).map { it.value.toInt() }.toList()
+            val allNums = Regex("\\d+").findAll(extraSections).mapNotNull { it.value.toIntOrNull() }.toList()
             course.end = allNums.maxOrNull() ?: course.begin
         } else {
             course.end = course.begin

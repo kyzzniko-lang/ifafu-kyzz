@@ -40,9 +40,9 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical"
-                android:paddingHorizontal="20dp"
-                android:paddingTop="32dp"
-                android:paddingBottom="100dp">
+                android:paddingHorizontal="@dimen/home_page_padding"
+                android:paddingTop="@dimen/home_content_top_padding"
+                android:paddingBottom="@dimen/home_content_bottom_padding">
 
                 <!-- Hidden legacy header anchors (kept for code compatibility) -->
                 <FrameLayout
@@ -173,7 +173,7 @@
                 <!-- Hairline divider -->
                 <View
                     android:layout_width="match_parent"
-                    android:layout_height="1px"
+                    android:layout_height="1dp"
                     android:layout_marginTop="36dp"
                     android:background="@color/claude_divider" />
 
@@ -363,8 +363,9 @@
 
                     <com.airbnb.lottie.LottieAnimationView
                         android:id="@+id/emptyLottie"
-                        android:layout_width="0dp"
-                        android:layout_height="0dp"
+                        android:layout_width="88dp"
+                        android:layout_height="88dp"
+                        android:layout_marginBottom="12dp"
                         android:visibility="gone" />
 
                     <TextView
@@ -394,7 +395,7 @@
                 <View
                     android:id="@+id/dividerBeforeExams"
                     android:layout_width="match_parent"
-                    android:layout_height="1px"
+                    android:layout_height="1dp"
                     android:layout_marginTop="32dp"
                     android:background="@color/claude_divider" />
 
@@ -535,7 +536,7 @@
                 <!-- Hairline divider before shortcuts -->
                 <View
                     android:layout_width="match_parent"
-                    android:layout_height="1px"
+                    android:layout_height="1dp"
                     android:layout_marginTop="32dp"
                     android:background="@color/claude_divider" />
 
@@ -561,63 +562,61 @@
                     android:orientation="vertical">
 
                     <LinearLayout
-                        android:id="@+id/gridSyllabus"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:background="?attr/selectableItemBackground"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:paddingVertical="18dp">
-
-                        <TextView
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:fontFamily="@font/claude_serif"
-                            android:text="@string/nav_grid_syllabus"
-                            android:textColor="@color/claude_text_primary"
-                            android:textSize="16sp" />
-
-                        <ImageView
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:alpha="0.4"
-                            android:src="@drawable/ic_chevron_right"
-                            app:tint="@color/claude_text_tertiary" />
-
-                    </LinearLayout>
-
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1px"
-                        android:background="@color/claude_divider" />
-
-                    <LinearLayout
                         android:id="@+id/gridElective"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
+                        android:layout_height="@dimen/home_shortcut_min_height"
                         android:background="?attr/selectableItemBackground"
                         android:clickable="true"
                         android:focusable="true"
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
-                        android:paddingVertical="18dp">
+                        android:paddingHorizontal="4dp">
 
-                        <TextView
+                        <FrameLayout
+                            android:layout_width="@dimen/home_icon_container_size"
+                            android:layout_height="@dimen/home_icon_container_size"
+                            android:background="@drawable/bg_info_chip"
+                            android:foregroundGravity="center">
+
+                            <ImageView
+                                android:layout_width="@dimen/home_icon_size"
+                                android:layout_height="@dimen/home_icon_size"
+                                android:layout_gravity="center"
+                                android:contentDescription="@string/nav_elective"
+                                android:src="@drawable/ic_elective"
+                                app:tint="@color/claude_terracotta" />
+                        </FrameLayout>
+
+                        <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
                             android:layout_weight="1"
-                            android:fontFamily="@font/claude_serif"
-                            android:text="@string/nav_elective"
-                            android:textColor="@color/claude_text_primary"
-                            android:textSize="16sp" />
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/claude_serif"
+                                android:text="@string/nav_elective"
+                                android:textColor="@color/claude_text_primary"
+                                android:textSize="16sp" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="sans-serif"
+                                android:text="选课与课程查询"
+                                android:textColor="@color/claude_text_tertiary"
+                                android:textSize="12sp" />
+                        </LinearLayout>
 
                         <ImageView
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:alpha="0.4"
+                            android:layout_width="@dimen/home_small_icon_size"
+                            android:layout_height="@dimen/home_small_icon_size"
+                            android:alpha="0.7"
+                            android:contentDescription="null"
                             android:src="@drawable/ic_chevron_right"
                             app:tint="@color/claude_text_tertiary" />
 
@@ -625,33 +624,65 @@
 
                     <View
                         android:layout_width="match_parent"
-                        android:layout_height="1px"
+                        android:layout_height="1dp"
                         android:background="@color/claude_divider" />
 
                     <LinearLayout
                         android:id="@+id/gridToolbox"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
+                        android:layout_height="@dimen/home_shortcut_min_height"
                         android:background="?attr/selectableItemBackground"
                         android:clickable="true"
                         android:focusable="true"
                         android:gravity="center_vertical"
                         android:orientation="horizontal"
-                        android:paddingVertical="18dp">
+                        android:paddingHorizontal="4dp">
 
-                        <TextView
+                        <FrameLayout
+                            android:layout_width="@dimen/home_icon_container_size"
+                            android:layout_height="@dimen/home_icon_container_size"
+                            android:background="@drawable/bg_info_chip"
+                            android:foregroundGravity="center">
+
+                            <ImageView
+                                android:layout_width="@dimen/home_icon_size"
+                                android:layout_height="@dimen/home_icon_size"
+                                android:layout_gravity="center"
+                                android:contentDescription="KYZZ 工具箱"
+                                android:src="@drawable/ic_toolbox"
+                                app:tint="@color/claude_terracotta" />
+                        </FrameLayout>
+
+                        <LinearLayout
                             android:layout_width="0dp"
                             android:layout_height="wrap_content"
+                            android:layout_marginStart="14dp"
                             android:layout_weight="1"
-                            android:fontFamily="@font/claude_serif"
-                            android:text="KYZZ 工具箱"
-                            android:textColor="@color/claude_text_primary"
-                            android:textSize="16sp" />
+                            android:orientation="vertical">
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:fontFamily="@font/claude_serif"
+                                android:text="KYZZ 工具箱"
+                                android:textColor="@color/claude_text_primary"
+                                android:textSize="16sp" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="2dp"
+                                android:fontFamily="sans-serif"
+                                android:text="实用工具与校园服务"
+                                android:textColor="@color/claude_text_tertiary"
+                                android:textSize="12sp" />
+                        </LinearLayout>
 
                         <ImageView
-                            android:layout_width="16dp"
-                            android:layout_height="16dp"
-                            android:alpha="0.4"
+                            android:layout_width="@dimen/home_small_icon_size"
+                            android:layout_height="@dimen/home_small_icon_size"
+                            android:alpha="0.7"
+                            android:contentDescription="null"
                             android:src="@drawable/ic_chevron_right"
                             app:tint="@color/claude_text_tertiary" />
 

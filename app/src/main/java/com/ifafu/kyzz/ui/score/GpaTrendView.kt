@@ -81,7 +81,9 @@ class GpaTrendView @JvmOverloads constructor(
         val chartH = height - padTop - padBottom
 
         val minVal = (points.minOf { it.value } - 0.2f).coerceAtLeast(0f)
-        val maxVal = (points.maxOf { it.value } + 0.2f).coerceAtMost(4.5f)
+        // GPA 是 5 分制（与 GpaCalculator/GpaRingView 一致），仍按 4.5 截断会把
+        // 高于 4.5 的点画到图表顶部之外。
+        val maxVal = (points.maxOf { it.value } + 0.2f).coerceAtMost(5f)
         val range = (maxVal - minVal).coerceAtLeast(0.01f)
 
         for (i in 0..4) {

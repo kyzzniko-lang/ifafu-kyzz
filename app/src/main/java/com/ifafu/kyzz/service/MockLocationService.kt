@@ -77,18 +77,20 @@ class MockLocationService : Service() {
     private var overlay: MockLocationOverlay? = null
 
     // Trajectory mode state
-    private var isTrajectoryMode = false
-    private var trajectoryWaypoints: List<LatLng> = emptyList()
-    private var trajectorySpeed: Double = 1.2
+    // 这些字段在主线程(onStartCommand)、binder 线程与定位后台线程间共享，
+    // 必须加 @Volatile 保证可见性（否则后台线程可能一直读到旧值）。
+    @Volatile private var isTrajectoryMode = false
+    @Volatile private var trajectoryWaypoints: List<LatLng> = emptyList()
+    @Volatile private var trajectorySpeed: Double = 1.2
     private var elapsedTrajectoryTime = 0.0
-    private var totalTrajectoryDistance = 0.0
-    private var currentWaypointIndex = 0
-    private var isLoopMode = false
-    private var loopCloseDistance = 0.0
-    private var trajectoryTargetLaps = 0
-    private var completedLaps = 0
-    private var cumulativeTrajectoryDistance = 0.0
-    private var currentActualSpeed = 0.0
+    @Volatile private var totalTrajectoryDistance = 0.0
+    @Volatile private var currentWaypointIndex = 0
+    @Volatile private var isLoopMode = false
+    @Volatile private var loopCloseDistance = 0.0
+    @Volatile private var trajectoryTargetLaps = 0
+    @Volatile private var completedLaps = 0
+    @Volatile private var cumulativeTrajectoryDistance = 0.0
+    @Volatile private var currentActualSpeed = 0.0
 
     // Realism: drift noise, bearing, accuracy jitter
     private val random = Random()
@@ -263,6 +265,11 @@ class MockLocationService : Service() {
                     longitude = first.lng
                     currentWaypointIndex = 0
                     isLoopMode = false
+                    // 必须同时退出轨迹模式：否则下一个 tick 会用已超出总里程的
+                    // cumulativeTrajectoryDistance 走非循环分支，位置从起点瞬间
+                    // 跳到终点航点（距离突变更会被运动 App 判为作弊）。
+                    isTrajectoryMode = false
+                    currentActualSpeed = 0.0
                     updateCoordsDisplay()
                     return
                 }
@@ -292,6 +299,8 @@ class MockLocationService : Service() {
             val p0 = trajectoryWaypoints[i]
             val p1 = trajectoryWaypoints[i + 1]
             val segDist = haversineDistance(p0, p1)
+            // 跳过重复的相邻航点：距离为 0 时做除法会产生 NaN 坐标并注入 mock location。
+            if (segDist <= 0.0) continue
             if (distance <= accumulated + segDist + 1e-10) {
                 val segProgress = ((distance - accumulated) / segDist).coerceIn(0.0, 1.0)
                 currentWaypointIndex = i
@@ -450,9 +459,18 @@ class MockLocationService : Service() {
     /** Bearing from the current trajectory segment, with ±60° smooth noise. */
     private fun calculateTrajectoryBearing(): Float {
         if (trajectoryWaypoints.size < 2) return currentBearing
-        val idx = currentWaypointIndex.coerceIn(0, trajectoryWaypoints.size - 2)
-        val p0 = trajectoryWaypoints[idx]
-        val p1 = trajectoryWaypoints[idx + 1]
+        // 环线闭合段（last→first）时 currentWaypointIndex = size-1，此时若被
+        // coerce 到倒数第二段，朝向会整段指错方向（如闭合段向西却报向南）。
+        val p0: LatLng
+        val p1: LatLng
+        if (isLoopMode && currentWaypointIndex >= trajectoryWaypoints.size - 1) {
+            p0 = trajectoryWaypoints.last()
+            p1 = trajectoryWaypoints.first()
+        } else {
+            val idx = currentWaypointIndex.coerceIn(0, trajectoryWaypoints.size - 2)
+            p0 = trajectoryWaypoints[idx]
+            p1 = trajectoryWaypoints[idx + 1]
+        }
 
         val dLng = Math.toRadians(p1.lng - p0.lng)
         val y = sin(dLng) * cos(Math.toRadians(p1.lat))
@@ -548,7 +566,12 @@ class MockLocationService : Service() {
 
     private fun showOverlay() {
         try {
-            overlay = MockLocationOverlay(this)
+            // 复用已存在的悬浮窗：onStartCommand 每次启动都会调用（例如先单点后轨迹），
+            // 若每次都 new 一个 MockLocationOverlay，旧实例的视图仍挂在 WindowManager
+            // 上且无法再被 dismiss，停止服务后会残留一个不可关闭的悬浮窗。
+            if (overlay == null) {
+                overlay = MockLocationOverlay(this)
+            }
             overlay?.show(latitude, longitude)
             overlay?.setPositionListener { lat, lng ->
                 latitude = lat
@@ -582,7 +605,14 @@ class MockLocationService : Service() {
         }
     }
 
+    private var lastNotifyTime = 0L
+
     private fun updateNotification(lat: Double, lng: Double) {
+        // 轨迹模式每 100ms 调一次；全量重建通知并 notify 会产生大量 binder 往返
+        // 与耗电，且部分厂商ROM通知栏闪烁。限频到每 3 秒最多一次。
+        val now = android.os.SystemClock.elapsedRealtime()
+        if (now - lastNotifyTime < 3_000L) return
+        lastNotifyTime = now
         try {
             val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             nm.notify(NOTIFICATION_ID, buildNotification(lat, lng))

@@ -21,6 +21,7 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Score
+import com.ifafu.kyzz.data.util.GpaCalculator
 import com.ifafu.kyzz.databinding.ActivityScoreCardBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import java.io.File
@@ -70,8 +71,11 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
 
     private fun setupSummary() {
         val totalCredits = scores.sumOf { it.studyScore.toDouble() }.toFloat()
-        val avgScore = scores.map { it.score.toDouble() }.average().toFloat()
-        val avgGpa = scores.map { it.scorePoint.toDouble() }.average().toFloat()
+        // 与成绩页/首页统一口径：GPA 用 GpaCalculator（学分加权、剔除 0 绩点课），
+        // 平均分用学分加权平均；此前直接对原始 scorePoint 求算术平均，
+        // 同一学期的绩点会和成绩页显示的不一致。
+        val avgScore = GpaCalculator.computeWeightedAvg(scores)
+        val avgGpa = GpaCalculator.computeGpa(scores)
 
         binding.tvTotalCredits.text = "%.1f".format(totalCredits)
         binding.tvAvgScore.text = "%.1f".format(avgScore)
@@ -133,16 +137,17 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
             val name = score.courseName.take(12)
             canvas.drawText(name, padding.toFloat(), y, rowPaint)
             canvas.drawText("%.1f".format(score.studyScore), 420f, y, rowPaint)
-            canvas.drawText("%.1f".format(score.score), 520f, y, rowPaint)
-            canvas.drawText("%.1f".format(score.scorePoint), 620f, y, rowPaint)
+            // 免修/缺考等课程 score 为负数哨兵，展示为 -- 而不是 -1.0/-2.0
+            canvas.drawText(if (score.score > 0) "%.1f".format(score.score) else "--", 520f, y, rowPaint)
+            canvas.drawText(if (score.scorePoint > 0) "%.1f".format(score.scorePoint) else "--", 620f, y, rowPaint)
         }
 
         // Footer
         val footerY = headerRowY + 40 + scores.size * rowHeight + 20f
         canvas.drawLine(padding.toFloat(), footerY, (width - padding).toFloat(), footerY, linePaint)
 
-        val avgScore = scores.map { it.score.toDouble() }.average()
-        val avgGpa = scores.map { it.scorePoint.toDouble() }.average()
+        val avgScore = GpaCalculator.computeWeightedAvg(scores)
+        val avgGpa = GpaCalculator.computeGpa(scores)
         val totalCredits = scores.sumOf { it.studyScore.toDouble() }
 
         val footerPaint = Paint().apply { color = hintColor; textSize = 14f; isAntiAlias = true }
@@ -227,8 +232,8 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
 
             val metaItems = listOf(
                 "%.1f".format(score.studyScore),
-                "%.0f".format(score.score),
-                "%.1f".format(score.scorePoint)
+                if (score.score > 0) "%.0f".format(score.score) else "--",
+                if (score.scorePoint > 0) "%.1f".format(score.scorePoint) else "--"
             )
             metaItems.forEach { text ->
                 holder.row.addView(TextView(this@ScoreCardActivity).apply {

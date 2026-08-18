@@ -41,6 +41,7 @@ class MockLocationOverlay(private val context: Context) {
     private var moveSpeed = 1.2
     private var isMoving = false
     private val moveHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var moveRunnable: Runnable? = null
     private var positionListener: ((Double, Double) -> Unit)? = null
     private var currentLat = 0.0
@@ -87,21 +88,29 @@ class MockLocationOverlay(private val context: Context) {
     fun updateCoords(lat: Double, lng: Double) {
         currentLat = lat
         currentLng = lng
-        tvCoords?.text = "%.5f, %.5f".format(lat, lng)
+        // 该方法会被定位后台线程（MockLocationThread）调用；悬浮窗视图在主线程
+        // addView，跨线程直接 setText 会抛 CalledFromWrongThreadException，
+        // 且异常会被服务线程的空 catch 吞掉，导致后续 setLocationGPS/Network
+        // 全部被跳过——轨迹模式下不再注入任何定位。必须切回主线程更新 UI。
+        mainHandler.post {
+            tvCoords?.text = "%.5f, %.5f".format(lat, lng)
+        }
     }
 
     fun updateTrajectoryProgress(progress: String?, speed: Double, isTrajectory: Boolean, isLoop: Boolean = false, completedLaps: Int = 0, targetLaps: Int = 0) {
-        if (isTrajectory && progress != null) {
-            val text = if (isLoop) {
-                val lapInfo = if (targetLaps > 0) "${completedLaps + 1}/$targetLaps" else "${completedLaps + 1}/∞"
-                "校园跑: $progress  圈: $lapInfo  ${speed} m/s"
-            } else {
-                "路径: $progress  ${speed} m/s"
+        mainHandler.post {
+            if (isTrajectory && progress != null) {
+                val text = if (isLoop) {
+                    val lapInfo = if (targetLaps > 0) "${completedLaps + 1}/$targetLaps" else "${completedLaps + 1}/∞"
+                    "校园跑: $progress  圈: $lapInfo  ${speed} m/s"
+                } else {
+                    "路径: $progress  ${speed} m/s"
+                }
+                tvProgress?.text = text
+                tvProgress?.visibility = View.VISIBLE
+            } else if (!isTrajectory) {
+                tvProgress?.visibility = View.GONE
             }
-            tvProgress?.text = text
-            tvProgress?.visibility = View.VISIBLE
-        } else if (!isTrajectory) {
-            tvProgress?.visibility = View.GONE
         }
     }
 
@@ -330,7 +339,11 @@ class MockLocationOverlay(private val context: Context) {
                 val intent = android.content.Intent(context, MockLocationService::class.java).apply {
                     action = MockLocationService.ACTION_STOP
                 }
-                context.startService(intent)
+                try {
+                    context.startService(intent)
+                } catch (_: Exception) {
+                    // 停止指令与 Service 销毁竞态时可能触发后台启动限制，忽略即可
+                }
             }
         }
         container.addView(btnStop)
@@ -363,8 +376,10 @@ class MockLocationOverlay(private val context: Context) {
 
     private fun startMoving(angle: Double) {
         moveAngle = angle
-        isMoving = true
+        // 先停掉上一次移动，再置为移动中；否则 stopMoving() 会把 isMoving 覆盖回 false，
+        // run() 里的 if (!isMoving) return 会立即退出，方向键永远无法移动。
         stopMoving()
+        isMoving = true
         moveRunnable = object : Runnable {
             override fun run() {
                 if (!isMoving) return

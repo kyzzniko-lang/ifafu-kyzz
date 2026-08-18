@@ -102,6 +102,21 @@ export default {
     }
     if (!env.GITHUB_TOKEN) return json({ ok: false, message: "服务尚未配置" }, 500);
 
+    // GET 请求没有 JSON body，必须在 readJson 之前处理，否则会被误判为请求格式错误。
+    if (request.method === "GET" && url.pathname === "/comments") {
+      const perPage = Math.min(100, Math.max(1, Number(url.searchParams.get("per_page") || 20)));
+      const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+      const result = await github(
+        env,
+        COMMENT_REPO,
+        `issues/1/comments?per_page=${perPage}&page=${page}&sort=created&direction=desc`
+      );
+      if (!result.response.ok || !Array.isArray(result.data)) {
+        return json({ ok: false, message: "评论暂时无法加载" }, 502);
+      }
+      return json({ ok: true, data: result.data.map(publicComment) });
+    }
+
     let input;
     try { input = await readJson(request); }
     catch (error) { return json({ ok: false, message: error.message === "payload_too_large" ? "反馈内容过长" : "请求格式错误" }, 400); }

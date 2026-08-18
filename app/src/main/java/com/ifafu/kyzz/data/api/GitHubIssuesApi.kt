@@ -28,26 +28,22 @@ class GitHubIssuesApi @Inject constructor(
     suspend fun getComments(page: Int = 1, perPage: Int = 20): List<Comment> =
         withContext(Dispatchers.IO) {
             try {
+                // 优先走 Worker（服务端 Token 不受客户端匿名额度限制）；Worker 尚未
+                // 部署或暂时不可用时回退 GitHub 公共接口，避免新版本直接显示空列表。
+                val workerResponse = feedbackWorkerApi.get("/comments?per_page=$perPage&page=$page")
+                val workerItems = workerResponse?.getAsJsonArray("data")
+                if (workerItems != null) {
+                    return@withContext parsePublicComments(workerItems)
+                }
+
                 val url = "$BASE/issues/$COMMENTS_ISSUE/comments?per_page=$perPage&page=$page&sort=created&direction=desc"
-                val request = publicGet(url)
-                client.newCall(request).execute().use { response ->
+                client.newCall(publicGet(url)).execute().use { response ->
                     val body = response.body?.string() ?: return@withContext emptyList()
-                    if (!response.isSuccessful) return@withContext emptyList()
-                    JsonParser.parseString(body).asJsonArray.mapNotNull { element ->
-                        runCatching {
-                            val obj = element.asJsonObject
-                            val data = JsonParser.parseString(obj.get("body").asString).asJsonObject
-                            Comment(
-                                objectId = obj.get("id")?.asString.orEmpty(),
-                                content = data.get("content")?.asString.orEmpty(),
-                                nickname = data.get("nickname")?.asString.orEmpty(),
-                                authorId = data.get("authorId")?.asString.orEmpty(),
-                                createdAt = obj.get("created_at")?.asString.orEmpty(),
-                                tag = data.get("tag")?.asString.orEmpty(),
-                                likes = data.getAsJsonArray("likes")?.map { it.asString }.orEmpty()
-                            )
-                        }.getOrNull()
+                    if (!response.isSuccessful) {
+                        Log.w(TAG, "GitHub comments failed: HTTP ${response.code}")
+                        return@withContext emptyList()
                     }
+                    parseGithubComments(JsonParser.parseString(body).asJsonArray)
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -55,6 +51,39 @@ class GitHubIssuesApi @Inject constructor(
                 Log.e(TAG, "getComments error", e)
                 emptyList()
             }
+        }
+
+    private fun parsePublicComments(items: com.google.gson.JsonArray): List<Comment> =
+        items.mapNotNull { element ->
+            runCatching {
+                val obj = element.asJsonObject
+                Comment(
+                    objectId = obj.get("id")?.asString.orEmpty(),
+                    content = obj.get("content")?.asString ?: obj.get("text")?.asString.orEmpty(),
+                    nickname = obj.get("nickname")?.asString.orEmpty().ifBlank { "匿名用户" },
+                    authorId = obj.get("authorId")?.asString.orEmpty(),
+                    createdAt = obj.get("createdAt")?.asString.orEmpty(),
+                    tag = obj.get("tag")?.asString.orEmpty(),
+                    likes = obj.getAsJsonArray("likes")?.map { it.asString }.orEmpty()
+                ).takeIf { it.content.isNotBlank() }
+            }.getOrNull()
+        }
+
+    private fun parseGithubComments(items: com.google.gson.JsonArray): List<Comment> =
+        items.mapNotNull { element ->
+            runCatching {
+                val obj = element.asJsonObject
+                val data = JsonParser.parseString(obj.get("body")?.asString.orEmpty()).asJsonObject
+                Comment(
+                    objectId = obj.get("id")?.asString.orEmpty(),
+                    content = data.get("content")?.asString ?: data.get("text")?.asString.orEmpty(),
+                    nickname = data.get("nickname")?.asString.orEmpty().ifBlank { "匿名用户" },
+                    authorId = data.get("authorId")?.asString.orEmpty(),
+                    createdAt = obj.get("created_at")?.asString.orEmpty(),
+                    tag = data.get("tag")?.asString.orEmpty(),
+                    likes = data.getAsJsonArray("likes")?.map { it.asString }.orEmpty()
+                ).takeIf { it.content.isNotBlank() }
+            }.getOrNull()
         }
 
     suspend fun postComment(

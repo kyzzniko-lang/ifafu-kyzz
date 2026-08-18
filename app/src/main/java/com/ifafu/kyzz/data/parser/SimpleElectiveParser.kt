@@ -18,6 +18,17 @@ class SimpleElectiveParser @Inject constructor() {
         val fullHtml = doc.html()
         var section = 0 // 0 = available, 1 = selected
 
+        // 计算"已选"标记在文档中的位置（常量，避免在每个表格内重复查找）。
+        val selectedPos1 = fullHtml.indexOf("已选课程")
+        val selectedPos2 = fullHtml.indexOf("已选列表")
+        val markerPos = when {
+            selectedPos1 >= 0 && selectedPos2 >= 0 -> minOf(selectedPos1, selectedPos2)
+            selectedPos1 >= 0 -> selectedPos1
+            selectedPos2 >= 0 -> selectedPos2
+            else -> -1
+        }
+        var searchStart = 0
+
         for (table in tables) {
             val rows = table.select("tr")
             if (rows.isEmpty()) continue
@@ -28,25 +39,24 @@ class SimpleElectiveParser @Inject constructor() {
 
             if (headerTexts.none { it.contains("课程") || it.contains("项目") }) continue
 
-            // Check if "已选" marker appears before this table in document order
-            if (section == 0) {
+            // Check if "已选" marker appears before this table in document order。
+            // 旧实现用 tableHtml.take(80) 定位，多个表格的前 80 字符相同会命中第一个表格，
+            // 导致"已选课程"分段判定错位；改为用完整 outerHtml + searchStart 追踪真实位置。
+            if (section == 0 && markerPos >= 0) {
                 val tableHtml = table.outerHtml()
-                val tablePos = fullHtml.indexOf(tableHtml.take(80))
-                val marker1 = fullHtml.indexOf("已选课程")
-                val marker2 = fullHtml.indexOf("已选列表")
-                val markerPos = when {
-                    marker1 >= 0 && marker2 >= 0 -> minOf(marker1, marker2)
-                    marker1 >= 0 -> marker1
-                    marker2 >= 0 -> marker2
-                    else -> -1
-                }
-                if (markerPos in 0 until tablePos) {
-                    section = 1
+                val tablePos = fullHtml.indexOf(tableHtml, searchStart)
+                if (tablePos >= 0) {
+                    searchStart = tablePos + 1
+                    if (markerPos < tablePos) {
+                        section = 1
+                    }
                 }
             }
 
             val hasSelect = headerTexts.any { it.contains("选定") || it.contains("选课") }
-            val colMap = buildColumnMap(headerTexts)
+            // 有复选框列时数据单元格从第 2 列开始（offset=1），表头也必须同步去掉
+            // 复选框列，否则 name/teacher/credits 等全部读到右侧相邻列的值。
+            val colMap = buildColumnMap(if (hasSelect) headerTexts.drop(1) else headerTexts)
 
             for (i in 1 until rows.size) {
                 val cells = rows[i].select("td")

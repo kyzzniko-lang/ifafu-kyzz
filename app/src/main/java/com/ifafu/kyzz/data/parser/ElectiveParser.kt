@@ -255,13 +255,21 @@ class ElectiveParser @Inject constructor(
         options.clear()
         val startIdx = html.indexOf(startTag)
         if (startIdx < 0) return
-        val endIdx = if (endTag != null) html.indexOf(endTag) else html.length
-        if (endIdx < 0 || endIdx < startIdx) return
+        // endTag 必须从 startIdx 之后开始找：标签文本（如"上课时间："）可能
+        // 在页面上方出现过一次，从 0 开始搜会得到 endIdx < startIdx 而误判失败。
+        val endIdx = if (endTag != null) html.indexOf(endTag, startIdx + startTag.length) else html.length
+        if (endIdx < 0) return
 
-        val pattern = Regex("""<option( selected="selected")? value="([^"]*)">""")
-        pattern.findAll(html.substring(startIdx, endIdx)).forEach { match ->
-            options.add(match.groupValues[2])
-            if (match.groupValues[1].isNotEmpty()) {
+        // 兼容 <option selected value="x"> / <option value="x" selected> 等任意属性顺序
+        // （先匹配整个标签再提取 value / selected），否则这些选项会整条丢失，筛选项列表残缺。
+        val tagPattern = Regex("""<option\b([^>]*)>""")
+        val valuePattern = Regex("""value\s*=\s*"([^"]*)"""")
+        val selectedPattern = Regex("""\bselected\b""", RegexOption.IGNORE_CASE)
+        tagPattern.findAll(html.substring(startIdx, endIdx)).forEach { match ->
+            val attrs = match.groupValues[1]
+            val value = valuePattern.find(attrs)?.groupValues?.get(1) ?: return@forEach
+            options.add(value)
+            if (selectedPattern.containsMatchIn(attrs)) {
                 setIndex(options.size - 1)
             }
         }

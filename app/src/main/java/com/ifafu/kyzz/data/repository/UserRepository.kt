@@ -168,6 +168,9 @@ class UserRepository @Inject constructor(
         }
     }
 
+    // 与 saveAccountProfileInternal 一样做"读-改-写"，必须同步：
+    // 否则与后台自动重登的保存交错时，刚删除的账号可能被 resurrect。
+    @Synchronized
     fun removeAccount(account: String) {
         val profiles = getAccountProfiles().toMutableList()
         profiles.removeAll { it.account == account }

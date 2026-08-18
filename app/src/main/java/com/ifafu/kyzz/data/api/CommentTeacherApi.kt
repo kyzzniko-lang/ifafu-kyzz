@@ -618,7 +618,7 @@ class CommentTeacherApi @Inject constructor(
             is EvalMode.SemiAuto -> {
                 val minIdx = mode.min.ordinal
                 val maxIdx = mode.max.ordinal
-                val range = maxIdx - minIdx + 1
+                val range = (maxIdx - minIdx + 1).coerceAtLeast(1)
                 ScoreLevel.fromIndex(minIdx + random.nextInt(range))
             }
             is EvalMode.Manual -> ScoreLevel.GOOD // 不会走到这里

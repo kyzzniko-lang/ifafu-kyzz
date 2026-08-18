@@ -55,7 +55,7 @@ class HtmlClient @Inject constructor(
     }
 
     /** Cancelling the caller also cancels the underlying OkHttp request. */
-    suspend fun getCancellable(url: String): Document = mutex.withLock {
+    suspend fun getCancellable(url: String): Document = withContext(Dispatchers.IO) { mutex.withLock {
         val request = buildRequest(url).get().build()
         val result = executeRawCancellable(request)
         if (result.code !in 200..299) {
@@ -66,10 +66,10 @@ class HtmlClient @Inject constructor(
         val html = bytesToString(result.bytes)
         checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
         Jsoup.parse(html).also(::extractViewState)
-    }
+    } }
 
     /** Cancellable GET that returns request-local navigation state. */
-    suspend fun getCancellableWithState(url: String): GetResult = mutex.withLock {
+    suspend fun getCancellableWithState(url: String): GetResult = withContext(Dispatchers.IO) { mutex.withLock {
         val request = buildRequest(url).get().build()
         val result = executeRawCancellable(request)
         if (result.code !in 200..299) {
@@ -82,7 +82,7 @@ class HtmlClient @Inject constructor(
         val doc = Jsoup.parse(html)
         extractViewState(doc)
         GetResult(doc, viewState, viewStateGenerator, result.url)
-    }
+    } }
 
     suspend fun getWithState(url: String): GetResult = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -96,6 +96,9 @@ class HtmlClient @Inject constructor(
         mutex.withLock {
             val request = buildRequest(url).get().build()
             client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
+                }
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
@@ -112,6 +115,9 @@ class HtmlClient @Inject constructor(
         mutex.withLock {
             val request = buildRequest(url).get().build()
             client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
+                }
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
@@ -134,6 +140,9 @@ class HtmlClient @Inject constructor(
         mutex.withLock {
             val request = buildRequest(url).get().build()
             client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
+                }
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
                 response.body?.bytes() ?: ByteArray(0)
@@ -153,6 +162,9 @@ class HtmlClient @Inject constructor(
         mutex.withLock {
             val request = buildRequest(url).post(formBody).build()
             client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
+                }
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
@@ -164,7 +176,7 @@ class HtmlClient @Inject constructor(
     }
 
     /** Cancelling the caller also cancels the captcha/image download. */
-    suspend fun getBytesCancellable(url: String): ByteArray = mutex.withLock {
+    suspend fun getBytesCancellable(url: String): ByteArray = withContext(Dispatchers.IO) { mutex.withLock {
         val request = buildRequest(url).get().build()
         val result = executeRawCancellable(request)
         if (result.code !in 200..299) {
@@ -173,10 +185,10 @@ class HtmlClient @Inject constructor(
         lastUrl = result.url
         referer = lastUrl
         result.bytes
-    }
+    } }
 
     /** Cancellable POST variant for time-bounded background work. */
-    suspend fun postStringCancellable(url: String, formBody: FormBody): String = mutex.withLock {
+    suspend fun postStringCancellable(url: String, formBody: FormBody): String = withContext(Dispatchers.IO) { mutex.withLock {
         val request = buildRequest(url).post(formBody).build()
         val result = executeRawCancellable(request)
         if (result.code !in 200..299) {
@@ -187,7 +199,7 @@ class HtmlClient @Inject constructor(
         val html = bytesToString(result.bytes)
         checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
         html
-    }
+    } }
 
     /**
      * Submit a form and return the raw response.
@@ -195,6 +207,10 @@ class HtmlClient @Inject constructor(
      * Legacy pages use JavaScript alert() for both success and failure. Callers
      * that need to distinguish those messages must inspect the raw HTML instead
      * of letting the generic client throw on every alert.
+     *
+     * Raw 方法不做 HTTP 状态码检查：正方的错误页（ERROR - 出错啦！/系统正忙）
+     * 常以非 200 状态返回，调用方需要读取响应体自行分类，这里抛异常会把
+     * 可解析的中文错误原因变成裸的 "HTTP 500"。
      */
     suspend fun postStringRaw(url: String, formBody: FormBody): String = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -241,6 +257,7 @@ class HtmlClient @Inject constructor(
     /**
      * GET a URL and return the raw HTML without checking for alerts.
      * Used for navigation setup where alert scripts are expected and should be ignored.
+     * 与其它 Raw 方法一致：不做状态码检查，由调用方解析错误页。
      */
     suspend fun getStringRaw(url: String): String = withContext(Dispatchers.IO) {
         mutex.withLock {
@@ -274,6 +291,9 @@ class HtmlClient @Inject constructor(
             referer = refererUrl
             val request = buildRequest(url).get().build()
             client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
+                }
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
@@ -291,6 +311,9 @@ class HtmlClient @Inject constructor(
             val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
             val request = buildRequest(url).post(formBody).addHeader("Origin", origin).build()
             client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
+                }
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
@@ -308,6 +331,9 @@ class HtmlClient @Inject constructor(
             val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
             val request = buildRequest(url).post(body).addHeader("Origin", origin).build()
             client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
+                }
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
@@ -534,7 +560,7 @@ class HtmlClient @Inject constructor(
 
 
     /** Cancellable login form submission with the final redirect URL. */
-    suspend fun postWithFollowCancellable(url: String, formBody: FormBody): PostResult = mutex.withLock {
+    suspend fun postWithFollowCancellable(url: String, formBody: FormBody): PostResult = withContext(Dispatchers.IO) { mutex.withLock {
         val request = buildRequest(url).post(formBody).build()
         val result = executeRawCancellable(request)
         if (result.code !in 200..299) {
@@ -546,5 +572,5 @@ class HtmlClient @Inject constructor(
         referer = result.url
         extractViewState(html)
         PostResult(html, result.url)
-    }
+    } }
 }

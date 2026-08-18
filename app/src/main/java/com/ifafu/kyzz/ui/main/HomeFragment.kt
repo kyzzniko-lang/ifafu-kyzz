@@ -42,7 +42,6 @@ import com.ifafu.kyzz.data.model.PetState
 import com.ifafu.kyzz.databinding.FragmentHomeBinding
 import com.ifafu.kyzz.ui.pet.PetViewModel
 import com.ifafu.kyzz.ui.countdown.CountdownActivity
-import com.ifafu.kyzz.ui.syllabus.GridSyllabusActivity
 import com.ifafu.kyzz.ui.toolbox.KyzzToolboxActivity
 import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.Dispatchers
@@ -53,6 +52,8 @@ import java.util.Calendar
 
 @AndroidEntryPoint
 class HomeFragment : Fragment() {
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density + 0.5f).toInt()
 
     private var _binding: FragmentHomeBinding? = null
     private val binding get() = _binding!!
@@ -75,6 +76,7 @@ class HomeFragment : Fragment() {
     private var bubbleRunnable: Runnable? = null
     private var bubbleAnimator: ValueAnimator? = null
     private var pulseAnimator: AnimatorSet? = null
+    private var hasRenderedCourses = false
     private var petPositionBeforeBubble: Pair<Float, Float>? = null
     private var autoRefreshMonitorStarted = false
     private val resumeRunnable = Runnable {
@@ -160,6 +162,8 @@ class HomeFragment : Fragment() {
         }
         // Show cached update result if available
         showCachedUpdateIfNeeded()
+        // Home 回到前台时重新加载热议，避免首页首次请求失败或从讨论页返回后仍显示旧的隐藏状态。
+        if (!simpleMode) loadHotDiscussion()
         // Revalidate when Home becomes visible again. A previous "up to date"
         // result must not hide a release published during the 4-hour interval.
         // The in-flight guard merges this with the initial onViewCreated check.
@@ -214,7 +218,9 @@ class HomeFragment : Fragment() {
             loadWeather()
         }
         checkForUpdate(force = forceUpdateCheck)
-        if (!simpleMode) petViewModel.onPetClicked()
+        // 注意：不要在这里调用 petViewModel.onPetClicked()。refreshHomeContent 会被
+        // 30 分钟自动刷新、跨天刷新、下拉刷新反复调用，若复用"点击"逻辑会导致宠物
+        // 被动获得经验并频繁弹气泡，与用户主动交互互相干扰。
     }
 
     private fun getHomeRefreshTimestamp(): Long {
@@ -296,9 +302,6 @@ class HomeFragment : Fragment() {
         } else {
             binding.btnSettings.visibility = View.GONE
 
-            binding.gridSyllabus.setOnClickListener {
-                startActivity(Intent(requireContext(), GridSyllabusActivity::class.java))
-            }
             binding.gridElective.setOnClickListener {
                 startActivity(Intent(requireContext(), com.ifafu.kyzz.ui.elective.SimpleElectiveActivity::class.java))
             }
@@ -306,7 +309,7 @@ class HomeFragment : Fragment() {
                 startActivity(Intent(requireContext(), KyzzToolboxActivity::class.java))
             }
             // Restrained press feedback for quick entries.
-            listOf(binding.gridSyllabus, binding.gridElective, binding.gridToolbox).forEach { entry ->
+            listOf(binding.gridElective, binding.gridToolbox).forEach { entry ->
                 entry.setOnTouchListener { v, event ->
                     when (event.action) {
                         MotionEvent.ACTION_DOWN -> {
@@ -389,43 +392,52 @@ class HomeFragment : Fragment() {
     private fun loadHotDiscussion() {
         viewLifecycleOwner.lifecycleScope.launch {
             try {
-                val comments = withContext(Dispatchers.IO) {
-                    commentRepository.getComments(page = 1, perPage = 50)
+                // 首页与讨论页共享同一份 30 分钟缓存：先立即展示缓存，避免首页
+                // 每次进入都等待网络；缓存过期或不存在时才后台拉取最新评论。
+                val cached = withContext(Dispatchers.IO) {
+                    commentRepository.loadCachedComments()
                 }
-                val hot = comments.filter { it.likes.isNotEmpty() }
-                    .sortedByDescending { it.likes.size }
-                    .take(1)
-                if (hot.isNotEmpty() && _binding != null) {
-                    val card = binding.cardHotDiscussion
-                    val container = binding.hotDiscussionContainer
-                    container.removeAllViews()
-                    card.visibility = View.VISIBLE
-
-                    val comment = hot[0]
-                    val dp = resources.displayMetrics.density
-
-                    container.addView(TextView(requireContext()).apply {
-                        text = comment.content.take(80) + if (comment.content.length > 80) "..." else ""
-                        setTextAppearance(R.style.ClaudeBody)
-                        setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                        typeface = resources.getFont(R.font.claude_serif)
-                        maxLines = 2
-                    })
-                    container.addView(TextView(requireContext()).apply {
-                        text = "${comment.nickname} · ♥${comment.likes.size}"
-                        textSize = 11f
-                        setTextColor(resources.getColor(R.color.claude_text_hint, null))
-                        typeface = resources.getFont(R.font.claude_serif)
-                        setPadding(0, (6 * dp).toInt(), 0, 0)
-                    })
-
-                    card.setOnClickListener {
-                        startActivity(Intent(requireContext(), com.ifafu.kyzz.ui.comment.DiscussionActivity::class.java))
+                if (!cached.isNullOrEmpty() && _binding != null) {
+                    showHotDiscussion(cached)
+                }
+                if (cached.isNullOrEmpty() || commentRepository.isDiscussionCacheStale()) {
+                    val fresh = withContext(Dispatchers.IO) {
+                        commentRepository.getComments(page = 1, perPage = 50)
                     }
+                    if (fresh.isNotEmpty() && _binding != null) showHotDiscussion(fresh)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {}
+        }
+    }
+
+    private fun showHotDiscussion(comments: List<com.ifafu.kyzz.data.model.Comment>) {
+        // 优先展示点赞最多的评论；没有点赞时回退到最新评论。
+        val comment = comments
+            .sortedWith(compareByDescending<com.ifafu.kyzz.data.model.Comment> { it.likes.size }
+                .thenByDescending { it.createdAt })
+            .firstOrNull() ?: return
+        val card = binding.cardHotDiscussion
+        val container = binding.hotDiscussionContainer
+        container.removeAllViews()
+        card.visibility = View.VISIBLE
+        container.addView(TextView(requireContext()).apply {
+            text = comment.content.take(80) + if (comment.content.length > 80) "..." else ""
+            setTextAppearance(R.style.ClaudeBody)
+            setTextColor(resources.getColor(R.color.claude_text_primary, null))
+            typeface = resources.getFont(R.font.claude_serif)
+            maxLines = 2
+        })
+        container.addView(TextView(requireContext()).apply {
+            text = "${comment.nickname} · ♥${comment.likes.size}"
+            textSize = 11f
+            setTextColor(resources.getColor(R.color.claude_text_hint, null))
+            typeface = resources.getFont(R.font.claude_serif)
+            setPadding(0, dp(6), 0, 0)
+        })
+        card.setOnClickListener {
+            startActivity(Intent(requireContext(), com.ifafu.kyzz.ui.comment.DiscussionActivity::class.java))
         }
     }
 
@@ -503,12 +515,12 @@ class HomeFragment : Fragment() {
                 typeface = ctx.resources.getFont(com.ifafu.kyzz.R.font.claude_serif)
                 background = ctx.resources.getDrawable(com.ifafu.kyzz.R.drawable.bg_info_chip, null)
                 gravity = android.view.Gravity.CENTER
-                setPadding(24, 10, 24, 10)
+                setPadding(dp(12), dp(6), dp(12), dp(6))
                 val lp = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.WRAP_CONTENT,
                     LinearLayout.LayoutParams.WRAP_CONTENT
                 )
-                lp.marginEnd = 10
+                lp.marginEnd = dp(10)
                 layoutParams = lp
             }
             container.addView(chip)
@@ -572,7 +584,7 @@ class HomeFragment : Fragment() {
             val row = LinearLayout(requireContext()).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = android.view.Gravity.CENTER_VERTICAL
-                setPadding(0, 6, 0, 6)
+                setPadding(0, dp(6), 0, dp(6))
                 alpha = 0f
                 translationX = -20f
             }
@@ -896,11 +908,12 @@ class HomeFragment : Fragment() {
                 if (result.alreadyChecked) {
                     petView.tvCheckIn.text = "已签到"
                 } else {
-                    val msg = "签到成功！+${result.points}积分 连续${result.streak}天"
-                    petViewModel.dismissCheckInResult()
-                    // Show bubble with check-in result
+                    petViewModel.showBubble("签到成功！+${result.points}积分 连续${result.streak}天", 3000L)
                     petView.tvCheckIn.text = "已签到 ${result.streak}天"
                 }
+                // 两个分支都要清掉事件：否则 alreadyChecked 的值会留在 LiveData 里，
+                // 每次回到首页重新订阅时又触发一遍。
+                petViewModel.dismissCheckInResult()
             }
         }
 
@@ -1130,12 +1143,14 @@ class HomeFragment : Fragment() {
         val nextExam = viewModel.nextExam.value
         val userContext = buildUserContext(user, todayCourses, nextExam)
 
-        val chatApi = com.ifafu.kyzz.data.api.PetChatApi()
+        // 加载历史聊天记录
+        val account = user?.account ?: ""
+        val chatApi = com.ifafu.kyzz.data.api.PetChatApi(
+            com.ifafu.kyzz.data.api.PetChatApi.deviceIdOf(account)
+        )
         val chipGroupModel = dialogView.findViewById<com.google.android.material.chip.ChipGroup>(R.id.chipGroupModel)
         val messages = mutableListOf<com.ifafu.kyzz.data.api.PetChatApi.ChatMessage>()
 
-        // 加载历史聊天记录
-        val account = user?.account ?: ""
         if (account.isNotEmpty()) {
             messages.addAll(cacheManager.loadChatHistory(account))
         }
@@ -1669,6 +1684,7 @@ class HomeFragment : Fragment() {
 
     private fun showTodayCourses(courses: List<MainViewModel.TodayCourse>) {
         if (courses.isEmpty()) {
+            hasRenderedCourses = false
             binding.timelineContainer.visibility = View.GONE
             binding.tvTodaySection.visibility = View.GONE
             binding.courseProgressContainer.visibility = View.GONE
@@ -1716,6 +1732,7 @@ class HomeFragment : Fragment() {
         binding.courseProgressText.text = "已完成 $finishedCount/$totalCourses 节课"
 
         val container = binding.timelineContainer
+        val animateEntrance = !hasRenderedCourses
         container.removeAllViews()
 
         val nowMinutes = Calendar.getInstance().let {
@@ -1822,21 +1839,27 @@ class HomeFragment : Fragment() {
                 showCourseDetail(course, startTime, endTime)
             }
 
-            // A1: Staggered entrance animation — each card slides up with delay
-            itemView.alpha = 0f
-            itemView.translationY = 24f
-            itemView.scaleX = 0.96f
-            itemView.animate()
-                .alpha(if (nowMinutes > courseEndMin) 0.65f else 1f)
-                .translationY(0f)
-                .scaleX(1f)
-                .setDuration(380)
-                .setStartDelay((i * 90).toLong())
-                .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
-                .start()
+            // 只在课程首次进入页面时播放入场动画；天气刷新等重复绑定直接显示，
+            // 避免用户每次刷新天气都看到整条时间线重新滑入。
+            if (animateEntrance) {
+                itemView.alpha = 0f
+                itemView.translationY = 24f
+                itemView.scaleX = 0.96f
+                itemView.animate()
+                    .alpha(if (nowMinutes > courseEndMin) 0.65f else 1f)
+                    .translationY(0f)
+                    .scaleX(1f)
+                    .setDuration(380)
+                    .setStartDelay((i * 90).toLong())
+                    .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
+                    .start()
+            } else {
+                itemView.alpha = if (nowMinutes > courseEndMin) 0.65f else 1f
+            }
 
             container.addView(itemView)
         }
+        hasRenderedCourses = true
     }
 
     private fun showCourseDetail(course: MainViewModel.TodayCourse, startTime: String, endTime: String) {

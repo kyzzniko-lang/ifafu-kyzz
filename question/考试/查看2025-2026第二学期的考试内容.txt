@@ -1,0 +1,15 @@
+POST /(t5iy5l3jianwqe5532km5hfj)/xskscx.aspx?xh=3246017002&xm=%D3%A6%EA%BB%D4%F3&gnmkdm=N121604 HTTP/1.1
+Host: jwgl.fafu.edu.cn
+User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:151.0) Gecko/20100101 Firefox/151.0
+Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8
+Accept-Language: zh-CN,zh;q=0.9,zh-TW;q=0.8,zh-HK;q=0.7,en-US;q=0.6,en;q=0.5
+Accept-Encoding: gzip, deflate, br
+Content-Type: application/x-www-form-urlencoded
+Content-Length: 371
+Origin: http://jwgl.fafu.edu.cn
+Connection: keep-alive
+Referer: http://jwgl.fafu.edu.cn/(t5iy5l3jianwqe5532km5hfj)/xskscx.aspx?xh=3246017002&xm=%D3%A6%EA%BB%D4%F3&gnmkdm=N121604
+Upgrade-Insecure-Requests: 1
+Priority: u=4
+
+__EVENTTARGET=xnd&__EVENTARGUMENT=&__VIEWSTATE=dDwtMTI2NjY4NjY5MTt0PDtsPGk8MT47PjtsPHQ8O2w8aTwxPjtpPDU%2BOz47bDx0PHQ8cDxwPGw8RGF0YVRleHRGaWVsZDtEYXRhVmFsdWVGaWVsZDs%2BO2w8eG47eG47Pj47Pjt0PGk8Mz47QDxcZTsyMDI1LTIwMjY7MjAyNC0yMDI1Oz47QDxcZTsyMDI1LTIwMjY7MjAyNC0yMDI1Oz4%2BO2w8aTwyPjs%2BPjs7Pjt0PHQ8OztsPGk8MT47Pj47Oz47Pj47Pj47PmD20CgfxNVHi3tILoPFVracEgOn&xnd=2025-2026&xqd=2

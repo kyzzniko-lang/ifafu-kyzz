@@ -1,15 +1,8 @@
-import java.util.Properties
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.kapt")
     id("com.google.dagger.hilt.android")
-}
-
-val localProperties = Properties().apply {
-    val file = rootProject.file("local.properties")
-    if (file.exists()) load(file.inputStream())
 }
 
 android {
@@ -20,13 +13,13 @@ android {
         applicationId = "com.ifafu.kyzz"
         minSdk = 24
         targetSdk = 34
-        versionCode = 24
-        versionName = "2.5.8"
+        versionCode = 25
+        versionName = "2.5.9"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
-        buildConfigField("String", "ZHIPU_API_KEY_ENC", "\"${localProperties.getProperty("zhipu.api_key.enc", "")}\"")
-        buildConfigField("String", "QWEN_API_KEY_ENC", "\"${localProperties.getProperty("qwen.api_key.enc", "")}\"")
+        // LLM 密钥已迁至杭州服务器代理(/ifafu/api/pet-chat)，不再随 APK 分发；
+        // local.properties 中的 zhipu/qwen enc 条目已废弃。
 
         resourceConfigurations += listOf("zh", "en")
     }

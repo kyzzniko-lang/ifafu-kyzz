@@ -226,7 +226,7 @@ class CommentViewModel @Inject constructor(
                                 ScoreLevel.fromIndex(random.nextInt(3))
                             }
                             is EvalMode.SemiAuto -> {
-                                val range = mode.max.ordinal - mode.min.ordinal + 1
+                                val range = (mode.max.ordinal - mode.min.ordinal + 1).coerceAtLeast(1)
                                 ScoreLevel.fromIndex(mode.min.ordinal + random.nextInt(range))
                             }
                             else -> ScoreLevel.GOOD
@@ -254,7 +254,7 @@ class CommentViewModel @Inject constructor(
     fun submitCurrentCourse(commentText: String = "") {
         if (isSubmitting) return
         val selections = _manualSelections.value ?: return
-        if (coursePaths.isEmpty()) return
+        if (coursePaths.isEmpty() || manualCoursesDone >= coursePaths.size) return
         val (path, _) = coursePaths[manualCoursesDone]
 
         viewModelScope.launch {

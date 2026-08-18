@@ -60,6 +60,15 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 Toast.makeText(this, "请输入内容", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
+            // 浏览讨论不需要昵称；只有真正发言时才要求设置昵称。
+            if (viewModel.nicknameState.value !is DiscussionViewModel.NicknameState.Ready) {
+                if (viewModel.userId.isEmpty()) {
+                    Toast.makeText(this, "请先登录后再发表讨论", Toast.LENGTH_SHORT).show()
+                } else {
+                    showNicknameDialog()
+                }
+                return@setOnClickListener
+            }
             val tag = viewModel.selectedTag.value?.let {
                 if (it == DiscussionViewModel.Tag.ALL) "" else it.label
             } ?: ""
@@ -70,6 +79,12 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
         setupTagChips()
         observeViewModel()
 
+        // 评论浏览与昵称无关：进入页面立即加载，避免昵称接口异常/未设置时
+        // 把整个讨论列表错误地挡住。
+        if (!hasTriggeredInitialLoad) {
+            hasTriggeredInitialLoad = true
+            viewModel.loadComments()
+        }
         viewModel.checkNickname()
     }
 
@@ -109,7 +124,13 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
     private fun observeViewModel() {
         viewModel.nicknameState.observe(this) { state ->
             when (state) {
-                is DiscussionViewModel.NicknameState.NotSet -> showNicknameDialog()
+                is DiscussionViewModel.NicknameState.NotSet -> {
+                    // 昵称只用于发言身份，匿名用户仍然可以浏览讨论内容。
+                    if (!hasTriggeredInitialLoad) {
+                        hasTriggeredInitialLoad = true
+                        viewModel.loadComments()
+                    }
+                }
                 is DiscussionViewModel.NicknameState.Ready -> {
                     nicknameDialog?.dismiss()
                     if (!hasTriggeredInitialLoad) {
@@ -203,11 +224,8 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
             .show()
 
         dialogView.findViewById<View>(R.id.btnCancel).setOnClickListener {
-            if (viewModel.nicknameState.value is DiscussionViewModel.NicknameState.NotSet) {
-                finish()
-            } else {
-                nicknameDialog?.dismiss()
-            }
+            // 昵称只在发言时需要；取消设置不应退出讨论页，用户仍可继续浏览。
+            nicknameDialog?.dismiss()
         }
 
         dialogView.findViewById<View>(R.id.btnConfirm).setOnClickListener {
@@ -215,7 +233,13 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
             when {
                 nickname.isEmpty() -> etNickname.error = "请输入昵称"
                 nickname.length < 2 -> etNickname.error = "昵称至少2个字符"
-                else -> viewModel.saveNickname(nickname)
+                viewModel.userId.isEmpty() -> {
+                    Toast.makeText(this, "请先登录后再设置昵称", Toast.LENGTH_SHORT).show()
+                }
+                else -> {
+                    etNickname.error = null
+                    viewModel.saveNickname(nickname)
+                }
             }
         }
     }

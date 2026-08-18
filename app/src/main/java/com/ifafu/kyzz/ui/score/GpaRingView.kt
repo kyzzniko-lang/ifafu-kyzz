@@ -16,6 +16,11 @@ class GpaRingView @JvmOverloads constructor(
     defStyleAttr: Int = 0
 ) : View(context, attrs, defStyleAttr) {
 
+    companion object {
+        /** GPA 满分：与 GpaCalculator 的 5 分制口径一致。 */
+        private const val MAX_GPA = 5f
+    }
+
     private val density = resources.displayMetrics.density
     private val ringWidth = 4.5f * density
     private val padding = ringWidth / 2 + 1.5f * density
@@ -77,8 +82,8 @@ class GpaRingView @JvmOverloads constructor(
     }
 
     fun setGpa(gpa: Float, animate: Boolean = true) {
-        targetGpa = gpa.coerceIn(0f, 4f)
-        val targetSweep = (targetGpa / 4f) * maxSweep
+        targetGpa = gpa.coerceIn(0f, MAX_GPA)
+        val targetSweep = (targetGpa / MAX_GPA) * maxSweep
 
         animator?.cancel()
         if (animate) {
@@ -87,7 +92,7 @@ class GpaRingView @JvmOverloads constructor(
                 interpolator = AccelerateDecelerateInterpolator()
                 addUpdateListener {
                     sweepAngle = it.animatedValue as Float
-                    displayGpa = (sweepAngle / maxSweep) * 4f
+                    displayGpa = (sweepAngle / maxSweep) * MAX_GPA
                     invalidate()
                 }
                 start()

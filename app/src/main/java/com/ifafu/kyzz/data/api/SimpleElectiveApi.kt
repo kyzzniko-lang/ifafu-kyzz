@@ -52,7 +52,9 @@ class SimpleElectiveApi @Inject constructor(
         depth: Int = 0
     ): Result {
         val url = "${host}/(${token})/${page}?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=$gnmkdm"
-        val html = htmlClient.getString(url)
+        // Raw 变体：部分学校用顶层 alert 提示"未到选课时间"，若让 getString
+        // 抛 AlertException，下面的 notOpen/会话过期分类都走不到，只剩"网络异常"。
+        val html = htmlClient.getStringRaw(url)
         if (html.isBlank()) return Result(false, "网络异常")
 
         if (userApi.isSessionExpired(html)) {
@@ -61,6 +63,21 @@ class SimpleElectiveApi @Inject constructor(
             if (!reloginResp.success) return Result(false, reloginResp.message)
             val user = userRepository.getUser()
             return getCoursesInternal(page, gnmkdm, host, user.token, user.account, user.name, depth + 1)
+        }
+
+        val errorResp = htmlClient.checkErrorPage(html)
+        if (errorResp != null) {
+            return Result(false, errorResp.message)
+        }
+
+        val alert = htmlClient.checkAlert(html)
+        if (alert != null) {
+            val msg = alert.message
+            return if (msg.contains("未到选课时间") || msg.contains("未开放") || msg.contains("不在选课时间")) {
+                Result(true, "暂未开放选课", notOpen = true)
+            } else {
+                Result(false, msg)
+            }
         }
 
         if (simpleElectiveParser.isNotOpen(html)) {

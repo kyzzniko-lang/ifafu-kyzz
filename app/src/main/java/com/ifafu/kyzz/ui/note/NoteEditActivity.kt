@@ -105,13 +105,23 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
         audioDir.mkdirs()
         currentAudioPath = File(audioDir, "$id.3gp").absolutePath
 
-        recorder = MediaRecorder().apply {
-            setAudioSource(MediaRecorder.AudioSource.MIC)
-            setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
-            setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-            setOutputFile(currentAudioPath)
-            prepare()
-            start()
+        recorder = MediaRecorder()
+        try {
+            recorder?.apply {
+                setAudioSource(MediaRecorder.AudioSource.MIC)
+                setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
+                setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
+                setOutputFile(currentAudioPath)
+                prepare()
+                start()
+            }
+        } catch (e: Exception) {
+            // 麦克风被占用或存储不可用时 prepare()/start() 会抛异常
+            try { recorder?.release() } catch (_: Exception) {}
+            recorder = null
+            currentAudioPath = ""
+            android.widget.Toast.makeText(this, "录音启动失败：麦克风可能被占用", android.widget.Toast.LENGTH_SHORT).show()
+            return
         }
         isRecording = true
         binding.btnRecord.text = "停止"
@@ -237,7 +247,9 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
 
         lifecycleScope.launch {
             try {
-                val chatApi = PetChatApi()
+                val account = getSharedPreferences("ifafu_user", MODE_PRIVATE)
+                    .getString("account", "") ?: ""
+                val chatApi = PetChatApi(PetChatApi.deviceIdOf(account))
                 val dummyPet = com.ifafu.kyzz.data.model.Pet()
                 val title = binding.etTitle.text?.toString()?.trim() ?: ""
                 val noteText = if (title.isNotEmpty()) "$title\n$content" else content

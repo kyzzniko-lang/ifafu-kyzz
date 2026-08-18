@@ -9,6 +9,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.time.LocalDate
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
@@ -46,7 +47,9 @@ class WeatherApi @Inject constructor() {
                 val codes = hourly.getJSONArray("weather_code")
                 val precip = hourly.getJSONArray("precipitation_probability")
 
-                val today = LocalDate.now().format(dateFormatter)
+                // 接口按 Asia/Shanghai 返回时间标签，"今天"必须用同一时区计算；
+                // 否则设备在非 UTC+8 时区时过滤不出任何小时，天气卡片静默消失。
+                val today = LocalDate.now(ZoneId.of("Asia/Shanghai")).format(dateFormatter)
                 val list = mutableListOf<HourlyWeather>()
                 for (i in 0 until times.length()) {
                     val timeStr = times.getString(i)

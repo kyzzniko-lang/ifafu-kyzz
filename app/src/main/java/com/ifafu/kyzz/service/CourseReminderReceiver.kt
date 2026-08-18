@@ -56,15 +56,20 @@ class CourseReminderReceiver : BroadcastReceiver() {
 
         val pendingResult = goAsync()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        // BootReceiver 重启后补挂提醒时置位：只重排今天剩余课程的精确闹钟，
+        // 不再弹一次"今日课程提醒"汇总通知（开机时已经看过或还未到早晨）。
+        val rescheduleOnly = intent?.getBooleanExtra(EXTRA_RESCHEDULE_ONLY, false) == true
         scope.launch {
             try {
                 val courses = loadTodayCourses(context)
                 if (courses.isNotEmpty()) {
-                    val text = courses.joinToString("\n") { c ->
-                        "第${c.begin}-${c.end}节 ${c.name} @${c.address}"
-                    }
-                    withContext(Dispatchers.Main) {
-                        showNotification(context, "今日课程提醒", text, 1001)
+                    if (!rescheduleOnly) {
+                        val text = courses.joinToString("\n") { c ->
+                            "第${c.begin}-${c.end}节 ${c.name} @${c.address}"
+                        }
+                        withContext(Dispatchers.Main) {
+                            showNotification(context, "今日课程提醒", text, 1001)
+                        }
                     }
                     scheduleCourseReminders(context, courses)
                 }
@@ -86,7 +91,8 @@ class CourseReminderReceiver : BroadcastReceiver() {
             )
             val cal = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
-                add(Calendar.DAY_OF_YEAR, 1)
+                // 开机补挂场景下（7:30 前重启）今天的摘要还没发，不能直接跳到明天
+                if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
             }
             val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
             am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pending)
@@ -105,7 +111,7 @@ class CourseReminderReceiver : BroadcastReceiver() {
             set(Calendar.HOUR_OF_DAY, 7)
             set(Calendar.MINUTE, 30)
             set(Calendar.SECOND, 0)
-            add(Calendar.DAY_OF_YEAR, 1)
+            if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
         }.timeInMillis
         val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
@@ -248,6 +254,7 @@ class CourseReminderReceiver : BroadcastReceiver() {
 
     companion object {
         const val CHANNEL_ID = "course_reminder"
+        const val EXTRA_RESCHEDULE_ONLY = "reschedule_only"
         private const val EXTRA_COURSE_NAME = "course_name"
         private const val EXTRA_COURSE_DETAIL = "course_detail"
         private const val EXTRA_NOTIFICATION_ID = "notification_id"

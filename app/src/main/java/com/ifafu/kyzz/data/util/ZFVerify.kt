@@ -9,31 +9,52 @@ import java.util.Scanner
 
 class ZFVerify(context: Context) {
 
+    private val appContext = context.applicationContext
     private val weight = Array(34) { Array(337) { BigDecimal.ZERO } }
+
+    @Volatile
     var initialized: Boolean = false
         private set
 
-    init {
-        try {
-            context.assets.open("theta.dat").use { inputStream ->
-                Scanner(inputStream).use { scanner ->
-                    for (i in 0 until 34) {
-                        for (j in 0 until 337) {
-                            weight[i][j] = scanner.nextBigDecimal()
+    private val initLock = Any()
+
+    /**
+     * 权重文件含 34x337 个 BigDecimal 令牌，解析耗时可观。
+     * 此前放在构造块里，而构造发生在主线程注入时（登录页启动卡顿）。
+     * 改为首次 recognize() 时懒加载（调用方已把 recognize 放到后台线程）。
+     */
+    private fun ensureInitialized(): Boolean {
+        if (initialized) return true
+        synchronized(initLock) {
+            if (initialized) return true
+            try {
+                appContext.assets.open("theta.dat").use { inputStream ->
+                    // 必须固定 Locale：部分语言环境（德/法等）小数点是逗号，
+                    // 默认 Locale 会让 nextBigDecimal 解析 "1.23E-4" 失败，
+                    // 验证码识别静默初始化失败。
+                    Scanner(inputStream).useLocale(Locale.US).use { scanner ->
+                        for (i in 0 until 34) {
+                            for (j in 0 until 337) {
+                                weight[i][j] = scanner.nextBigDecimal()
+                            }
                         }
                     }
                 }
+                initialized = true
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            initialized = true
-        } catch (e: Exception) {
-            e.printStackTrace()
         }
+        return initialized
     }
 
     fun recognize(bitmap: Bitmap): String {
-        if (!initialized) return ""
+        if (!ensureInitialized()) return ""
         val data = prepareData(bitmap)
-        if (data.isEmpty() || data[0].isEmpty()) return ""
+        // 特征长度必须与权重矩阵列数（337 = 1 偏置 + 336 特征）匹配。
+        // prepareData 的输出长度取决于验证码图片尺寸，只有特定尺寸（如 72x27）
+        // 恰好等于 336；其它尺寸时越界访问会直接抛 ArrayIndexOutOfBoundsException。
+        if (data.size < 4 || data[0].size < 336) return ""
         val x = Array(4) { Array(337) { BigDecimal.ZERO } }
         for (i in 0 until 4) {
             x[i][0] = BigDecimal.ONE

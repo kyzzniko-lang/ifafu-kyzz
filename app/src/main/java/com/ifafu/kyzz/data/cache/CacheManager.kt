@@ -28,6 +28,33 @@ class CacheManager @Inject constructor(
     companion object {
         private const val TAG = "CacheManager"
         private const val MAX_CHAT_HISTORY = 50
+        private const val MAX_DISCUSSION_CACHE = 100
+    }
+
+    fun saveDiscussionComments(comments: List<com.ifafu.kyzz.data.model.Comment>) {
+        val trimmed = comments.take(MAX_DISCUSSION_CACHE)
+        prefs.edit()
+            .putString("discussion_comments", gson.toJson(trimmed))
+            .putLong("discussion_comments_ts", System.currentTimeMillis())
+            .apply()
+    }
+
+    fun loadDiscussionComments(): List<com.ifafu.kyzz.data.model.Comment>? {
+        val json = prefs.getString("discussion_comments", null) ?: return null
+        return try {
+            gson.fromJson(json, object : TypeToken<List<com.ifafu.kyzz.data.model.Comment>>() {}.type)
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to deserialize discussion comments", e)
+            null
+        }
+    }
+
+    fun loadDiscussionCommentsTimestamp(): Long =
+        prefs.getLong("discussion_comments_ts", 0L)
+
+    fun isDiscussionCommentsStale(maxAgeMs: Long): Boolean {
+        val timestamp = loadDiscussionCommentsTimestamp()
+        return timestamp == 0L || System.currentTimeMillis() - timestamp > maxAgeMs
     }
 
     fun saveSyllabus(account: String, syllabus: Syllabus) {

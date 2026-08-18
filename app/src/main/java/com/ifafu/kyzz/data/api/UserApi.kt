@@ -9,9 +9,12 @@ import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.data.util.ZFVerify
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,6 +28,7 @@ class UserApi @Inject constructor(
 
     companion object {
         private const val TAG = "UserApi"
+        private const val RELOGIN_TOTAL_TIMEOUT_MS = 90_000L
     }
 
     data class LoginChallenge internal constructor(
@@ -163,23 +167,33 @@ class UserApi @Inject constructor(
         // raw response so that a successful alert is not thrown as an exception.
         val postHtml = htmlClient.postStringRaw(accessUrl, formBody)
         val alert = htmlClient.checkAlert(postHtml)
+        // 必须先判成功再判会话过期：改密成功后教务系统常使旧会话失效，响应里
+        // 会同时出现成功提示和登录表单；若先判过期，成功会被误报成"会话已过期"，
+        // 调用方因此不保存新密码，之后的自动重登永远失败（用户被锁死）。
+        val success = alert?.message?.contains("成功") == true ||
+            postHtml.contains("修改成功") ||
+            postHtml.contains("密码修改成功")
+        if (success) {
+            return Response(true, 0, "修改成功")
+        }
         if (isSessionExpired(postHtml)) {
             return Response(false, -1, "会话已过期，请重新登录")
         }
-        if (alert != null && !alert.message.contains("成功")) {
+        if (alert != null) {
             return Response(false, 0, alert.message)
         }
-        return if (alert?.message?.contains("成功") == true ||
-            postHtml.contains("修改成功") ||
-            postHtml.contains("密码修改成功")) {
-            Response(true, 0, "修改成功")
-        } else {
-            Response(false, 0, "教务系统未返回成功结果")
-        }
+        return Response(false, 0, "教务系统未返回成功结果")
     }
 
     suspend fun relogin(): Response = loginMutex.withLock {
-        reloginLocked()
+        // 后台自动重登最多重试 5 次（每次最多 3 个请求 + 指数退避），教务系统挂起时
+        // 单次请求要等满 15s 超时，锁可能被占用数分钟，期间前台 login() 一起被阻塞。
+        // 总时长上限 90s：正常重登几秒内完成，不受影响。
+        withTimeoutOrNull(RELOGIN_TOTAL_TIMEOUT_MS) {
+            reloginLocked()
+        } ?: Response(false, -1, "自动重新登录超时，请稍后重试").also {
+            Log.w(TAG, "Relogin timed out after ${RELOGIN_TOTAL_TIMEOUT_MS}ms")
+        }
     }
 
     private suspend fun reloginLocked(): Response {
@@ -192,11 +206,7 @@ class UserApi @Inject constructor(
             return Response(false, -1, "未保存登录信息")
         }
 
-        if (!zfVerify.initialized) {
-            Log.w(TAG, "Relogin failed: ZFVerify not initialized")
-            return Response(false, -1, "验证码识别模块未初始化")
-        }
-
+        // 权重懒加载后无法在此预判，识别失败走 recognize 返回空串的重试路径
         val maxRetry = 5
         for (i in 1..maxRetry) {
             try {
@@ -209,7 +219,7 @@ class UserApi @Inject constructor(
                     continue
                 }
 
-                val captcha = zfVerify.recognize(challenge.bitmap)
+                val captcha = withContext(Dispatchers.Default) { zfVerify.recognize(challenge.bitmap) }
                 if (captcha.isEmpty()) {
                     Log.w(TAG, "Relogin attempt $i: captcha recognition returned empty")
                     delay(500L * (1 shl (i - 1)).coerceAtMost(8))

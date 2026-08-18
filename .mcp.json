@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "web-search": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": ["/c", "npx", "-y", "open-websearch@latest"],
+      "env": {
+        "MODE": "stdio",
+        "DEFAULT_SEARCH_ENGINE": "bing",
+        "ALLOWED_SEARCH_ENGINES": "bing,baidu,duckduckgo,brave",
+        "SYSTEMROOT": "C:/Windows"
+      }
+    }
+  }
+}

@@ -156,6 +156,10 @@ class MakeupExamViewModel @Inject constructor(
     val state = MutableLiveData<MakeupExamActivity.State>(MakeupExamActivity.State.Loading)
     val data = MutableLiveData<List<MakeupExam>>()
 
+    override fun onUnhandledError(message: String) {
+        state.value = MakeupExamActivity.State.Error(message)
+    }
+
     fun load() {
         val user = userRepository.getUser()
         if (!user.isLogin) {
@@ -163,7 +167,7 @@ class MakeupExamViewModel @Inject constructor(
             return
         }
         state.value = MakeupExamActivity.State.Loading
-        viewModelScope.launch {
+        viewModelScope.launch(coroutineExceptionHandler) {
             val result = studentQueryApi.getMakeupExams(
                 userRepository.host, user.token, user.account, user.name
             )

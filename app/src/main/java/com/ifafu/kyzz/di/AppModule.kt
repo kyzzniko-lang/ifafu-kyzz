@@ -94,6 +94,15 @@ class JavaNetCookieJar private constructor(context: Context) : CookieJar {
                 } else {
                     cookie.maxAge = Long.MAX_VALUE
                 }
+                // 同时写入 savedCookies：persistCookies() 只从 savedCookies 序列化，
+                // 若只恢复到 cookieStore，任何一次 Set-Cookie 都会把恢复的会话从磁盘抹掉
+                val cookieList = savedCookies.getOrPut(uri.toString()) {
+                    java.util.Collections.synchronizedList(mutableListOf())
+                }
+                synchronized(cookieList) {
+                    cookieList.removeAll { it.first.name == cookie.name }
+                    cookieList.add(cookie to expiresAt)
+                }
                 store.cookieStore.add(uri, cookie)
             }
         } catch (_: Exception) {}
