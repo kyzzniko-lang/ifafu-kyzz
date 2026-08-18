@@ -540,155 +540,169 @@
                     android:layout_marginTop="32dp"
                     android:background="@color/claude_divider" />
 
-                <!-- Quick entry heading -->
-                <TextView
-                    android:id="@+id/tvQuickEntry"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="24dp"
-                    android:fontFamily="@font/claude_serif"
-                    android:letterSpacing="0.1"
-                    android:text="快捷入口"
-                    android:textAllCaps="true"
-                    android:textColor="@color/claude_terracotta"
-                    android:textSize="11sp" />
-
-                <!-- Quick entry: text-link list -->
-                <LinearLayout
+                <!-- Quick entry: card-wrapped list, consistent with other sections -->
+                <com.google.android.material.card.MaterialCardView
                     android:id="@+id/gridContainer"
+                    style="@style/ClaudeCard"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="4dp"
-                    android:orientation="vertical">
+                    android:layout_marginTop="20dp"
+                    app:cardBackgroundColor="@color/claude_bg_subtle"
+                    app:cardCornerRadius="12dp"
+                    app:strokeWidth="0dp">
 
                     <LinearLayout
-                        android:id="@+id/gridElective"
                         android:layout_width="match_parent"
-                        android:layout_height="@dimen/home_shortcut_min_height"
-                        android:background="?attr/selectableItemBackground"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:paddingHorizontal="4dp">
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
 
-                        <FrameLayout
-                            android:layout_width="@dimen/home_icon_container_size"
-                            android:layout_height="@dimen/home_icon_container_size"
-                            android:background="@drawable/bg_info_chip"
-                            android:foregroundGravity="center">
-
-                            <ImageView
-                                android:layout_width="@dimen/home_icon_size"
-                                android:layout_height="@dimen/home_icon_size"
-                                android:layout_gravity="center"
-                                android:contentDescription="@string/nav_elective"
-                                android:src="@drawable/ic_elective"
-                                app:tint="@color/claude_terracotta" />
-                        </FrameLayout>
+                        <TextView
+                            android:id="@+id/tvQuickEntry"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="@font/claude_serif"
+                            android:letterSpacing="0.1"
+                            android:text="快捷入口"
+                            android:textAllCaps="true"
+                            android:textColor="@color/claude_terracotta"
+                            android:textSize="11sp" />
 
                         <LinearLayout
-                            android:layout_width="0dp"
+                            android:id="@+id/gridElective"
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_marginStart="14dp"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
+                            android:minHeight="76dp"
+                            android:layout_marginTop="6dp"
+                            android:background="?attr/selectableItemBackground"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="4dp"
+                            android:paddingVertical="10dp">
 
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="@font/claude_serif"
-                                android:text="@string/nav_elective"
-                                android:textColor="@color/claude_text_primary"
-                                android:textSize="16sp" />
+                            <FrameLayout
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_shortcut_icon">
 
-                            <TextView
-                                android:layout_width="wrap_content"
+                                <ImageView
+                                    android:layout_width="22dp"
+                                    android:layout_height="22dp"
+                                    android:layout_gravity="center"
+                                    android:contentDescription="@string/nav_elective"
+                                    android:src="@drawable/ic_elective"
+                                    app:tint="@color/claude_terracotta" />
+                            </FrameLayout>
+
+                            <LinearLayout
+                                android:layout_width="0dp"
                                 android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:fontFamily="sans-serif"
-                                android:text="选课与课程查询"
-                                android:textColor="@color/claude_text_tertiary"
-                                android:textSize="12sp" />
+                                android:layout_marginStart="12dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="@font/claude_serif"
+                                    android:text="@string/nav_elective"
+                                    android:textColor="@color/claude_text_primary"
+                                    android:textSize="16sp" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="3dp"
+                                    android:fontFamily="sans-serif"
+                                    android:text="选课与课程查询"
+                                    android:textColor="@color/claude_text_tertiary"
+                                    android:textSize="12sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:layout_width="@dimen/home_small_icon_size"
+                                android:layout_height="@dimen/home_small_icon_size"
+                                android:alpha="0.55"
+                                android:contentDescription="null"
+                                android:src="@drawable/ic_chevron_right"
+                                app:tint="@color/claude_text_secondary" />
+
                         </LinearLayout>
 
-                        <ImageView
-                            android:layout_width="@dimen/home_small_icon_size"
-                            android:layout_height="@dimen/home_small_icon_size"
-                            android:alpha="0.7"
-                            android:contentDescription="null"
-                            android:src="@drawable/ic_chevron_right"
-                            app:tint="@color/claude_text_tertiary" />
+                        <!-- Inset hairline aligned with the text column -->
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="1dp"
+                            android:layout_marginStart="72dp"
+                            android:background="@color/claude_divider" />
+
+                        <LinearLayout
+                            android:id="@+id/gridToolbox"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:minHeight="76dp"
+                            android:background="?attr/selectableItemBackground"
+                            android:clickable="true"
+                            android:focusable="true"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingHorizontal="4dp"
+                            android:paddingVertical="10dp">
+
+                            <FrameLayout
+                                android:layout_width="40dp"
+                                android:layout_height="40dp"
+                                android:background="@drawable/bg_shortcut_icon">
+
+                                <ImageView
+                                    android:layout_width="22dp"
+                                    android:layout_height="22dp"
+                                    android:layout_gravity="center"
+                                    android:contentDescription="KYZZ 工具箱"
+                                    android:src="@drawable/ic_toolbox"
+                                    app:tint="@color/claude_terracotta" />
+                            </FrameLayout>
+
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="12dp"
+                                android:layout_weight="1"
+                                android:orientation="vertical">
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:fontFamily="@font/claude_serif"
+                                    android:text="KYZZ 工具箱"
+                                    android:textColor="@color/claude_text_primary"
+                                    android:textSize="16sp" />
+
+                                <TextView
+                                    android:layout_width="wrap_content"
+                                    android:layout_height="wrap_content"
+                                    android:layout_marginTop="3dp"
+                                    android:fontFamily="sans-serif"
+                                    android:text="实用工具与校园服务"
+                                    android:textColor="@color/claude_text_tertiary"
+                                    android:textSize="12sp" />
+                            </LinearLayout>
+
+                            <ImageView
+                                android:layout_width="@dimen/home_small_icon_size"
+                                android:layout_height="@dimen/home_small_icon_size"
+                                android:alpha="0.55"
+                                android:contentDescription="null"
+                                android:src="@drawable/ic_chevron_right"
+                                app:tint="@color/claude_text_secondary" />
+
+                        </LinearLayout>
 
                     </LinearLayout>
 
-                    <View
-                        android:layout_width="match_parent"
-                        android:layout_height="1dp"
-                        android:background="@color/claude_divider" />
-
-                    <LinearLayout
-                        android:id="@+id/gridToolbox"
-                        android:layout_width="match_parent"
-                        android:layout_height="@dimen/home_shortcut_min_height"
-                        android:background="?attr/selectableItemBackground"
-                        android:clickable="true"
-                        android:focusable="true"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal"
-                        android:paddingHorizontal="4dp">
-
-                        <FrameLayout
-                            android:layout_width="@dimen/home_icon_container_size"
-                            android:layout_height="@dimen/home_icon_container_size"
-                            android:background="@drawable/bg_info_chip"
-                            android:foregroundGravity="center">
-
-                            <ImageView
-                                android:layout_width="@dimen/home_icon_size"
-                                android:layout_height="@dimen/home_icon_size"
-                                android:layout_gravity="center"
-                                android:contentDescription="KYZZ 工具箱"
-                                android:src="@drawable/ic_toolbox"
-                                app:tint="@color/claude_terracotta" />
-                        </FrameLayout>
-
-                        <LinearLayout
-                            android:layout_width="0dp"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="14dp"
-                            android:layout_weight="1"
-                            android:orientation="vertical">
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:fontFamily="@font/claude_serif"
-                                android:text="KYZZ 工具箱"
-                                android:textColor="@color/claude_text_primary"
-                                android:textSize="16sp" />
-
-                            <TextView
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginTop="2dp"
-                                android:fontFamily="sans-serif"
-                                android:text="实用工具与校园服务"
-                                android:textColor="@color/claude_text_tertiary"
-                                android:textSize="12sp" />
-                        </LinearLayout>
-
-                        <ImageView
-                            android:layout_width="@dimen/home_small_icon_size"
-                            android:layout_height="@dimen/home_small_icon_size"
-                            android:alpha="0.7"
-                            android:contentDescription="null"
-                            android:src="@drawable/ic_chevron_right"
-                            app:tint="@color/claude_text_tertiary" />
-
-                    </LinearLayout>
-
-                </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
 
             </LinearLayout>
 
