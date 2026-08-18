@@ -25,3 +25,7 @@ http_capture_log.txt
 /ifafu-kyzz(1).png
 /kyzz/
 /post.txt
+
+# 本地 AI 工具会话数据,勿入库
+.freebuff/
+.zcode/
