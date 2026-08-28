@@ -92,16 +92,20 @@ class SyllabusParser @Inject constructor(
 
             var currentSection = 0
 
-            // Track rowspan occupancy: rowspanOccupied[col] = remaining rows occupied
-            // 动态大小，最大支持 8 列（含周六/周日排课）
-            var rowspanOccupied = IntArray(8) { 0 }
+            // 列容量按该表实际几何推导(th+td 均计入,表头“星期一~星期日”行常用
+            // th),不满足时至少保底 7 天;rowspan 占位下标越界处再动态扩容,
+            // 避免 9 节以上或异常多列的课表把周日课程整列静默丢弃。
+            val geometryColumns = rows.maxOfOrNull { it.select("th, td").size } ?: 0
+            var rowspanOccupied = IntArray(maxOf(geometryColumns, 8)) { 0 }
 
             for (row in rows) {
                 // Decrement all occupied counters
                 rowspanOccupied = rowspanOccupied.map { (it - 1).coerceAtLeast(0) }.toIntArray()
 
                 // Collect all td elements in order, including section-label tds
-                val allTds = row.select("td")
+                // 显式标注 List<Element>: Elements 自带的 filter(NodeFilter) SAM
+                // 重载会抢先于 kotlin stdlib 扩展解析,导致布尔 lambda 无法使用
+                val allTds: List<Element> = row.select("td")
                 for (td in allTds) {
                     val m = Regex("第(\\d+)节").find(td.text())
                     if (m != null) {
@@ -109,9 +113,16 @@ class SyllabusParser @Inject constructor(
                     }
                 }
 
-                val dataCells = row.select("td[align=Center], td[align=center]")
+                // 对齐属性大小写不敏感取值过滤：选择器 td[align=center] 漏配
+                // align="CENTER" 等变体时该行所有课程都会被丢弃。
+                val dataCells = allTds.filter { "center" == it.attr("align").lowercase() }
                 if (dataCells.isEmpty()) continue
 
+                // 过滤条件只有两类标签单元格:节次标签(第N节)与上下午分隔。
+                // 注意"&nbsp;"空占位格绝不能在此剔除——无课时段也是格子,它们
+                // 推进下方 colIndex 才能让后续课程落进正确的星期列;一旦把空格
+                // 滤掉,该行剩余课程全部左移串天。多课程堆叠的长文本格同理,
+                // 内容再长也必须保留参与占位。
                 val courseCells = dataCells.filter { cell ->
                     val text = cell.text().trim()
                     !Regex("第\\d+节").containsMatchIn(text) &&
@@ -124,7 +135,14 @@ class SyllabusParser @Inject constructor(
                     while (colIndex < rowspanOccupied.size && rowspanOccupied[colIndex] > 0) {
                         colIndex++
                     }
-                    if (colIndex >= rowspanOccupied.size) break
+                    if (colIndex >= rowspanOccupied.size) {
+                        // 动态扩容代替 break:新槽位默认无占用
+                        if (rowspanOccupied.size >= 14) {
+                            Log.w("SyllabusParser", "课表列数超过安全上限(${rowspanOccupied.size}),剩余单元格放弃")
+                            break
+                        }
+                        rowspanOccupied = rowspanOccupied.copyOf(rowspanOccupied.size + 4)
+                    }
 
                     val weekDay = colIndex + 1
                     val rowspan = cell.attr("rowspan").toIntOrNull() ?: 1
@@ -135,6 +153,13 @@ class SyllabusParser @Inject constructor(
                         rowspanOccupied[colIndex] = rowspan
                     }
                     colIndex++
+
+                    if (weekDay > 7) {
+                        // 超出星期日:占位仍要推进(保持本行后续映射),但不把
+                        // 非法星期写库。旧行为是整行 break——那会连带丢弃周日课程。
+                        Log.w("SyllabusParser", "单元格映射到周$weekDay,超出星期范围已跳过")
+                        continue
+                    }
 
                     Log.d("SyllabusParser", "  Cell weekDay=$weekDay, section=$currentSection")
                     parseCourseFromCell(cell, account, syllabus, courses, weekDay, currentSection)
@@ -261,8 +286,19 @@ class SyllabusParser @Inject constructor(
             Log.d("SyllabusParser", "  Course: ${course.name}, weekDay=${course.weekDay}, begin=${course.begin}, end=${course.end}, teacher=${course.teacher}, address=${course.address}")
 
             if (course.name.isNotEmpty() && course.weekDay > 0) {
-                // 去重：同名同天同节次同周范围的课程只保留一条
-                val isDuplicate = courses.any { it.name == course.name && it.weekDay == course.weekDay && it.begin == course.begin && it.weekBegin == course.weekBegin && it.weekEnd == course.weekEnd }
+                // 去重：同名同天同节次同周集合同单双周的课程只保留一条。必须比
+                // oddOrTwice（以及地点）：同一格拆成"第1-16周|单周 张三"和
+                // "第1-16周|双周 李四"是单双周换教室/教师的常见排法，不比的话
+                // 第二段会被误判重复丢弃，单周或双周的场次从此消失。
+                // end 与 weeks 也参与比较：同名同起始节但时长/周次不同的两段
+                // 是不同排课，只比 begin 会误丢后一段。
+                val isDuplicate = courses.any {
+                    it.name == course.name && it.weekDay == course.weekDay &&
+                        it.begin == course.begin && it.end == course.end &&
+                        it.weeks == course.weeks && it.weekBegin == course.weekBegin &&
+                        it.weekEnd == course.weekEnd && it.oddOrTwice == course.oddOrTwice &&
+                        it.address == course.address
+                }
                 if (!isDuplicate) {
                     if (syllabus.campus == 0 && course.address.contains("旗教")) {
                         syllabus.campus = 1
@@ -275,16 +311,62 @@ class SyllabusParser @Inject constructor(
 
     private fun parseWeekOnly(course: Course, parts: List<String>): Boolean {
         for (part in parts) {
-            val pattern = Regex("\\{第(\\d+)-(\\d+)周(\\|(\\d+)节/周)?\\}")
+            // 捕获完整大括号内容后统一走 parseWeekList：兼容"第1-8,10,12-16周"
+            // （逗号分隔的非连续周，旧正则不匹配导致整门课被静默丢弃）与
+            // "第1-8周,第10周,第12-16周"（旧正则只取首段、其余周次丢失）。
+            val pattern = Regex("\\{第([^}]*)\\}")
             val match = pattern.find(part)
             if (match != null) {
+                val parsed = parseWeekList(match.groupValues[1])
+                if (parsed == null) {
+                    // 非周次格式（如 "{实践}"），继续尝试下一个 part
+                    continue
+                }
                 course.timeString = part
-                course.weekBegin = match.groupValues[1].toIntOrNull() ?: 1
-                course.weekEnd = match.groupValues[2].toIntOrNull() ?: 1
+                applyWeeks(course, parsed.first)
+                val suffix = parsed.second
+                course.oddOrTwice = when {
+                    suffix.contains("单") -> 1
+                    suffix.contains("双") -> 2
+                    else -> 0
+                }
                 return true
             }
         }
         return false
+    }
+
+    /**
+     * 解析大括号内的周次串。支持三种实际形态：
+     * - "1-16"（连续，兼容旧行为）
+     * - "1-8,10,12-16周"（逗号分隔，"周"只在末尾）
+     * - "1-8周,第10周,第12-16周"（每段带"周"）
+     * 返回 (周次集合, 尾缀)：尾缀含"单/双/上/N节/周"等附加文本，供单双周判断。
+     * 无法解析返回 null。
+     */
+    private fun parseWeekList(content: String): Pair<List<Int>, String>? {
+        val segmentRegex = Regex("^第?(\\d+)(?:[-~](\\d+))?周?")
+        val weeks = mutableListOf<Int>()
+        var rest = content.trim()
+        while (true) {
+            rest = rest.trimStart(',', '，', '、', ' ')
+            if (rest.isEmpty()) break
+            val m = segmentRegex.find(rest) ?: break
+            val begin = m.groupValues[1].toIntOrNull() ?: return null
+            val end = m.groupValues[2].toIntOrNull() ?: begin
+            if (begin <= 0 || end < begin || end > 30) return null
+            weeks.addAll(begin..end)
+            rest = rest.substring(m.value.length)
+        }
+        if (weeks.isEmpty()) return null
+        return weeks.distinct().sorted() to rest
+    }
+
+    /** 写入周次集合，weekBegin/weekEnd 恒为 min/max 以兼容旧显示与排序路径。 */
+    private fun applyWeeks(course: Course, weeks: List<Int>) {
+        course.weeks = weeks
+        course.weekBegin = weeks.min()
+        course.weekEnd = weeks.max()
     }
 
     private fun parseCoursesFromRegex(html: String, account: String, syllabus: Syllabus, courses: MutableList<Course>) {
@@ -333,7 +415,11 @@ class SyllabusParser @Inject constructor(
             "一" to 1, "二" to 2, "三" to 3, "四" to 4,
             "五" to 5, "六" to 6, "日" to 7, "天" to 7
         )
-        val pattern = Regex("周(.)(上午|下午|晚上)?第(\\d+)(([,，\\-]\\d+)*)节\\{第(\\d+)-(\\d+)周(\\|(.)周)?\\}")
+        // 节次分隔额外容忍"~"；周次部分捕获完整大括号内容后统一走 parseWeekList
+        // （支持"第1-8,10,12-16周"非连续周与"第1-8周,第10周,第12-16周"分段格式；
+        // 旧正则只认单一连续区间，非连续周整门课被静默丢弃或周次被截断），
+        // 单双周改从尾缀中提取
+        val pattern = Regex("周(.)(上午|下午|晚上)?第(\\d+)(([,，\\-~]\\d+)*)节\\{第([^}]*)\\}")
         val match = pattern.find(timeString)
         if (match == null) {
             Log.d("SyllabusParser", "    -> parseCourseTime NO MATCH for: $timeString")
@@ -363,12 +449,20 @@ class SyllabusParser @Inject constructor(
             course.end = course.begin
         }
 
-        course.weekBegin = match.groupValues[6].toIntOrNull() ?: 1
-        course.weekEnd = match.groupValues[7].toIntOrNull() ?: 1
-        if (match.groupValues[9].isNotEmpty()) {
-            course.oddOrTwice = when (match.groupValues[9]) {
-                "单" -> 1
-                "双" -> 2
+        // 周次内容是第 6 组：第 5 组是节次部分 (([,，\-~]\d+)*) 的内层重复组。
+        // 写错成 [5] 时单节次课拿到空串被丢弃、多节次课把",2"解析成"第2周上课"。
+        val weekContent = match.groupValues[6]
+        val weekParsed = parseWeekList(weekContent)
+        if (weekParsed == null) {
+            Log.w("SyllabusParser", "Cannot parse week list '$weekContent' in: $timeString")
+            return false
+        }
+        applyWeeks(course, weekParsed.first)
+        val weekSuffix = weekParsed.second
+        if (weekSuffix.isNotEmpty()) {
+            course.oddOrTwice = when {
+                weekSuffix.contains("单") -> 1
+                weekSuffix.contains("双") -> 2
                 else -> 0
             }
         }

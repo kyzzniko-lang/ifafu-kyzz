@@ -13,8 +13,8 @@ android {
         applicationId = "com.ifafu.kyzz"
         minSdk = 24
         targetSdk = 34
-        versionCode = 25
-        versionName = "2.5.9"
+        versionCode = 26
+        versionName = "2.6.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
@@ -45,9 +45,18 @@ android {
         }
     }
 
+    testOptions {
+        // 解析器单测依赖 android.util.Log（返回默认值而非抛异常）
+        unitTests.isReturnDefaultValues = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // minSdk 24 < 26：WeatherApi/CacheManager/HomeFragment 用了 java.time，
+        // 不开启 desugaring 时 Android 7.x 设备抛 NoClassDefFoundError（Error
+        // 不是 Exception，catch 不住），首页天气直接崩溃。
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -95,11 +104,14 @@ dependencies {
     kapt("com.google.dagger:hilt-android-compiler:2.50")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
     implementation("com.facebook.shimmer:shimmer:0.5.0")
     implementation("com.airbnb.android:lottie:6.3.0")
 
     implementation("androidx.dynamicanimation:dynamicanimation:1.0.0")
     testImplementation("junit:junit:4.13.2")
+    // 本地单测跑真 Android 框架子集（SharedPreferences 等），无需设备
+    testImplementation("org.robolectric:robolectric:4.11.1")
     androidTestImplementation("androidx.test.ext:junit:1.1.5")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
 }

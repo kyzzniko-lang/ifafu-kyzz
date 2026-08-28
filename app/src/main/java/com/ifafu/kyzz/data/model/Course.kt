@@ -11,11 +11,33 @@ data class Course(
     var end: Int = 0,
     var weekBegin: Int = 0,
     var weekEnd: Int = 0,
+    /**
+     * 完整的上课周次集合，可表达非连续周（如"第1-8,10,12-16周"）。
+     * null 表示旧缓存/连续周，按 [weekBegin]..[weekEnd] 区间理解。
+     * weekBegin/weekEnd 恒为该集合的 min/max，仅供旧显示与排序路径兜底，
+     * 周次判断必须走 [coversWeek]。
+     */
+    var weeks: List<Int>? = null,
     var oddOrTwice: Int = 0,
     var examDate: String = "",
     var examTime: String = "",
     var examAddress: String = ""
-)
+) {
+    /** 本周是否有这节课（不含单双周过滤，由调用方叠加 [oddOrTwice] 判断）。 */
+    fun coversWeek(week: Int): Boolean =
+        weeks?.contains(week) ?: (week in weekBegin..weekEnd)
+
+    /** 课程占用的全部周次（不含单双周过滤）。 */
+    fun activeWeeks(): List<Int> =
+        weeks ?: (weekBegin..weekEnd).toList()
+}
+
+/** 是否为非连续周排课（影响日历导出等按区间假设的逻辑）。 */
+val Course.hasIrregularWeeks: Boolean
+    get() {
+        val w = weeks ?: return false
+        return w.size < (weekEnd - weekBegin + 1)
+    }
 
 data class CourseScheduleIdentity(
     val name: String,

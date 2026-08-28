@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.core.content.FileProvider
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Syllabus
+import com.ifafu.kyzz.data.model.hasIrregularWeeks
 import com.ifafu.kyzz.data.model.scheduleIdentity
 import com.ifafu.kyzz.databinding.ActivityCalendarExportBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
@@ -78,6 +79,35 @@ class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
 
         for (course in syllabus.courses.distinctBy { it.scheduleIdentity() }) {
             val dayOffset = course.weekDay - 1
+            val times = timeMap[course.begin] ?: timeMap[1]!!
+            val endTime = timeMap[course.end.coerceAtMost(12)]?.second ?: times.second
+
+            fun parityMatches(w: Int) = course.oddOrTwice == 0 ||
+                (course.oddOrTwice == 1 && w % 2 == 1) ||
+                (course.oddOrTwice == 2 && w % 2 == 0)
+
+            fun writeEvent(week: Int, rrule: String?) {
+                val eventCal = start.clone() as Calendar
+                eventCal.add(Calendar.DAY_OF_YEAR, (week - 1) * 7 + dayOffset)
+                val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
+                sb.appendLine("BEGIN:VEVENT")
+                sb.appendLine("DTSTART:${dateStr}T${times.first}00")
+                sb.appendLine("DTEND:${dateStr}T${endTime}00")
+                if (rrule != null) sb.appendLine("RRULE:$rrule")
+                sb.appendLine("SUMMARY:${escapeIcs(course.name)}")
+                sb.appendLine("LOCATION:${escapeIcs(course.address)}")
+                sb.appendLine("DESCRIPTION:${escapeIcs(course.teacher)}")
+                sb.appendLine("END:VEVENT")
+            }
+
+            if (course.hasIrregularWeeks) {
+                // 非连续周（如"第1-8,10,12-16周"）无法用单条 RRULE 表达，逐周生成单次事件
+                for (w in course.activeWeeks().filter(::parityMatches)) {
+                    writeEvent(w, null)
+                }
+                continue
+            }
+
             val eventCal = start.clone() as Calendar
             val firstActiveWeek = when (course.oddOrTwice) {
                 1 -> if (course.weekBegin % 2 == 0) course.weekBegin + 1 else course.weekBegin
@@ -86,8 +116,6 @@ class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
             }
             if (firstActiveWeek > course.weekEnd) continue
             eventCal.add(Calendar.DAY_OF_YEAR, (firstActiveWeek - 1) * 7 + dayOffset)
-            val times = timeMap[course.begin] ?: timeMap[1]!!
-            val endTime = timeMap[course.end.coerceAtMost(12)]?.second ?: times.second
             val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
             val byDay = weekDays.getOrElse(course.weekDay) { "MO" }
             val actualCount = when (course.oddOrTwice) {

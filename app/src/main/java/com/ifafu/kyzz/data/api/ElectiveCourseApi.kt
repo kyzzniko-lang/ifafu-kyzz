@@ -41,7 +41,11 @@ class ElectiveCourseApi @Inject constructor(
                 val reloginResp = reloginHelper.relogin()
                 if (!reloginResp.success) return Response(false, -1, reloginResp.message)
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xf_xsqxxxk.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121203"
+                // 等待重登期间账号/主机可能已切换,旧会话参数不得混入新用户
+                if (user.account != number || userRepository.host != host) {
+                    return Response(false, -1, "登录信息已变更，请刷新重试")
+                }
+                val retryUrl = "${host}/(${user.token})/xf_xsqxxxk.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121203"
                 val retryHtml = htmlClient.getStringRaw(retryUrl)
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return Response(false, -1, "会话已过期，请重新登录")

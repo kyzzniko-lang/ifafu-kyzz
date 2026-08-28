@@ -37,6 +37,11 @@ class HtmlClient @Inject constructor(
         (client.cookieJar as? com.ifafu.kyzz.di.JavaNetCookieJar)?.clear()
     }
 
+    // 已知限制：全局单 Mutex 把所有教务 HTTP 串行化（锁覆盖整个请求周期）。
+    // 锁序全链路单向（ReloginHelper.mutex → UserApi.loginMutex → 本 mutex），无死锁面；
+    // 但后台 ScoreCheckWorker 的重登链最长可持锁约 90s，期间前台数据请求只能排队，
+    // 弱网下表现为"刷新卡住数秒到数十秒"。已评估读写分离方案，因 cookie/viewstate
+    // 全局一致性风险与回归成本未实施——改动前必须完整回归登录/评教/选课流程。
     private val mutex = Mutex()
 
     private val gbkCharset: Charset = Charset.forName("GBK")
@@ -54,6 +59,16 @@ class HtmlClient @Inject constructor(
         }
     }
 
+    /** Atomically applies the page referer and performs the GET. */
+    suspend fun getWithReferer(url: String, refererUrl: String): Document =
+        withContext(Dispatchers.IO) {
+            mutex.withLock {
+                referer = refererUrl
+                val request = buildRequest(url).get().build()
+                execute(request)
+            }
+        }
+
     /** Cancelling the caller also cancels the underlying OkHttp request. */
     suspend fun getCancellable(url: String): Document = withContext(Dispatchers.IO) { mutex.withLock {
         val request = buildRequest(url).get().build()
@@ -67,6 +82,22 @@ class HtmlClient @Inject constructor(
         checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
         Jsoup.parse(html).also(::extractViewState)
     } }
+
+    /** Cancellable GET with an atomic referer update, preventing cross-request races. */
+    suspend fun getCancellableWithReferer(url: String, refererUrl: String): Document =
+        withContext(Dispatchers.IO) { mutex.withLock {
+            referer = refererUrl
+            val request = buildRequest(url).get().build()
+            val result = executeRawCancellable(request)
+            if (result.code !in 200..299) {
+                throw HttpException(result.code, "HTTP ${result.code}: ${result.message}")
+            }
+            lastUrl = result.url
+            referer = lastUrl
+            val html = bytesToString(result.bytes)
+            checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
+            Jsoup.parse(html).also(::extractViewState)
+        } }
 
     /** Cancellable GET that returns request-local navigation state. */
     suspend fun getCancellableWithState(url: String): GetResult = withContext(Dispatchers.IO) { mutex.withLock {
@@ -189,6 +220,25 @@ class HtmlClient @Inject constructor(
 
     /** Cancellable POST variant for time-bounded background work. */
     suspend fun postStringCancellable(url: String, formBody: FormBody): String = withContext(Dispatchers.IO) { mutex.withLock {
+        val request = buildRequest(url).post(formBody).build()
+        val result = executeRawCancellable(request)
+        if (result.code !in 200..299) {
+            throw HttpException(result.code, "HTTP ${result.code}: ${result.message}")
+        }
+        lastUrl = result.url
+        referer = lastUrl
+        val html = bytesToString(result.bytes)
+        checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
+        html
+    } }
+
+    /** Cancellable POST with an atomic referer update. */
+    suspend fun postStringCancellableWithReferer(
+        url: String,
+        formBody: FormBody,
+        refererUrl: String
+    ): String = withContext(Dispatchers.IO) { mutex.withLock {
+        referer = refererUrl
         val request = buildRequest(url).post(formBody).build()
         val result = executeRawCancellable(request)
         if (result.code !in 200..299) {
@@ -355,7 +405,8 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 val code = response.code
                 val finalUrl = response.request.url.toString()
-                android.util.Log.d("HtmlClient", "POST raw: url=$finalUrl, code=$code, bodyLen=${bytes.size}, hasRedirect=${url != finalUrl}")
+                // finalUrl 内嵌会话 token（/(token)/...），脱敏后再入日志
+                android.util.Log.d("HtmlClient", "POST raw: url=${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(finalUrl)}, code=$code, bodyLen=${bytes.size}, hasRedirect=${url != finalUrl}")
                 lastUrl = finalUrl
                 this@HtmlClient.referer = finalUrl
                 bytesToString(bytes)

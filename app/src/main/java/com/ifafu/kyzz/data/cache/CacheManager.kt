@@ -27,6 +27,20 @@ class CacheManager @Inject constructor(
 
     companion object {
         private const val TAG = "CacheManager"
+
+        /**
+         * 成绩合并/对比键。课程代码为空的记录(正方个别跨校借读条目)在
+         * 同学年同学期会互相碰撞,直接用 Triple(courseCode,year,term) 去重
+         * 会把另一门课永久吞掉;掺入课名与学分区分。
+         * 命名区别于本类私有的 firstSeen 字符串键 scoreKey()。
+         */
+        fun scoreMergeKey(s: Score): Triple<String, String, String> =
+            if (s.courseCode.isBlank()) {
+                Triple("${s.courseName}#${s.studyScore}", s.year, s.term)
+            } else {
+                Triple(s.courseCode, s.year, s.term)
+            }
+
         private const val MAX_CHAT_HISTORY = 50
         private const val MAX_DISCUSSION_CACHE = 100
     }
@@ -68,20 +82,20 @@ class CacheManager @Inject constructor(
      * 清理旧版本曾把不同学期写进同一主缓存的课表数据。
      * 只执行一次，避免升级后继续展示错位学期内容。
      *
-     * schema 4：旧版在用户显式选择"恰好等于推断当前学期"的学期时，走了默认 getSyllabus，
-     * 假期升级逻辑会把新学期数据写进旧学期 key（如 2025-2026_2 实际存了 2026-2027_1），
-     * 造成串台。升级后清空所有按学期分键的缓存，强制重新精确拉取。
+     * schema 5：2.6.0 的周次解析回归曾把"周一第1,2节{第1-16周}"的周次误存成
+     * "第2周"（正则组号写错），单节次课整门被丢。升级后清空课表缓存，
+     * 强制按修复后的解析器重新拉取。
      */
     fun migrateSyllabusCacheIfNeeded(account: String) {
         val schemaKey = "syllabus_${account}_cache_schema"
-        if (prefs.getInt(schemaKey, 0) >= 4) return
+        if (prefs.getInt(schemaKey, 0) >= 5) return
         prefs.edit().apply {
             for ((key, _) in prefs.all) {
                 if (key == "syllabus_$account" || key.startsWith("syllabus_${account}_")) {
                     remove(key)
                 }
             }
-            putInt(schemaKey, 4)
+            putInt(schemaKey, 5)
             apply()
         }
     }
@@ -173,6 +187,56 @@ class CacheManager @Inject constructor(
     fun loadScoresTimestamp(account: String): Long =
         prefs.getLong("scores_${account}_ts", 0L)
 
+    /**
+     * 选课/退课成功后把课表缓存标记为过期：只清时间戳不清内容——首页/课表页
+     * 下次进入会重新拉取，而 Widget（只读缓存不下网络）仍能显示旧课表而不是
+     * "暂无课表数据"，拉取成功后自动换新。
+     */
+    fun invalidateSyllabus(account: String) {
+        prefs.edit().putLong("syllabus_${account}_ts", 0L).apply()
+    }
+
+    /**
+     * 拉取结果比缓存"缩水"时做合并而非覆盖。教务查询 POST 超时会降级返回默认
+     * 视图(通常只有本学期成绩)；大四学生缓存里有四年 40+ 门，若被 8 门的子集
+     * 覆盖，次日全量拉回时其余课程会全部被误判为"新出分"弹出巨型通知。
+     * 按 (课程代码, 学年, 学期) 合并：fresh 值优先，缓存独有条目补回。
+     */
+    fun mergeScoresIfShrunk(account: String, fresh: List<Score>): List<Score> {
+        val cached = loadScores(account) ?: return fresh
+        if (fresh.size >= cached.size) return fresh
+        val freshKeys = fresh.map { scoreMergeKey(it) }.toSet()
+        val merged = fresh + cached.filter { scoreMergeKey(it) !in freshKeys }
+        Log.w(TAG, "成绩拉取(${fresh.size}门)少于缓存(${cached.size}门)，按学期合并保留 ${merged.size} 门")
+        return merged
+    }
+
+    /**
+     * "合并缩水 + 落盘" 原子化。cacheLock 此前只有 clearCache 在用，前台
+     * （成绩页/选课页 viewModelScope）与后台（ScoreCheckWorker）的
+     * load→merge→save 读改写序列完全无同步：12:00 定时检查与用户正在下拉刷新
+     * 重叠时，旧快照回写会丢 firstSeen 时间戳（NEW 角标错乱）甚至回滚缓存。
+     * synchronized 可重入，内部调用无死锁面。
+     */
+    fun mergeScoresIfShrunkAndSave(account: String, fresh: List<Score>): List<Score> =
+        synchronized(cacheLock) {
+            val merged = mergeScoresIfShrunk(account, fresh)
+            saveScores(account, merged)
+            merged
+        }
+
+    /**
+     * 前台刷新的完整提交：缩水合并 + 落盘 + firstSeen 归并，三步一步完成，
+     * 与后台 Worker / 登出清缓存互斥。
+     */
+    fun commitFreshScores(account: String, fresh: List<Score>): List<Score> =
+        synchronized(cacheLock) {
+            val merged = mergeScoresIfShrunk(account, fresh)
+            saveScores(account, merged)
+            mergeAndAssignFirstSeen(account, merged)
+            merged
+        }
+
     fun saveExamTable(account: String, examTable: ExamTable) {
         prefs.edit()
             .putString("exams_$account", gson.toJson(examTable))
@@ -221,6 +285,14 @@ class CacheManager @Inject constructor(
                 apply()
             }
         }
+    }
+
+    /**
+     * 仅清某账号的宠物聊天记录。不并入 clearCache()：后者在学期切换时也会调用，
+     * 聊天记录不随学期失效，只在登出/注销时需要清。
+     */
+    fun clearChatHistory(account: String) {
+        prefs.edit().remove("chat_history_$account").apply()
     }
 
     fun saveStudentInfo(account: String, info: StudentInfo) {
@@ -318,7 +390,9 @@ class CacheManager @Inject constructor(
         val json = prefs.getString("weather_$campus", null) ?: return null
         val ts = prefs.getLong("weather_${campus}_ts", 0L)
         if (System.currentTimeMillis() - ts >= 30 * 60 * 1000L) return null
-        val today = java.time.LocalDate.now().toString()
+        // 与 WeatherApi 一致按北京时间判"今天"，否则设备在其它时区时缓存会被
+        // 提前判过期(或跨日窗口错误命中)
+        val today = java.time.LocalDate.now(java.time.ZoneId.of("Asia/Shanghai")).toString()
         val cachedDate = try {
             com.google.gson.JsonParser.parseString(json).asJsonObject?.get("date")?.asString
         } catch (e: Exception) {
@@ -408,42 +482,44 @@ class CacheManager @Inject constructor(
      */
     fun mergeAndAssignFirstSeen(account: String, scores: List<com.ifafu.kyzz.data.model.Score>) {
         if (scores.isEmpty()) return
-        val existing = loadScoreFirstSeenInternal(account).toMutableMap()
-        val now = System.currentTimeMillis()
+        synchronized(cacheLock) {
+            val existing = loadScoreFirstSeenInternal(account).toMutableMap()
+            val now = System.currentTimeMillis()
 
-        // 1. 用手机日期推断当前在读学期
-        val inferred = com.ifafu.kyzz.data.util.TermResolver.inferCurrentTerm()
-        // 2. 复核：推断学期是否在爬取数据里有成绩
-        val hasInferredScores = scores.any { it.year == inferred.year && it.term == inferred.term }
-        // 3. 确定"当前学期"：有分用推断值；没分退回数据里最大的学期（最近有分学期）
-        val (curYear, curTerm) = if (hasInferredScores) {
-            inferred.year to inferred.term
-        } else {
-            val latestYear = scores.map { it.year }.maxOrNull() ?: return
-            val latestTerm = scores.filter { it.year == latestYear }
-                .map { it.term }.maxOrNull() ?: return
-            latestYear to latestTerm
-        }
-
-        for (s in scores) {
-            val key = scoreKey(s)
-            val isCurrentTerm = s.year == curYear && s.term == curTerm
-            if (key in existing) {
-                val old = existing.getValue(key)
-                // 自愈：非当前学期的成绩不应有窗口内时间戳（旧版本误标残留），纠正为 0
-                s.firstSeenTs = if (!isCurrentTerm && old > 0L) {
-                    existing[key] = 0L; 0L
-                } else {
-                    old
-                }
+            // 1. 用手机日期推断当前在读学期
+            val inferred = com.ifafu.kyzz.data.util.TermResolver.inferCurrentTerm()
+            // 2. 复核：推断学期是否在爬取数据里有成绩
+            val hasInferredScores = scores.any { it.year == inferred.year && it.term == inferred.term }
+            // 3. 确定"当前学期"：有分用推断值；没分退回数据里最大的学期（最近有分学期）
+            val (curYear, curTerm) = if (hasInferredScores) {
+                inferred.year to inferred.term
             } else {
-                // 仅当前学期的成绩记 now（进入 NEW 窗口），其它学期一律记 0（永不 NEW）
-                val ts = if (isCurrentTerm) now else 0L
-                existing[key] = ts
-                s.firstSeenTs = ts
+                val latestYear = scores.map { it.year }.maxOrNull() ?: return
+                val latestTerm = scores.filter { it.year == latestYear }
+                    .map { it.term }.maxOrNull() ?: return
+                latestYear to latestTerm
             }
+
+            for (s in scores) {
+                val key = scoreKey(s)
+                val isCurrentTerm = s.year == curYear && s.term == curTerm
+                if (key in existing) {
+                    val old = existing.getValue(key)
+                    // 自愈：非当前学期的成绩不应有窗口内时间戳（旧版本误标残留），纠正为 0
+                    s.firstSeenTs = if (!isCurrentTerm && old > 0L) {
+                        existing[key] = 0L; 0L
+                    } else {
+                        old
+                    }
+                } else {
+                    // 仅当前学期的成绩记 now（进入 NEW 窗口），其它学期一律记 0（永不 NEW）
+                    val ts = if (isCurrentTerm) now else 0L
+                    existing[key] = ts
+                    s.firstSeenTs = ts
+                }
+            }
+            saveScoreFirstSeenInternal(account, existing)
         }
-        saveScoreFirstSeenInternal(account, existing)
     }
 
     /** 仅从缓存加载时间戳并赋值（不写入），用于离线/缓存展示时恢复排序。 */

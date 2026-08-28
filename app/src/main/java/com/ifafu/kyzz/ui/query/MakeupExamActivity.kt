@@ -104,7 +104,7 @@ class MakeupExamActivity : BaseActivity<ActivityMakeupExamBinding>() {
                 text = item.courseName
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             })
 
             // Exam time
@@ -112,7 +112,7 @@ class MakeupExamActivity : BaseActivity<ActivityMakeupExamBinding>() {
                 holder.content.addView(TextView(this@MakeupExamActivity).apply {
                     text = "时间: ${item.examTime}"
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                 })
             }
@@ -129,7 +129,7 @@ class MakeupExamActivity : BaseActivity<ActivityMakeupExamBinding>() {
                 holder.content.addView(TextView(this@MakeupExamActivity).apply {
                     text = locText
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
             }
         }

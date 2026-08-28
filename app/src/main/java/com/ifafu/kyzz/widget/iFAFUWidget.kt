@@ -54,15 +54,24 @@ class iFAFUWidget : AppWidgetProvider() {
                 )
                 val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
                 val triggerTime = System.currentTimeMillis() + (UPDATE_INTERVAL_MINUTES * 60 * 1000)
-                alarmManager.setRepeating(
-                    AlarmManager.RTC,
-                    triggerTime,
-                    UPDATE_INTERVAL_MINUTES * 60 * 1000,
-                    pending
-                )
+                // 一次性闹钟 + 每次触发后自续（见 ACTION_UPDATE）：setRepeating 自
+                // API 19 起不精确、Doze 下被系统大幅延迟，跨天/跨周切换点会显示
+                // "昨天"的课表
+                alarmManager.setAndAllowWhileIdle(AlarmManager.RTC, triggerTime, pending)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule widget update", e)
             }
+        }
+
+        /**
+         * 重启/应用升级后系统闹钟被清空，Widget 会永远停在重启前的数据。
+         * 补发一次更新广播；无 Widget 时广播分支不再续排闹钟，链条自然终止。
+         */
+        fun pokeAfterBoot(context: Context) {
+            val intent = Intent(context, iFAFUWidget::class.java).apply {
+                action = ACTION_UPDATE
+            }
+            context.sendBroadcast(intent)
         }
 
         private fun getTodayCoursesText(context: Context): String {
@@ -78,8 +87,17 @@ class iFAFUWidget : AppWidgetProvider() {
 
                 val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 val parsed = sdf.parse(firstDay) ?: return "日期格式错误"
-                val termStart = Calendar.getInstance().apply { time = parsed }
-                val today = Calendar.getInstance()
+                // 双方归零到当日 00:00：termFirstDay 带保存时刻的时分秒，不归零时
+                // 周切换点会漂移到当天那个时刻（与首页/课表页的口径一致）。
+                val termStart = Calendar.getInstance().apply {
+                    time = parsed
+                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                }
+                val today = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                }
                 val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
                 val currentWeek = ((diffDays / 7) + 1).coerceAtLeast(1)
 
@@ -99,7 +117,7 @@ class iFAFUWidget : AppWidgetProvider() {
                 val todayDay = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
 
                 val matched = syllabus.courses.filter { c ->
-                    currentWeek in c.weekBegin..c.weekEnd && c.weekDay == todayDay &&
+                    c.coversWeek(currentWeek) && c.weekDay == todayDay &&
                         (c.oddOrTwice == 0 || (c.oddOrTwice == 1 && currentWeek % 2 == 1) || (c.oddOrTwice == 2 && currentWeek % 2 == 0))
                 }.sortedBy { it.begin }
 
@@ -116,10 +134,7 @@ class iFAFUWidget : AppWidgetProvider() {
     }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        for (appWidgetId in appWidgetIds) {
-            updateWidget(context, appWidgetManager, appWidgetId)
-        }
-        scheduleNextUpdate(context)
+        updateWidgetsAsync(context, appWidgetManager, appWidgetIds)
     }
 
     override fun onReceive(context: Context, intent: Intent) {
@@ -130,14 +145,34 @@ class iFAFUWidget : AppWidgetProvider() {
                 val appWidgetIds = appWidgetManager.getAppWidgetIds(
                     android.content.ComponentName(context, iFAFUWidget::class.java)
                 )
-                for (appWidgetId in appWidgetIds) {
-                    updateWidget(context, appWidgetManager, appWidgetId)
-                }
+                // 无 Widget 时直接终止更新链条，避免 30 分钟空转闹钟永不停止
+                if (appWidgetIds.isEmpty()) return
+                updateWidgetsAsync(context, appWidgetManager, appWidgetIds)
             }
             ACTION_CLEAR -> {
                 clearWidgetData(context)
             }
         }
+    }
+
+    /**
+     * 课表 JSON 反序列化 + SharedPreferences 读盘挪到后台线程：广播 onReceive 在
+     * 主线程执行，大课表时每 30 分钟卡一次主线程（老设备可被 ANR 看门狗记为阻塞）。
+     */
+    private fun updateWidgetsAsync(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
+        val pendingResult = goAsync()
+        Thread {
+            try {
+                for (appWidgetId in appWidgetIds) {
+                    updateWidget(context, appWidgetManager, appWidgetId)
+                }
+                scheduleNextUpdate(context)
+            } catch (e: Exception) {
+                Log.e(TAG, "Widget update failed", e)
+            } finally {
+                pendingResult.finish()
+            }
+        }.start()
     }
 
     override fun onEnabled(context: Context) {

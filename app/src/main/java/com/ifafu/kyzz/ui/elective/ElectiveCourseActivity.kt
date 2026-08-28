@@ -112,7 +112,7 @@ class ElectiveCourseActivity : BaseActivity<ActivityElectiveCourseBinding>() {
                         FrameLayout.LayoutParams.WRAP_CONTENT
                     ).apply { topMargin = 16; bottomMargin = 8 }
                     setTextAppearance(R.style.ClaudeOverline)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                 }
                 HeaderViewHolder(tv)
@@ -160,10 +160,13 @@ class ElectiveCourseActivity : BaseActivity<ActivityElectiveCourseBinding>() {
             fun bind(item: AdapterItem.Course) {
                 val course = item.course
                 content.removeAllViews()
-                if (item.selectable) {
+                val canSelect = item.selectable && course.have > 0
+                if (canSelect) {
                     card.setOnClickListener { onSelect(course.courseIndex) }
                     card.alpha = 1f
                 } else {
+                    // 余量 0 的课不挂点击：抢课高峰课程秒没后继续提交只会白白
+                    // 消耗一次宝贵请求，换回服务端"人数已满"的报错
                     card.setOnClickListener(null)
                     card.alpha = 0.7f
                 }
@@ -182,7 +185,7 @@ class ElectiveCourseActivity : BaseActivity<ActivityElectiveCourseBinding>() {
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_text_primary, null))
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
 
                 topRow.addView(name)
@@ -192,7 +195,7 @@ class ElectiveCourseActivity : BaseActivity<ActivityElectiveCourseBinding>() {
                         text = "余${course.have}"
                         setTextAppearance(R.style.ClaudeCaption)
                         setTextColor(resources.getColor(R.color.claude_success, null))
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     }
                     topRow.addView(remain)
                 } else if (!item.selectable) {
@@ -200,9 +203,17 @@ class ElectiveCourseActivity : BaseActivity<ActivityElectiveCourseBinding>() {
                         text = "已选"
                         setTextAppearance(R.style.ClaudeCaption)
                         setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     }
                     topRow.addView(tag)
+                } else if (item.selectable) {
+                    val soldOut = TextView(this@ElectiveCourseActivity).apply {
+                        text = "余0"
+                        setTextAppearance(R.style.ClaudeCaption)
+                        setTextColor(resources.getColor(R.color.claude_text_secondary, null))
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
+                    }
+                    topRow.addView(soldOut)
                 }
 
                 content.addView(topRow)
@@ -211,21 +222,21 @@ class ElectiveCourseActivity : BaseActivity<ActivityElectiveCourseBinding>() {
                     content.addView(TextView(this@ElectiveCourseActivity).apply {
                         text = "教师: ${course.teacher}"
                         setTextAppearance(R.style.ClaudeCaption)
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     })
                 }
                 if (course.time.isNotBlank()) {
                     content.addView(TextView(this@ElectiveCourseActivity).apply {
                         text = "时间: ${course.time}"
                         setTextAppearance(R.style.ClaudeCaption)
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     })
                 }
                 if (course.location.isNotBlank()) {
                     content.addView(TextView(this@ElectiveCourseActivity).apply {
                         text = "地点: ${course.location}"
                         setTextAppearance(R.style.ClaudeCaption)
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     })
                 }
 
@@ -237,7 +248,7 @@ class ElectiveCourseActivity : BaseActivity<ActivityElectiveCourseBinding>() {
                     content.addView(TextView(this@ElectiveCourseActivity).apply {
                         text = infoParts.joinToString("  |  ")
                         setTextAppearance(R.style.ClaudeCaption)
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     })
                 }
             }

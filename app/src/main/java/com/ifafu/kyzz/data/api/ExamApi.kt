@@ -30,27 +30,34 @@ class ExamApi @Inject constructor(
     suspend fun getExamTable(host: String, token: String, number: String, name: String): ExamTable? {
         return try {
             val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
-            htmlClient.setReferer(mainUrl)
 
             val accessUrl = "${host}/(${token})/xskscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
-            val doc = htmlClient.get(accessUrl)
+            val doc = htmlClient.getWithReferer(accessUrl, mainUrl)
             val html = doc.html()
 
             if (userApi.isSessionExpired(html)) {
-                Log.d(TAG, "Session expired, token=${token.take(10)}..., attempting relogin...")
+                Log.d(TAG, "Session expired, attempting relogin...")
                 val response = reloginHelper.relogin()
                 if (!response.success) {
                     Log.w(TAG, "Relogin failed: ${response.message}")
                     return null
                 }
                 val user = userRepository.getUser()
-                Log.d(TAG, "Relogin ok, retrying with token=${user.token.take(10)}..., account=${user.account}, name=$name")
-                val retryUrl = "${host}/(${user.token})/xskscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
-                htmlClient.setReferer("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
-                val retryDoc = htmlClient.get(retryUrl)
+                // 等待重登期间用户可能已切换账号：继续用旧 name 发请求会把 A 的
+                // 查询参数混进 B 的会话，返回数据还会被缓存到 B 的 key 下（串台）。
+                if (user.account != number || userRepository.host != host) {
+                    Log.w(TAG, "Relogin retry cancelled: active account changed (${user.account} != $number)")
+                    return null
+                }
+                Log.d(TAG, "Relogin ok, retrying with fresh token")
+                val retryUrl = "${host}/(${user.token})/xskscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121604"
+                val retryDoc = htmlClient.getWithReferer(
+                    retryUrl,
+                    "${host}/(${user.token})/xs_main.aspx?xh=${user.account}"
+                )
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) {
-                    Log.w(TAG, "Session still expired after relogin, retryUrl=$retryUrl")
+                    Log.w(TAG, "Session still expired after relogin, retryUrl=${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(retryUrl)}")
                     try {
                         htmlClient.get("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
                         htmlClient.get("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
@@ -76,9 +83,6 @@ class ExamApi @Inject constructor(
     }
 
     private suspend fun postAndParseExamTable(accessUrl: String, getDoc: org.jsoup.nodes.Document): ExamTable {
-        val getHtml = getDoc.html()
-        val state = htmlClient.parseViewState(getHtml)
-
         val yearResult = htmlParser.parseSearchOptions(getDoc, "id=\"xnd\"", "</select>")
         val termResult = htmlParser.parseSearchOptions(getDoc, "id=\"xqd\"", "</select>").excludeTerms("3")
         val serverYear = yearResult.options.getOrElse(yearResult.selectedIndex) { "" }
@@ -97,22 +101,20 @@ class ExamApi @Inject constructor(
             Log.d(TAG, "Target matches server default ($serverYear-$serverTerm), using GET response directly")
             examParser.parseExamTable(getDoc)
         } else {
-            val needYearChange = targetYear != serverYear
-            val eventTarget = if (needYearChange) "xnd" else "xqd"
-
-            Log.d(
-                TAG,
-                "POST xnd=$targetYear, xqd=$targetTerm (inferred=${inferred.year}-${inferred.term}, server=$serverYear-$serverTerm, usedInferred=$usedInferred, needYearChange=$needYearChange, eventTarget=$eventTarget)"
-            )
-            val formBody = htmlClient.buildFormBodyWithViewState(
-                "__EVENTTARGET" to eventTarget,
-                "__EVENTARGUMENT" to "",
-                "xnd" to targetYear,
-                "xqd" to targetTerm,
-                state = state
-            )
-
-            val postDoc = htmlClient.post(accessUrl, formBody)
+            // 与 SyllabusApi.selectTerm 相同的两段式提交：正方的学年下拉框是
+            // AutoPostBack，跨学年时第一次 POST 只更新学年，学期可能仍停留在旧值；
+            // 不校验补发的话，拿到的考试表属于"(新学年, 旧学期)"，与推断学期不符。
+            var postDoc = postTermSelection(accessUrl, getDoc, if (targetYear != serverYear) "xnd" else "xqd", targetYear, targetTerm)
+            var actualYear = selectedOption(postDoc, "xnd")
+            var actualTerm = selectedOption(postDoc, "xqd")
+            if (actualYear != targetYear || actualTerm != targetTerm) {
+                postDoc = postTermSelection(accessUrl, postDoc, "xqd", targetYear, targetTerm)
+                actualYear = selectedOption(postDoc, "xnd")
+                actualTerm = selectedOption(postDoc, "xqd")
+            }
+            if (actualYear != targetYear || actualTerm != targetTerm) {
+                Log.w(TAG, "考试学期选择未完全生效: target=$targetYear-$targetTerm actual=$actualYear-$actualTerm")
+            }
             htmlClient.throwIfAlert(postDoc.html())
             examParser.parseExamTable(postDoc)
         }
@@ -123,5 +125,33 @@ class ExamApi @Inject constructor(
         }
 
         return examTable
+    }
+
+    private suspend fun postTermSelection(
+        accessUrl: String,
+        sourceDoc: org.jsoup.nodes.Document,
+        eventTarget: String,
+        year: String,
+        term: String
+    ): org.jsoup.nodes.Document {
+        val state = htmlClient.parseViewState(sourceDoc.html())
+        val formBody = htmlClient.buildFormBodyWithViewState(
+            "__EVENTTARGET" to eventTarget,
+            "__EVENTARGUMENT" to "",
+            "xnd" to year,
+            "xqd" to term,
+            state = state
+        )
+        val html = htmlClient.postStringWithReferer(accessUrl, formBody, accessUrl)
+        if (userApi.isSessionExpired(html)) {
+            throw AlertException("会话已过期，请重新登录", true)
+        }
+        htmlClient.throwIfAlert(html)
+        return org.jsoup.Jsoup.parse(html)
+    }
+
+    private fun selectedOption(doc: org.jsoup.nodes.Document, selectId: String): String {
+        val options = htmlParser.parseSearchOptions(doc, "id=\"$selectId\"", "</select>")
+        return options.options.getOrElse(options.selectedIndex) { "" }
     }
 }

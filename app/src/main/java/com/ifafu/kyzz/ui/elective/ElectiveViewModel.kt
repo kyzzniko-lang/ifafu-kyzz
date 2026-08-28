@@ -15,7 +15,8 @@ import javax.inject.Inject
 @HiltViewModel
 class ElectiveViewModel @Inject constructor(
     private val electiveCourseApi: ElectiveCourseApi,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val cacheManager: com.ifafu.kyzz.data.cache.CacheManager
 ) : ReloginViewModel() {
 
     private val _state = MutableLiveData<ElectiveState>()
@@ -87,7 +88,10 @@ class ElectiveViewModel @Inject constructor(
                     _courseList.value ?: ElectiveCourseList(), courseIndex
                 )
                 if (response.success) {
-                    _state.value = ElectiveState.Success(response.message)
+                    // 选课结果要反映到课表：失效课表缓存时间戳，首页/课表页下次
+                    // 进入会重新拉取（Widget 仍读旧缓存，不受影响）
+                    cacheManager.invalidateSyllabus(freshUser.account)
+                    var listRefreshed = false
                     try {
                         val list = ElectiveCourseList()
                         val listResponse = electiveCourseApi.getElectiveCourseIndex(
@@ -95,8 +99,19 @@ class ElectiveViewModel @Inject constructor(
                         )
                         if (listResponse.success) {
                             _courseList.value = list
+                            listRefreshed = true
                         }
-                    } catch (e: CancellationException) { throw e } catch (_: Exception) { }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                    }
+                    // 列表刷新失败不能静默：旧列表里刚选上的课仍在、余量未减，
+                    // 用户会以为没选上而再次提交
+                    _state.value = if (listRefreshed) {
+                        ElectiveState.Success(response.message)
+                    } else {
+                        ElectiveState.Success("${response.message}（列表刷新失败，请手动刷新查看最新余量）")
+                    }
                 } else {
                     _state.value = ElectiveState.Error(response.message)
                 }

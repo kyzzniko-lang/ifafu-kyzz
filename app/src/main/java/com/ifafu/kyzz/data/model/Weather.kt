@@ -61,7 +61,11 @@ data class DailyWeather(
     /** 一天的天气摘要 */
     val summary: String
         get() {
-            val avgTemp = hourly.map { it.temp }.average().toInt()
+            // 空 hourly（损坏的缓存 JSON 降级路径）时 average() 返回 NaN，
+            // toInt() 变 0°C，按"暂无数据"展示
+            val temps = hourly.map { it.temp }
+            if (temps.isEmpty()) return "暂无数据"
+            val avgTemp = temps.average().toInt()
             val mostCommonCode = hourly.groupBy { it.weatherCode }
                 .maxByOrNull { it.value.size }?.key ?: 0
             val maxPrecip = hourly.maxOfOrNull { it.precipProb } ?: 0

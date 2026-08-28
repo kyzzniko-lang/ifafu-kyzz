@@ -24,6 +24,7 @@ import com.google.android.material.chip.Chip
 import com.google.android.material.snackbar.Snackbar
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Course
+import com.ifafu.kyzz.data.model.hasIrregularWeeks
 import com.ifafu.kyzz.data.model.scheduleIdentity
 import com.ifafu.kyzz.databinding.ActivityGridSyllabusBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
@@ -301,7 +302,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
         val weekSet = mutableSetOf<Int>()
         for (c in allCourses) {
-            for (w in c.weekBegin..c.weekEnd) weekSet.add(w)
+            weekSet.addAll(c.activeWeeks())
         }
 
         // 循环上界取 maxWeek 与当前周的较大者，保证当前周（可能超出课程范围）
@@ -422,7 +423,9 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             return
         }
         minWeek = allCourses.minOf { it.weekBegin }.coerceAtLeast(1)
-        maxWeek = allCourses.maxOf { it.weekEnd }.coerceAtMost(24)
+        // 上限与 parseCurrentWeek/首页的 30 周口径对齐：个别学期课程排到第 25 周
+        // (小学期/延期考试周)时，24 的硬上限会让后几周在网格里永远翻不到
+        maxWeek = allCourses.maxOf { it.weekEnd }.coerceAtMost(30)
         if (minWeek > maxWeek) {
             minWeek = 1
             maxWeek = 20
@@ -550,7 +553,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         binding.gridContent.removeAllViews()
 
         val weekCourses = allCourses.filter { course ->
-            currentWeek >= course.weekBegin && currentWeek <= course.weekEnd &&
+            course.coversWeek(currentWeek) &&
             (course.oddOrTwice == 0 ||
              (course.oddOrTwice == 1 && currentWeek % 2 == 1) ||
              (course.oddOrTwice == 2 && currentWeek % 2 == 0))
@@ -566,7 +569,7 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 textSize = 13f
                 gravity = Gravity.CENTER
                 setPadding(0, dpToPx(40), 0, dpToPx(40))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             }
             val hintCol = LinearLayout(this).apply {
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 6f)
@@ -643,9 +646,15 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 cellView.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(cellHeight))
                 cellView.findViewById<TextView>(R.id.tvCourseName).apply { text = course.name; visibility = View.VISIBLE }
                 val infoParts = mutableListOf<String>()
+                fun compactTime(t: String): String =
+                    // "08:00"→"8:00"：格子宽度只有约 47dp，去掉小时前导零能显著
+                    // 降低整串宽度，配合 autoSize 更容易单行放下完整时间段。
+                    if (t.length == 5 && t[0] == '0') t.substring(1) else t
                 val startTime = timeMap[course.begin]?.first ?: ""
                 val endTime = timeMap[course.end]?.second ?: ""
-                if (startTime.isNotEmpty() && endTime.isNotEmpty()) infoParts.add("$startTime-$endTime")
+                if (startTime.isNotEmpty() && endTime.isNotEmpty()) {
+                    infoParts.add("${compactTime(startTime)}-${compactTime(endTime)}")
+                }
                 if (course.teacher.isNotEmpty()) infoParts.add(course.teacher)
                 if (course.address.isNotEmpty()) infoParts.add(course.address)
                 cellView.findViewById<TextView>(R.id.tvCourseInfo).apply { text = infoParts.joinToString("\n"); visibility = View.VISIBLE }
@@ -707,7 +716,36 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
 
         for (course in allCourses.distinctBy { it.scheduleIdentity() }) {
             val dayOffset = course.weekDay - 1
-            val eventCal = start.clone() as Calendar
+            val times = exportTimeMap[course.begin] ?: exportTimeMap[1]!!
+            val endTime = exportTimeMap[course.end.coerceAtMost(12)]?.second ?: times.second
+            val byDay = weekDays.getOrElse(course.weekDay) { "MO" }
+
+            fun parityMatches(w: Int) = course.oddOrTwice == 0 ||
+                (course.oddOrTwice == 1 && w % 2 == 1) ||
+                (course.oddOrTwice == 2 && w % 2 == 0)
+
+            fun writeEvent(week: Int, rrule: String?) {
+                val eventCal = start.clone() as Calendar
+                eventCal.add(Calendar.DAY_OF_YEAR, (week - 1) * 7 + dayOffset)
+                val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
+                sb.appendLine("BEGIN:VEVENT")
+                sb.appendLine("DTSTART:${dateStr}T${times.first}00")
+                sb.appendLine("DTEND:${dateStr}T${endTime}00")
+                if (rrule != null) sb.appendLine("RRULE:$rrule")
+                sb.appendLine("SUMMARY:${escapeIcs(course.name)}")
+                sb.appendLine("LOCATION:${escapeIcs(course.address)}")
+                sb.appendLine("DESCRIPTION:${escapeIcs(course.teacher)}")
+                sb.appendLine("END:VEVENT")
+            }
+
+            if (course.hasIrregularWeeks) {
+                // 非连续周（如"第1-8,10,12-16周"）无法用单条 RRULE 表达，
+                // 逐周生成单次事件，否则导出的日历会多出未排课周次的课。
+                for (w in course.activeWeeks().filter(::parityMatches)) {
+                    writeEvent(w, null)
+                }
+                continue
+            }
 
             // 计算首次上课的周次：单周从第一个奇数周开始，双周从第一个偶数周开始
             val firstActiveWeek = when (course.oddOrTwice) {
@@ -721,11 +759,11 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
                 }
                 else -> course.weekBegin
             }
-            eventCal.add(Calendar.DAY_OF_YEAR, (firstActiveWeek - 1) * 7 + dayOffset)
-            val times = exportTimeMap[course.begin] ?: exportTimeMap[1]!!
-            val endTime = exportTimeMap[course.end.coerceAtMost(12)]?.second ?: times.second
-            val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
-            val byDay = weekDays.getOrElse(course.weekDay) { "MO" }
+            val dateStr = run {
+                val eventCal = start.clone() as Calendar
+                eventCal.add(Calendar.DAY_OF_YEAR, (firstActiveWeek - 1) * 7 + dayOffset)
+                SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
+            }
 
             // 准确计算实际上课次数
             val actualCount = when (course.oddOrTwice) {
@@ -748,9 +786,9 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             sb.appendLine("DTSTART:${dateStr}T${times.first}00")
             sb.appendLine("DTEND:${dateStr}T${endTime}00")
             sb.appendLine("RRULE:$rrule")
-            sb.appendLine("SUMMARY:${course.name}")
-            sb.appendLine("LOCATION:${course.address}")
-            sb.appendLine("DESCRIPTION:${course.teacher}")
+            sb.appendLine("SUMMARY:${escapeIcs(course.name)}")
+            sb.appendLine("LOCATION:${escapeIcs(course.address)}")
+            sb.appendLine("DESCRIPTION:${escapeIcs(course.teacher)}")
             sb.appendLine("END:VEVENT")
         }
         sb.appendLine("END:VCALENDAR")
@@ -769,6 +807,15 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
             Toast.makeText(this, "导出失败: ${e.message}", Toast.LENGTH_SHORT).show()
         }
     }
+
+    /** RFC 5545 text escaping; commas/semicolons/newlines otherwise break ICS fields. */
+    private fun escapeIcs(value: String): String = value
+        .replace("\\", "\\\\")
+        .replace(";", "\\;")
+        .replace(",", "\\,")
+        .replace("\r\n", "\\n")
+        .replace("\n", "\\n")
+        .replace("\r", "\\n")
 
     // Feature 8: Smart share with branding header and watermark
     private fun shareSchedule() {

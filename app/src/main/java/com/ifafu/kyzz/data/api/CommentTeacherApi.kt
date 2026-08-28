@@ -229,8 +229,15 @@ class CommentTeacherApi @Inject constructor(
                 append("&__VIEWSTATE="); append(enc(vs.viewState))
                 if (pjkcValue.isNotEmpty()) { append("&pjkc="); append(enc(pjkcValue)) }
                 for (fieldName in fieldNames) {
-                    val tableName = fieldName.substringBefore(":_ctl")
-                    val ctlNum = Regex("""ctl(\d+)""").find(fieldName)?.groupValues?.get(1) ?: ""
+                    // 与 parseEvalFieldNames 同一正则提取表名/ctl 编号：旧版页面用
+                    // 下划线命名(DataGrid1__ctl2_JS1)，substringBefore(":_ctl") 对它
+                    // 落空返回整串，selections 的 key 永远匹配不上，用户手选的分数
+                    // 会被整体静默替换成默认"良好"
+                    val nameMatch = Regex("""([\w]+)[_:]+ctl(\d+)[_:]+(JS1|jc1)""").find(fieldName)
+                    val tableName = nameMatch?.groupValues?.get(1)
+                        ?: fieldName.substringBefore(":_ctl").substringBefore("__ctl")
+                    val ctlNum = nameMatch?.groupValues?.get(2)
+                        ?: Regex("""ctl(\d+)""").find(fieldName)?.groupValues?.get(1).orEmpty()
                     val fieldKey = "$tableName:$ctlNum"
                     val level = selections[fieldKey] ?: ScoreLevel.GOOD
                     append("&"); append(enc(fieldName)); append("="); append(enc(level.gbkValue))

@@ -42,7 +42,7 @@ class GpaRingView @JvmOverloads constructor(
     private val gpaTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         textAlign = Paint.Align.CENTER
         color = resources.getColor(R.color.claude_terracotta, null)
-        typeface = resources.getFont(R.font.claude_serif)
+        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
         isFakeBoldText = true
     }
 

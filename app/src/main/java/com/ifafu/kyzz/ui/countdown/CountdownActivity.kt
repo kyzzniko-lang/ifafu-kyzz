@@ -149,7 +149,7 @@ class CountdownActivity : BaseActivity<ActivityCountdownBinding>() {
                 text = event.name
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             })
             textCol.addView(TextView(holder.content.context).apply {
                 text = "${event.date}  ${daysText}"
@@ -157,7 +157,7 @@ class CountdownActivity : BaseActivity<ActivityCountdownBinding>() {
                 setTextColor(resources.getColor(
                     if (days in 0..7) R.color.claude_terracotta else R.color.claude_text_hint, null
                 ))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setPadding(0, 4, 0, 0)
             })
 
@@ -169,7 +169,7 @@ class CountdownActivity : BaseActivity<ActivityCountdownBinding>() {
                 setTextColor(resources.getColor(
                     if (days in 0..7) R.color.claude_terracotta else R.color.claude_text_primary, null
                 ))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             })
 
             holder.itemView.setOnLongClickListener {

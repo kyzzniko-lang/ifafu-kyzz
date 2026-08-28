@@ -26,10 +26,30 @@ class TrainingPlanParser @Inject constructor(
     }
 
     private fun <T> extractFieldValue(html: String, label: String, transform: (String) -> T): T {
-        val idx = html.indexOf(label)
-        if (idx >= 0) {
+        // "学院/专业"等词可能先出现在导航、面包屑或公告标题里,真实字段值与标签
+        // 在同一表格单元格里紧邻。策略分两层:
+        // ① 遍历各处同名标签,取第一个"紧邻文本节点(200字符内)"的值——精度更优;
+        // ② 若没有任何一处满足紧邻条件,回退为"文档中第一处标签后首个文本节点"
+        //    的旧版语义,保证结果集永不小于旧行为。
+        val legacyPattern = Regex(">([^<]+)<")
+        val nearLimit = 200
+        var searchFrom = 0
+        while (true) {
+            val idx = html.indexOf(label, searchFrom)
+            if (idx < 0) break
             val after = html.substring(idx + label.length)
-            val match = Regex(">([^<]+)<").find(after)
+            val match = legacyPattern.find(after)
+            val value = match?.let { htmlParser.cleanNbsp(it.groupValues[1]) }.orEmpty()
+            if (match != null && value.isNotEmpty() && match.range.first <= nearLimit) {
+                return transform(value)
+            }
+            searchFrom = idx + label.length
+        }
+        // 回退:与旧实现完全一致的第一处取值(可能带导航噪声,但不丢真实字段)
+        val firstIdx = html.indexOf(label)
+        if (firstIdx >= 0) {
+            val after = html.substring(firstIdx + label.length)
+            val match = legacyPattern.find(after)
             if (match != null) {
                 return transform(htmlParser.cleanNbsp(match.groupValues[1]))
             }
@@ -82,7 +102,10 @@ class TrainingPlanParser @Inject constructor(
                 if (tds.size >= 2) {
                     val label = tds[0].text().trim()
                     val credit = tds[1].text().trim()
-                    if (label.isNotEmpty() && credit.isNotEmpty() && label != "毕业学分要求" && label != "公选课学分要求") {
+                    // 学分列必须是数字：正方系统该表常用 td 而非 th 做表头，
+                    // "课程类别/学分"这类表头行会作为假数据混进"学分要求"卡片
+                    val creditNum = credit.removeSuffix("学分").trim().toDoubleOrNull()
+                    if (creditNum != null && label.isNotEmpty() && label != "毕业学分要求" && label != "公选课学分要求") {
                         result.add(CreditSummary(label, credit))
                     }
                 }

@@ -7,7 +7,7 @@
 | 入口 | 地址 |
 | --- | --- |
 | 项目介绍页（杭州） | [116.62.222.192](http://116.62.222.192/) |
-| 直接下载最新版 APK | [下载 iFAFU v2.5.9](https://github.com/kyzzniko-lang/ifafu-kyzz/releases/download/v2.5.9/iFAFU-v2.5.9.apk) |
+| 直接下载最新版 APK | [下载 iFAFU 最新版](https://github.com/kyzzniko-lang/ifafu-kyzz/releases/latest) |
 | GitHub Releases | [查看全部版本](https://github.com/kyzzniko-lang/ifafu-kyzz/releases) |
 | 功能详情 | [features.html](http://116.62.222.192/features.html) |
 | 下载说明 | [download.html](http://116.62.222.192/download.html) |
@@ -18,7 +18,7 @@
 
 ## 项目一览
 
-当前版本：**v2.5.9** · Android · Kotlin · MVVM
+当前版本：**v2.6.0** · Android · Kotlin · MVVM
 
 <p align="center">
   <img src="docs/screenshots/hero.png" alt="iFAFU 产品介绍" width="760">
@@ -70,11 +70,25 @@
 - OkHttp + Jsoup（ASP.NET WebForms 网页抓取）
 - WebView + Leaflet + 高德地图瓦片（校园地图）
 - Lottie 动画 + Shimmer 骨架屏
-- SharedPreferences + EncryptedSharedPreferences
+- SharedPreferences（JSON 缓存/偏好存储，未启用加密存储）
 - Material Design 3（Claude 风格主题）
 - 自建 LLM 代理服务（杭州节点）：模型密钥仅存服务端，设备级限流 + 模型白名单 + 用量封顶
 
 ## 更新日志
+
+### v2.6.0
+- **隐私收紧**
+  - 宠物聊天/AI 请求不再向代理服务器发送姓名、学号、班级等直接身份信息，仅保留学业上下文（课程、考试、成绩概况）。
+  - 笔记内容默认不随宠物聊天外发，需在设置中显式开启"宠物可查看笔记"。
+  - 新增设置项"宠物聊天使用学业数据"总开关，关闭后请求不携带任何个人学业上下文。
+  - 匿名讨论/课程评价/点赞的设备标识由学号无盐哈希改为安装级加盐哈希，防止通过枚举学号反查发言归属（升级后首次使用需重新设置昵称）。
+  - 崩溃/ANR 上报前对堆栈与异常消息脱敏（会话令牌、学号形态数字自动掩码），服务端同步二次净化。
+  - 验证码会话令牌不再出现在调试日志与异常消息中。
+- **工程质量**
+  - 仓库治理：清理约 156MB 误入库的构建产物与调试脚本，修复 .gitignore 失效规则。
+  - 新增 GitHub Actions CI（单元测试 + 构建产物）。
+  - 补充缓存层与隐私逻辑单元测试（含 Robolectric）。
+  - 官网与 README 版本信息与客户端对齐，README 技术栈描述修正。
 
 ### v2.5.9
 - **AI 密钥安全架构重构**

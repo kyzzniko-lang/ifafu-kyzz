@@ -110,8 +110,12 @@ class ScoreFragment : Fragment() {
             selectedYear = latestTerm.first
             selectedTerm = latestTerm.second
         }
-        val restoreIndex = if (selectedYear != null) options.indexOf(selectedYear).coerceAtLeast(0) else 0
-        binding.spinnerYear.setSelection(restoreIndex)
+        // 先注册 listener 再 setSelection：反过来的话初始选中不触发 onItemSelected，
+        // 页面会显示"最新学年"但列表仍是未过滤的全量，点任一学期按钮后列表骤减。
+        // 恢复的学年已不在选项里(缓存被清/换账号)时回退"全部"，避免 spinner 显示
+        // 与实际过滤状态脱节。
+        val restoreIndex = if (selectedYear != null) options.indexOf(selectedYear) else 0
+        if (restoreIndex < 0) selectedYear = null
 
         binding.spinnerYear.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -121,6 +125,7 @@ class ScoreFragment : Fragment() {
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+        binding.spinnerYear.setSelection(restoreIndex.coerceAtLeast(0))
     }
 
     private fun setupTermButtons() {
@@ -174,7 +179,11 @@ class ScoreFragment : Fragment() {
         val validScores = scores.filter { it.score > 0f && it.studyScore > 0f }
         updateStats(validScores)
 
-        val trendData = computeTrendData(validScores)
+        // 趋势图用全量成绩计算：它本质是跨学期视图，若跟随筛选器，默认选中
+        // "最新学期"时会先渲染后消失（闪一下就不见），用户必须手动选"全部"才能看到。
+        val trendData = computeTrendData(
+            viewModel.getAllScores().filter { it.score > 0f && it.studyScore > 0f }
+        )
         val items = mutableListOf<Any>()
         if (trendData != null) items.add(trendData)
         items.addAll(scores)
@@ -193,7 +202,9 @@ class ScoreFragment : Fragment() {
         }
         binding.statsCard.visibility = View.VISIBLE
 
-        val totalCredits = scores.sumOf { it.studyScore.toDouble() }.toFloat()
+        // 总学分走 GpaCalculator 同口径（重修去重、剔除免修/缺考）：直接对
+        // validScores 求和会把挂科+重修两行学分双计，与同卡片的 GPA/平均分矛盾。
+        val totalCredits = GpaCalculator.computeTotalCredits(scores)
         val weightedAvg = GpaCalculator.computeWeightedAvg(scores)
 
         // 算术平均分（不考虑学分权重）与已出成绩科目数
@@ -285,7 +296,7 @@ class ScoreFragment : Fragment() {
                     text = "GPA趋势"
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     textSize = 14f
                 })
                 val trendView = GpaTrendView(requireContext())
@@ -303,7 +314,7 @@ class ScoreFragment : Fragment() {
                 topRow.addView(TextView(requireContext()).apply {
                     text = score.courseName; setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
                 // NEW 标签：成绩首次见到时间在最近 48 小时内时显示，常驻不因刷新丢失。
@@ -329,7 +340,7 @@ class ScoreFragment : Fragment() {
                 }
                 topRow.addView(TextView(requireContext()).apply {
                     text = if (score.score > 0) "${score.score}" else "--"
-                    typeface = resources.getFont(R.font.claude_serif); textSize = 22f
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif); textSize = 22f
                     // 分数着色：及格（>=60）绿色，不及格（<60）红色，未出分灰色
                     val scoreColor = when {
                         score.score <= 0 -> R.color.claude_text_hint
@@ -343,7 +354,7 @@ class ScoreFragment : Fragment() {
                 if (score.makeupScore > 0) infoParts.add("补考: ${score.makeupScore}")
                 holder.content.addView(TextView(requireContext()).apply {
                     text = infoParts.joinToString(" | "); setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
 
                 holder.itemView.isClickable = true

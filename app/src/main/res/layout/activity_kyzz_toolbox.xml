@@ -179,7 +179,7 @@
                         android:layout_width="18dp"
                         android:layout_height="18dp"
                         android:layout_marginStart="-27dp"
-                        android:src="@android:drawable/ic_menu_mapmode"
+                        android:src="@drawable/ic_map"
                         app:tint="@color/claude_terracotta" />
 
                     <LinearLayout
@@ -210,7 +210,7 @@
                         android:layout_width="16dp"
                         android:layout_height="16dp"
                         android:alpha="0.3"
-                        android:src="@android:drawable/ic_media_play"
+                        android:src="@drawable/ic_play"
                         app:tint="@color/claude_text_tertiary" />
 
                 </LinearLayout>
@@ -243,7 +243,7 @@
                         android:layout_width="18dp"
                         android:layout_height="18dp"
                         android:layout_marginStart="-27dp"
-                        android:src="@android:drawable/ic_menu_add"
+                        android:src="@drawable/ic_add"
                         app:tint="@color/claude_terracotta" />
 
                     <LinearLayout
@@ -274,7 +274,7 @@
                         android:layout_width="16dp"
                         android:layout_height="16dp"
                         android:alpha="0.3"
-                        android:src="@android:drawable/ic_media_play"
+                        android:src="@drawable/ic_play"
                         app:tint="@color/claude_text_tertiary" />
 
                 </LinearLayout>

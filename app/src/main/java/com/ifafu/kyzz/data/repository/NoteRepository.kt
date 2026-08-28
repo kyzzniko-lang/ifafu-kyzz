@@ -10,7 +10,14 @@ class NoteRepository(context: Context) {
     private val prefs = context.getSharedPreferences("notes_prefs", Context.MODE_PRIVATE)
     private val gson = Gson()
 
-    fun loadNotes(): List<Note> {
+    companion object {
+        // 笔记以"全量 JSON 覆盖写"保存,且列表页/编辑页/首页各自 new 一个实例。
+        // 锁必须挂在类上:实例锁拦不住多个实例并发的读-改-写,后写者会把
+        // 先写者的整笔修改覆盖掉(丢笔记)。
+        private val fileLock = Any()
+    }
+
+    fun loadNotes(): List<Note> = synchronized(fileLock) {
         val json = prefs.getString("notes", null) ?: return emptyList()
         return try {
             gson.fromJson(json, object : TypeToken<List<Note>>() {}.type)
@@ -18,7 +25,9 @@ class NoteRepository(context: Context) {
     }
 
     fun saveNotes(notes: List<Note>) {
-        prefs.edit().putString("notes", gson.toJson(notes)).apply()
+        synchronized(fileLock) {
+            prefs.edit().putString("notes", gson.toJson(notes)).apply()
+        }
     }
 
     fun getPetVisibleNotes(): List<Note> {
@@ -29,14 +38,26 @@ class NoteRepository(context: Context) {
         return loadNotes().map { it.category }.filter { it.isNotEmpty() }.distinct()
     }
 
+    /** 原子新增或更新一条笔记：读-改-写整体持锁，调用方不得再自行 load→save 拼装。 */
+    fun upsertNote(note: Note) {
+        synchronized(fileLock) {
+            val notes = loadNotes().toMutableList()
+            val existingIndex = notes.indexOfFirst { it.id == note.id }
+            if (existingIndex >= 0) notes[existingIndex] = note else notes.add(note)
+            saveNotes(notes)
+        }
+    }
+
     fun deleteNote(id: String) {
-        val notes = loadNotes().toMutableList()
-        val note = notes.find { it.id == id }
-        notes.removeAll { it.id == id }
-        saveNotes(notes)
-        // 删除录音文件
-        if (note != null && note.audioPath.isNotEmpty()) {
-            try { java.io.File(note.audioPath).delete() } catch (_: Exception) {}
+        synchronized(fileLock) {
+            val notes = loadNotes().toMutableList()
+            val note = notes.find { it.id == id }
+            notes.removeAll { it.id == id }
+            saveNotes(notes)
+            // 删除录音文件
+            if (note != null && note.audioPath.isNotEmpty()) {
+                try { java.io.File(note.audioPath).delete() } catch (_: Exception) {}
+            }
         }
     }
 }

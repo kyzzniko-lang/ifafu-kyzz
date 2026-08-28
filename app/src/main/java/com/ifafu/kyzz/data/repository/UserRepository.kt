@@ -56,6 +56,10 @@ class UserRepository @Inject constructor(
         bumpAuthGeneration()
     }
 
+    // 账号字段在 ifafu_user、token 在 ifafu_secure 两个文件里。写侧(saveUser/
+    // clearUser)虽各自原子,但读侧不同步时可能读到"新 account 配旧/已删 token"
+    // 的撕裂快照——与登出或切号并发的 API 调用会拿着错 token 去请求。
+    @Synchronized
     fun getUser(): User {
         return User(
             account = prefs.getString("account", "") ?: "",
@@ -76,6 +80,7 @@ class UserRepository @Inject constructor(
         bumpAuthGeneration()
     }
 
+    @Synchronized
     fun getPassword(): String {
         val password = securePrefs.getString("password", "") ?: ""
         if (password.isNotEmpty()) return password
@@ -100,7 +105,18 @@ class UserRepository @Inject constructor(
         securePrefs.edit().apply {
             remove("password")
             remove("token")
-            remove("saved_accounts")
+            // 保留 saved_accounts ：clearUser 是"退出当前登录"，不是"忘记所有账号"。
+            // 双账号用户注销其一后，另一账号仍应出现在登录页的账号选择器里；
+            // 彻底删除某个账号走 removeAccount()。
+            apply()
+        }
+        // termFirstDay/termFirstDayManual 是按设备保存的全局配置：A 账号设置过
+        // 手动开学日后登出，B 账号会继承 manual 标志，之后所有自动学期同步
+        // （GitHub/服务器周次标签）永久失效。登出时一并重置，下次登录按校历
+        // 或远程配置重建。
+        prefs.edit().apply {
+            remove("termFirstDay")
+            remove("termFirstDayManual")
             apply()
         }
     }
@@ -159,6 +175,15 @@ class UserRepository @Inject constructor(
             putString("account", profile.account)
             putString("name", profile.name)
             putBoolean("isLogin", false)
+            // 必须清掉上一账号的学籍快照：这些字段只在登录成功时写入，切号后若
+            // 残留旧值，首页/成绩单会把 A 的学院班级安到 B 头上，且随后的后台
+            // 自动重登会把脏数据固化进 B 的档案。
+            remove("institute")
+            remove("clas")
+            remove("enrollment")
+            // 密码随 profile 写入后，prefs 里的 password_backup 就是上一账号的
+            // 明文残留；不清的话空密码 profile 会回退用它去登错账号。
+            remove("password_backup")
             apply()
         }
         securePrefs.edit().apply {

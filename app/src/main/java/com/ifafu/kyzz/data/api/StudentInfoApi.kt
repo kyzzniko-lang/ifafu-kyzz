@@ -30,7 +30,10 @@ class StudentInfoApi @Inject constructor(
                 val response = reloginHelper.relogin()
                 if (!response.success) return null
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xsgrxx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121501"
+                // 重登期间用户可能已切换账号/退出：以 B 的 token + A 的姓名发请求，
+                // 轻则拿到空数据，重则把 A 的学籍信息挂进 B 的会话。
+                if (user.account != number) return null
+                val retryUrl = "${host}/(${user.token})/xsgrxx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121501"
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return null

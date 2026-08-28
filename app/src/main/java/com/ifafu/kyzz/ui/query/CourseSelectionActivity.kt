@@ -101,7 +101,7 @@ class CourseSelectionActivity : BaseActivity<ActivityCourseSelectionBinding>() {
             return TextView(this@CourseSelectionActivity).apply {
                 this.text = text
                 setTextAppearance(R.style.ClaudeCaption)
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setTextColor(textColor)
                 setPadding(12, 4, 12, 4)
                 background = android.graphics.drawable.GradientDrawable().apply {
@@ -128,7 +128,7 @@ class CourseSelectionActivity : BaseActivity<ActivityCourseSelectionBinding>() {
                 text = item.courseName
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
 
@@ -151,7 +151,7 @@ class CourseSelectionActivity : BaseActivity<ActivityCourseSelectionBinding>() {
             statusRow.addView(TextView(this@CourseSelectionActivity).apply {
                 text = "是否选修"
                 setTextAppearance(R.style.ClaudeCaption)
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setTextColor(resources.getColor(R.color.claude_text_tertiary, null))
             })
             statusRow.addView(makeTag(
@@ -175,7 +175,7 @@ class CourseSelectionActivity : BaseActivity<ActivityCourseSelectionBinding>() {
                 holder.content.addView(TextView(this@CourseSelectionActivity).apply {
                     text = codeText
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
             }
 
@@ -195,7 +195,7 @@ class CourseSelectionActivity : BaseActivity<ActivityCourseSelectionBinding>() {
                 holder.content.addView(TextView(this@CourseSelectionActivity).apply {
                     text = infoText
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
             }
 
@@ -204,14 +204,14 @@ class CourseSelectionActivity : BaseActivity<ActivityCourseSelectionBinding>() {
                 holder.content.addView(TextView(this@CourseSelectionActivity).apply {
                     text = "时间: ${item.time}"
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
             }
             if (item.location.isNotBlank()) {
                 holder.content.addView(TextView(this@CourseSelectionActivity).apply {
                     text = "地点: ${item.location}"
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
             }
         }

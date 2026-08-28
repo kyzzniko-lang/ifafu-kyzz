@@ -54,8 +54,22 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
     }
 
     private fun setupRecyclerView() {
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
+        val layoutManager = LinearLayoutManager(this)
+        binding.recyclerView.layoutManager = layoutManager
         binding.recyclerView.adapter = ReviewAdapter(emptyList())
+        // 分页加载：ViewModel 早就实现了 currentPage/hasMore/LoadingMore，
+        // 但 UI 从不调用 loadReviews(refresh=false)，评价超过一页（20 条）时
+        // 永远只显示第一页。滚动到倒数第 3 条时预取下一页。
+        binding.recyclerView.addOnScrollListener(object : androidx.recyclerview.widget.RecyclerView.OnScrollListener() {
+            override fun onScrolled(rv: androidx.recyclerview.widget.RecyclerView, dx: Int, dy: Int) {
+                if (dy <= 0) return
+                val total = layoutManager.itemCount
+                val lastVisible = layoutManager.findLastVisibleItemPosition()
+                if (lastVisible >= total - 3) {
+                    viewModel.loadReviews(refresh = false)
+                }
+            }
+        })
     }
 
     private fun setupSearch() {
@@ -75,7 +89,9 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
     private var deleteDialog: AlertDialog? = null
 
     private fun showMyReviewsForDelete() {
-        val myReviews = (viewModel.reviews.value ?: emptyList()).filter { viewModel.isMyReview(it) }
+        // 用全量列表而不是 reviews LiveData：后者在搜索时被替换成过滤子集，
+        // 搜索状态下打开删除列表会看不到自己的其它评价。
+        val myReviews = viewModel.getAllReviews().filter { viewModel.isMyReview(it) }
         if (myReviews.isEmpty()) {
             com.google.android.material.snackbar.Snackbar.make(binding.root, "你还没有发布过评价", com.google.android.material.snackbar.Snackbar.LENGTH_SHORT).show()
             return
@@ -111,14 +127,14 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                 text = review.courseName
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             })
             if (review.teacher.isNotEmpty()) {
                 content.addView(TextView(this@CourseReviewActivity).apply {
                     text = review.teacher
                     textSize = 12f
                     setTextColor(resources.getColor(R.color.claude_text_secondary, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
             }
 
@@ -136,7 +152,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                     text = tags[i]
                     textSize = 9f
                     setTextColor(tagColors[i])
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     setPadding((6 * dp).toInt(), (2 * dp).toInt(), (6 * dp).toInt(), (2 * dp).toInt())
                     if (i < tags.size - 1) {
                         layoutParams = android.widget.LinearLayout.LayoutParams(
@@ -153,7 +169,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                     text = review.comment.take(40) + if (review.comment.length > 40) "..." else ""
                     textSize = 11f
                     setTextColor(resources.getColor(R.color.claude_text_secondary, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     setPadding(0, (4 * dp).toInt(), 0, 0)
                     maxLines = 1
                     ellipsize = android.text.TextUtils.TruncateAt.END
@@ -164,7 +180,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                 text = review.createdAt.take(10)
                 textSize = 9f
                 setTextColor(resources.getColor(R.color.claude_text_hint, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setPadding(0, (4 * dp).toInt(), 0, 0)
             })
 
@@ -197,6 +213,10 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                     binding.petLoading.root.startLoading()
                     binding.contentLayout.visibility = View.GONE
                     binding.errorLayout.visibility = View.GONE
+                    // emptyLayout 与加载动画平级：带 course_name 进入时 TextWatcher
+                    // 先写入一次空列表值把它点亮，Loading 分支不藏掉的话会出现
+                    // "加载中"和"暂无评价"叠在一起。
+                    binding.emptyLayout.visibility = View.GONE
                 }
                 is CourseReviewViewModel.State.Success -> {
                     binding.petLoading.root.stopLoading()
@@ -343,7 +363,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                 text = if (review.teacher.isNotEmpty()) "${review.courseName} · ${review.teacher}" else review.courseName
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             })
 
             // Rating tags row
@@ -363,7 +383,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                     text = labels[i]
                     textSize = 10f
                     setTextColor(colors[i])
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     setPadding(0, 4, (8 * dp).toInt(), 4)
                     background = android.graphics.drawable.GradientDrawable().apply {
                         shape = android.graphics.drawable.GradientDrawable.RECTANGLE
@@ -380,7 +400,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                     text = review.comment
                     setTextAppearance(R.style.ClaudeCaption)
                     setPadding(0, 6, 0, 0)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
             }
 
@@ -393,7 +413,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                 text = "${review.nickname} · ${review.createdAt.take(10)}"
                 textSize = 10f
                 setTextColor(resources.getColor(R.color.claude_text_hint, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             if (viewModel.isMyReview(review)) {
@@ -401,7 +421,7 @@ class CourseReviewActivity : BaseActivity<ActivityCourseReviewBinding>() {
                     text = "我的评价"
                     textSize = 9f
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     setPadding(8, 2, 8, 2)
                     background = android.graphics.drawable.GradientDrawable().apply {
                         shape = android.graphics.drawable.GradientDrawable.RECTANGLE

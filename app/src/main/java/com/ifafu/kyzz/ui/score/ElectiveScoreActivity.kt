@@ -90,7 +90,7 @@ class ElectiveScoreActivity : BaseActivity<ActivityElectiveScoreBinding>() {
                     ).apply { bottomMargin = 12 }
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     textSize = 16f
                 }
                 return HeaderVH(tv)
@@ -124,19 +124,19 @@ class ElectiveScoreActivity : BaseActivity<ActivityElectiveScoreBinding>() {
                 val name = TextView(this@ElectiveScoreActivity).apply {
                     text = score.courseName; setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
                 val scoreVal = TextView(this@ElectiveScoreActivity).apply {
                     text = if (score.score > 0) "${score.score}" else "--"
-                    typeface = resources.getFont(R.font.claude_serif); textSize = 20f
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif); textSize = 20f
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                 }
                 topRow.addView(name); topRow.addView(scoreVal); holder.content.addView(topRow)
                 val info = TextView(this@ElectiveScoreActivity).apply {
                     text = "${score.year} 第${score.term}学期 | 学分: ${score.studyScore}"
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 holder.content.addView(info)
             }

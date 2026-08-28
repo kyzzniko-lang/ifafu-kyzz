@@ -37,6 +37,8 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
         private const val KEY_RUNNING = "running"
         private const val KEY_IS_BREAK = "is_break"
         private const val KEY_END_AT = "end_at"
+        private const val KEY_PAUSED = "paused"
+        private const val KEY_REMAINING = "remaining"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -60,10 +62,28 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
      * 从 prefs 恢复计时状态。
      * - 若上一轮尚未结束：按 endAt 与 now 的差值校正 remainingMillis，继续计时。
      * - 若在后台期间已到点：补发完成回调（专注轮补发经验 + 番茄数，休息轮只推进状态）。
+     * - 若处于暂停状态被系统回收（旧实现直接丢掉，第 24 分钟暂停后重进归零重开）：
+     *   按剩余毫秒恢复到"已暂停"。
      */
     private fun restorePersistedState() {
         val wasRunning = prefs.getBoolean(KEY_RUNNING, false)
-        if (!wasRunning) return
+        if (!wasRunning) {
+            if (prefs.getBoolean(KEY_PAUSED, false)) {
+                val savedRemaining = prefs.getLong(KEY_REMAINING, 0L)
+                if (savedRemaining > 0L) {
+                    isBreak = prefs.getBoolean(KEY_IS_BREAK, false)
+                    remainingMillis = savedRemaining.coerceAtMost(
+                        if (isBreak) BREAK_DURATION else FOCUS_DURATION
+                    )
+                    isRunning = false
+                    binding.tvStatus.text = "已暂停"
+                    binding.btnStart.text = "继续"
+                    binding.btnReset.text = "重置"
+                    updateDisplay()
+                }
+            }
+            return
+        }
         val wasBreak = prefs.getBoolean(KEY_IS_BREAK, false)
         val savedEndAt = prefs.getLong(KEY_END_AT, 0L)
         if (savedEndAt <= 0L) return
@@ -103,14 +123,27 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
     }
 
     private fun persistState() {
-        if (!isRunning) {
-            clearPersistedState()
-            return
-        }
+        // 仅在运行态写入运行快照。非运行态绝不能 clearPersistedState()：
+        // pause() 刚写好的暂停状态会在用户离开页面（onPause → persistState）
+        // 时被清掉，"暂停中被杀恢复"就永远不会生效。非运行态的清理由
+        // reset()/计时完成/恢复已结束轮次显式调用 clearPersistedState()。
+        if (!isRunning) return
         prefs.edit()
             .putBoolean(KEY_RUNNING, true)
             .putBoolean(KEY_IS_BREAK, isBreak)
             .putLong(KEY_END_AT, endAt)
+            .remove(KEY_PAUSED)
+            .remove(KEY_REMAINING)
+            .apply()
+    }
+
+    /** 暂停状态持久化：进程被杀后重进恢复到"已暂停"而不是归零重开。 */
+    private fun persistPausedState() {
+        prefs.edit()
+            .putBoolean(KEY_RUNNING, false)
+            .putBoolean(KEY_PAUSED, true)
+            .putBoolean(KEY_IS_BREAK, isBreak)
+            .putLong(KEY_REMAINING, remainingMillis)
             .apply()
     }
 
@@ -119,6 +152,8 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
             remove(KEY_RUNNING)
             remove(KEY_IS_BREAK)
             remove(KEY_END_AT)
+            remove(KEY_PAUSED)
+            remove(KEY_REMAINING)
         }.apply()
     }
 
@@ -162,7 +197,7 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
         binding.btnStart.text = "继续"
         binding.btnReset.text = "重置"
         binding.tvStatus.text = "已暂停"
-        clearPersistedState()
+        persistPausedState()
     }
 
     private fun reset() {
@@ -183,10 +218,8 @@ class PomodoroTimerActivity : BaseActivity<ActivityPomodoroTimerBinding>() {
         prefs.edit().putInt("pomodoros_$today", count).apply()
         updateTodayCount()
 
-        // 宠物 +10 经验
-        val pet = petRepository.loadPet()
-        pet.addExp(10)
-        petRepository.savePet(pet)
+        // 宠物 +10 经验（走互斥 read-modify-write，避免与首页 tick 的全量写互相覆盖）
+        petRepository.update { it.addExp(10) }
 
         Toast.makeText(this, "完成一个番茄！宠物+10经验", Toast.LENGTH_SHORT).show()
     }

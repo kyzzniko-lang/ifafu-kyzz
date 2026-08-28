@@ -137,17 +137,22 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
-                android:hint="说点什么..."
-                app:boxBackgroundMode="outline">
+                android:minHeight="52dp"
+                app:boxBackgroundMode="outline"
+                app:hintEnabled="false">
 
                 <com.google.android.material.textfield.TextInputEditText
                     android:id="@+id/etComment"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:fontFamily="sans-serif"
+                    android:gravity="center_vertical|start"
+                    android:hint="说点什么..."
                     android:inputType="textMultiLine"
                     android:maxLines="3"
-                    android:padding="12dp"
+                    android:minHeight="52dp"
+                    android:paddingHorizontal="16dp"
+                    android:paddingVertical="0dp"
                     android:textSize="14sp" />
 
             </com.google.android.material.textfield.TextInputLayout>
@@ -156,7 +161,7 @@
                 android:id="@+id/btnSend"
                 style="@style/ClaudeButton"
                 android:layout_width="wrap_content"
-                android:layout_height="44dp"
+                android:layout_height="52dp"
                 android:layout_marginStart="8dp"
                 android:text="发送" />
 

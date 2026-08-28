@@ -30,12 +30,11 @@ class ScoreApi @Inject constructor(
     suspend fun getAllScores(host: String, token: String, number: String, name: String): List<Score>? {
         return try {
             val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
-            htmlClient.setReferer(mainUrl)
-            
+
             val accessUrl = "${host}/(${token})/xscjcx_dq_fafu.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
 
             val doc = withTimeoutOrNull(SCORE_REQUEST_TIMEOUT_MS) {
-                htmlClient.getCancellable(accessUrl)
+                htmlClient.getCancellableWithReferer(accessUrl, mainUrl)
             } ?: return null
             val html = doc.html()
 
@@ -47,10 +46,16 @@ class ScoreApi @Inject constructor(
                     return null
                 }
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xscjcx_dq_fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121605"
-                htmlClient.setReferer("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
+                if (user.account != number || userRepository.host != host) {
+                    Log.w(TAG, "Relogin retry cancelled because account or host changed")
+                    return null
+                }
+                val retryUrl = "${host}/(${user.token})/xscjcx_dq_fafu.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121605"
                 val retryDoc = withTimeoutOrNull(SCORE_REQUEST_TIMEOUT_MS) {
-                    htmlClient.getCancellable(retryUrl)
+                    htmlClient.getCancellableWithReferer(
+                        retryUrl,
+                        "${host}/(${user.token})/xs_main.aspx?xh=${user.account}"
+                    )
                 } ?: return null
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) {
@@ -97,12 +102,23 @@ class ScoreApi @Inject constructor(
             .build()
 
         val resultHtml = withTimeoutOrNull(SCORE_POST_TIMEOUT_MS) {
-            htmlClient.postStringCancellable(accessUrl, formBody)
+            htmlClient.postStringCancellableWithReferer(accessUrl, formBody, accessUrl)
         } ?: return initialScores
         htmlClient.throwIfAlert(resultHtml)
         val allScores = scoreParser.parseScores(resultHtml)
 
-        return if (allScores.isNotEmpty()) allScores else initialScores
+        val finalScores = if (allScores.isNotEmpty()) allScores else initialScores
+        // 两轮解析都为空时必须确认页面确实是业务页:分类器漏判的登录页/中间页
+        // 会以"空数据成功"的形式穿透到 Worker 并被当作监控基线入库,污染是永久的。
+        // 业务特征全缺失则按拉取失败处理(null),Worker 不写缓存只重试。
+        if (finalScores.isEmpty() &&
+            !SessionResponseClassifier.looksLikeBusinessPage(html) &&
+            !SessionResponseClassifier.looksLikeBusinessPage(resultHtml)
+        ) {
+            Log.w(TAG, "成绩页解析结果为空且缺失业务页特征,疑似异常页面,按失败处理")
+            return null
+        }
+        return finalScores
     }
 
     suspend fun getElectiveTargetScore(host: String, token: String, number: String, name: String): Map<String, Float> {
@@ -115,7 +131,12 @@ class ScoreApi @Inject constructor(
                 val response = reloginHelper.relogin()
                 if (!response.success) return emptyMap()
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/pyjh.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121607"
+                // 重登等待期间账号/主机可能已切换(守卫同 getAllScores)
+                if (user.account != number || userRepository.host != host) {
+                    Log.w(TAG, "Relogin retry cancelled because account or host changed")
+                    return emptyMap()
+                }
+                val retryUrl = "${host}/(${user.token})/pyjh.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121607"
                 doc = htmlClient.get(retryUrl)
                 val retryHtml = doc.html()
                 if (userApi.isSessionExpired(retryHtml)) return emptyMap()

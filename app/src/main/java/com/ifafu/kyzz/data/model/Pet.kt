@@ -9,9 +9,12 @@ data class Pet(
     var mood: Int = 80,        // 0-100 心情值
     var hunger: Int = 60,      // 0-100 饱食度（越高越饱）
     var state: PetState = PetState.IDLE,
-    var lastFeedTime: Long = 0L,
+    // 默认值必须是"现在"而非 0：0（1970 年）会让 tick() 一次性扣掉几十年
+    // 的衰减量，新宠物创建 1 小时后饱食度/心情直接见底。Gson 反序列化
+    // 不走构造函数，旧 JSON 缺字段时仍会是 0，由 tick() 里的零值防护兜底。
+    var lastFeedTime: Long = System.currentTimeMillis(),
     var lastPlayTime: Long = 0L,
-    var lastInteractTime: Long = 0L,
+    var lastInteractTime: Long = System.currentTimeMillis(),
     var totalDays: Int = 1,
     var gradeAdviceShown: Boolean = false,
     var feedCount: Int = 3,       // 当前可用喂食次数
@@ -20,6 +23,8 @@ data class Pet(
     var lastPlayRecoverTime: Long = System.currentTimeMillis(), // 上次玩耍恢复时间
     var points: Int = 0,            // 签到积分
     var lastCheckInDate: String = "", // 上次签到日期 yyyy-MM-dd
+    // 上次签到的单调时间戳，防系统时间回拨刷签到；旧存档缺该字段时反序列化为 0，不影响
+    var lastCheckInTime: Long = 0L,
     var checkInStreak: Int = 0,      // 连续签到天数
     var lastTickTime: Long = System.currentTimeMillis() // 上次 tick 时间
 ) {
@@ -175,6 +180,11 @@ data class Pet(
 
     fun tick() {
         val now = System.currentTimeMillis()
+        // Gson 反序列化不走构造函数，旧版本 JSON 缺字段时会得到 0（1970 年），
+        // 不重置的话衰减量会按几十年计算，宠物一次 tick 就"饿死"。
+        if (lastTickTime <= 0L) lastTickTime = now
+        if (lastFeedTime <= 0L) lastFeedTime = now
+        if (lastInteractTime <= 0L) lastInteractTime = now
         if (now < lastTickTime) {
             lastTickTime = now
             return
@@ -187,8 +197,11 @@ data class Pet(
         } else {
             val hoursSinceLastFeed = ((now - lastFeedTime) / (1000 * 60 * 60)).toInt()
             if (hoursSinceLastFeed > 4) {
-                val periods = ((hoursSinceLastFeed - 4) / 4).coerceIn(1, 30)
-                hunger = (hunger - 5 * periods).coerceAtLeast(0)
+                // 喂食后 4 小时起每满 4 小时扣 5 点；不足一个完整周期不扣。
+                val periods = ((hoursSinceLastFeed - 4) / 4).coerceAtMost(30)
+                if (periods > 0) {
+                    hunger = (hunger - 5 * periods).coerceAtLeast(0)
+                }
             }
         }
 
@@ -197,8 +210,10 @@ data class Pet(
         } else {
             val hoursSinceLastInteract = ((now - lastInteractTime) / (1000 * 60 * 60)).toInt()
             if (hoursSinceLastInteract > 8) {
-                val periods = ((hoursSinceLastInteract - 8) / 8).coerceIn(1, 30)
-                mood = (mood - 2 * periods).coerceAtLeast(0)
+                val periods = ((hoursSinceLastInteract - 8) / 8).coerceAtMost(30)
+                if (periods > 0) {
+                    mood = (mood - 2 * periods).coerceAtLeast(0)
+                }
             }
         }
 
@@ -209,6 +224,10 @@ data class Pet(
     }
 
     fun checkIn(): Boolean {
+        val now = System.currentTimeMillis()
+        // 除日期串外再校验单调时间戳：把系统时间回拨一天再拨回来，"today !=
+        // lastCheckInDate"会再次成立，签到(积分+经验+连签)就能无限刷
+        if (now <= lastCheckInTime) return false
         val chinaZone = java.util.TimeZone.getTimeZone("Asia/Shanghai")
         val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).apply {
             timeZone = chinaZone
@@ -228,6 +247,7 @@ data class Pet(
         }
         points += bonus
         lastCheckInDate = today
+        lastCheckInTime = now
         addExp(15)
         return true
     }

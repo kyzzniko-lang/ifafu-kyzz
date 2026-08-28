@@ -53,4 +53,24 @@ object TermResolver {
             else -> null
         }
     }
+
+    /**
+     * 按校历惯例估算某学期的开学周一：第一学期取 9 月 1 日所在周的周一，
+     * 第二学期取 3 月 2 日所在周的周一。与 MainViewModel.setDefaultTermFirstDay
+     * 的兜底口径一致（学年形如 "2026-2027"，第二学期在学年次年的春季）。
+     */
+    fun estimatedFirstDay(term: Term): Calendar? {
+        val startYear = term.year.substringBefore('-').toIntOrNull() ?: return null
+        val cal = Calendar.getInstance()
+        when (term.term) {
+            "1" -> cal.set(startYear, Calendar.SEPTEMBER, 1, 0, 0, 0)
+            "2" -> cal.set(startYear + 1, Calendar.MARCH, 2, 0, 0, 0)
+            else -> return null
+        }
+        cal.set(Calendar.MILLISECOND, 0)
+        val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
+        val daysToMonday = if (dayOfWeek == Calendar.SUNDAY) 6 else dayOfWeek - Calendar.MONDAY
+        cal.add(Calendar.DAY_OF_YEAR, -daysToMonday)
+        return cal
+    }
 }

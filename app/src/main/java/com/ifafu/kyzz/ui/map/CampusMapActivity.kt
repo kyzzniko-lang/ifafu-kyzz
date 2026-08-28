@@ -76,6 +76,9 @@ class CampusMapActivity : BaseActivity<ActivityCampusMapBinding>(), LocationList
         binding.webView.settings.javaScriptEnabled = true
         binding.webView.settings.domStorageEnabled = true
         binding.webView.settings.blockNetworkLoads = false
+        // Leaflet 库从应用本地 assets 加载(与虚拟定位页一致),需要 file 访问开关;
+        // 瓦片图仍按绝对 https 地址请求高德,不受影响。
+        binding.webView.settings.allowFileAccess = true
         binding.webView.webViewClient = WebViewClient()
         binding.webView.webChromeClient = WebChromeClient()
         binding.webView.addJavascriptInterface(MapBridge(), "AndroidBridge")
@@ -164,8 +167,8 @@ class CampusMapActivity : BaseActivity<ActivityCampusMapBinding>(), LocationList
 <html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<link rel="stylesheet" href="file:///android_asset/leaflet/leaflet.min.css">
+<script src="file:///android_asset/leaflet/leaflet.min.js"></script>
 <style>
 *{margin:0;padding:0}
 html,body,#map{width:100%;height:100%}
@@ -173,22 +176,29 @@ html,body,#map{width:100%;height:100%}
 .leaflet-popup-content{margin:10px 14px!important;font-size:14px}
 .custom-marker{width:24px;height:24px;background:#C75B39;border:2px solid #fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.3)}
 .user-marker{width:18px;height:18px;background:#4285F4;border:3px solid #fff;border-radius:50%;box-shadow:0 0 10px rgba(66,133,244,.6)}
+#map-error{position:absolute;inset:0;display:none;align-items:center;justify-content:center;color:#9C958E;font-size:14px;font-family:serif}
 </style>
 </head>
 <body>
 <div id="map"></div>
+<div id="map-error">地图组件加载失败，请退出后重试</div>
 <button style="position:absolute;bottom:20px;right:20px;z-index:1000;width:40px;height:40px;background:#fff;border-radius:50%;box-shadow:0 2px 6px rgba(0,0,0,.3);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;border:none" onclick="requestLocation()" title="定位">&#x1F4CD;</button>
 <script>
-var map=L.map('map',{zoomControl:true}).setView([${campus.lat},${campus.lng}],16);
+// 库文件已本地化,正常必然就绪;留一个守卫把"组件缺失"从静默白屏变成可见提示。
+// map/related 状态挂在顶层:showUserLocation/goTo/switchCampus 由原生侧
+// evaluateJavascript 按全局名调用,不能收进函数作用域。
+var map,places=[$markersJson],markers=[],userMarker=null,userCircle=null;
+if (typeof L === 'undefined') {
+  document.getElementById('map-error').style.display = 'flex';
+} else {
+initMap();
+}
+function initMap(){
+map=L.map('map',{zoomControl:true}).setView([${campus.lat},${campus.lng}],16);
 L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{
   subdomains:['1','2','3','4'],
   maxZoom:18
 }).addTo(map);
-
-var places=[$markersJson];
-var markers=[];
-var userMarker=null;
-var userCircle=null;
 
 for(var i=0;i<places.length;i++){
   var p=places[i];
@@ -201,6 +211,7 @@ for(var i=0;i<places.length;i++){
     });
   })(i);
   markers.push(m);
+}
 }
 
 function showUserLocation(lat,lng,acc){
@@ -247,7 +258,7 @@ function switchCampus(lat,lng,markersJson){
 </script>
 </body></html>"""
 
-        binding.webView.loadDataWithBaseURL("https://webrd01.is.autonavi.com", html, "text/html", "UTF-8", null)
+        binding.webView.loadDataWithBaseURL("file:///android_asset/leaflet/", html, "text/html", "UTF-8", null)
     }
 
     private fun switchCampus(index: Int) {
@@ -365,7 +376,7 @@ function switchCampus(lat,lng,markersJson){
                 setPadding(24, 12, 24, 12)
                 textSize = 13f
                 setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 gravity = Gravity.CENTER
             }
             card.addView(tv)

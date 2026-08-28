@@ -8,11 +8,11 @@ import androidx.lifecycle.viewModelScope
 import com.ifafu.kyzz.data.api.CourseReviewApi
 import com.ifafu.kyzz.data.model.CourseReview
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.util.AuthorId
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.security.MessageDigest
 import javax.inject.Inject
 
 @HiltViewModel
@@ -39,6 +39,9 @@ class CourseReviewViewModel @Inject constructor(
     private var currentPage = 1
     private var hasMore = true
     private var allReviews = mutableListOf<CourseReview>()
+    // 最近一次搜索词：网络刷新完成后要重新套用，否则搜索框里有关键词、
+    // 列表却显示全量，用户以为筛选失效。
+    private var lastQuery: String = ""
 
     sealed class State {
         object Idle : State()
@@ -62,9 +65,9 @@ class CourseReviewViewModel @Inject constructor(
         data class Error(val message: String) : DeleteState()
     }
 
+    // 加盐哈希：无盐 SHA-256(学号) 可被枚举反查，详见 AuthorId
     private val userId: String by lazy {
-        val account = userRepository.getUser().account
-        "u_" + hashSha256(account).take(8)
+        AuthorId.discussionUserId(app, userRepository.getUser().account)
     }
 
     fun getNickname(): String {
@@ -77,20 +80,36 @@ class CourseReviewViewModel @Inject constructor(
 
     fun isMyReview(review: CourseReview): Boolean = review.authorId == userId
 
+    /** 全量（未按搜索词过滤）评价，供"我的评价"删除列表使用。 */
+    fun getAllReviews(): List<CourseReview> = allReviews.toList()
+
     fun loadReviews(refresh: Boolean = true) {
         if (!refresh && !hasMore) return
-        if (refresh) {
+        // 加载更多时的在途守卫：滚动监听可能在加载过程中反复触发，同一页
+        // 并发拉两次会重复追加。refresh 路径不加守卫（发布/重试后的强制刷新
+        // 不应被偶发的 LoadingMore 挡掉）。
+        if (!refresh) {
+            val state = _state.value
+            if (state is State.Loading || state is State.LoadingMore) return
+            _state.value = State.LoadingMore
+        } else {
             currentPage = 1
             allReviews.clear()
             hasMore = true
             _state.value = State.Loading
-        } else {
-            _state.value = State.LoadingMore
         }
 
         viewModelScope.launch {
             try {
                 val result = reviewApi.getReviews(currentPage)
+                if (result == null) {
+                    // 拉取失败（断网/GitHub 限流）：明确报错而不是伪装成"暂无评价"。
+                    // 加载更多失败时保留已有列表，仅提示，不清空用户正在看的内容。
+                    _state.value = State.Error(
+                        if (refresh) "加载失败，请检查网络后重试" else "加载更多失败"
+                    )
+                    return@launch
+                }
                 if (refresh) {
                     allReviews = result.toMutableList()
                 } else {
@@ -98,7 +117,7 @@ class CourseReviewViewModel @Inject constructor(
                 }
                 hasMore = result.size >= 20
                 currentPage++
-                _reviews.value = allReviews.toList()
+                filterReviews(lastQuery)
                 _state.value = State.Success()
             } catch (e: CancellationException) {
                 throw e
@@ -109,6 +128,7 @@ class CourseReviewViewModel @Inject constructor(
     }
 
     fun filterReviews(query: String) {
+        lastQuery = query
         if (query.isBlank()) {
             _reviews.value = allReviews.toList()
         } else {
@@ -166,7 +186,7 @@ class CourseReviewViewModel @Inject constructor(
                     _deleteState.value = DeleteState.Success
                     delay(300)
                     allReviews.removeAll { it.commentId == review.commentId }
-                    _reviews.value = allReviews.toList()
+                    filterReviews(lastQuery)
                 } else {
                     _deleteState.value = DeleteState.Error("删除失败")
                 }
@@ -178,8 +198,4 @@ class CourseReviewViewModel @Inject constructor(
         }
     }
 
-    private fun hashSha256(input: String): String {
-        val bytes = MessageDigest.getInstance("SHA-256").digest(input.toByteArray())
-        return bytes.joinToString("") { "%02x".format(it) }
-    }
 }

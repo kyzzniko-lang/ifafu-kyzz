@@ -26,7 +26,6 @@ class CrashReportApi @Inject constructor(
 ) {
     companion object {
         private const val TAG = "CrashReportApi"
-        private val DATE_FMT = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
     }
 
     /**
@@ -38,9 +37,13 @@ class CrashReportApi @Inject constructor(
     suspend fun reportCrash(crashInfo: CrashInfo, userDescription: String): Boolean =
         withContext(Dispatchers.IO) {
             try {
+                // SimpleDateFormat 非线程安全：上报在 Dispatchers.IO 并发执行
+                // （崩溃反馈与 ANR 反馈同时提交），共享实例会产生错乱日期甚至
+                // 内部异常导致上报静默失败，改为每次调用局部创建。
+                val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
                 val payload = buildMap<String, String> {
                     put("type", crashInfo.type)
-                    put("time", DATE_FMT.format(Date(crashInfo.time)))
+                    put("time", dateFormat.format(Date(crashInfo.time)))
                     put("appVersion", crashInfo.appVersion)
                     put("device", crashInfo.deviceInfo)
                     put("thread", crashInfo.threadName)

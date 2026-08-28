@@ -113,7 +113,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 setOnClickListener { viewModel.setTag(tag) }
                 setChipBackgroundColorResource(R.color.claude_bg_elevated)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 chipStrokeWidth = 1f
                 setChipStrokeColorResource(R.color.claude_border)
             }
@@ -288,14 +288,14 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 text = comment.nickname
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             }
 
             val tvTime = TextView(holder.itemView.context).apply {
                 text = formatTime(comment.createdAt)
                 setTextAppearance(R.style.ClaudeCaption)
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             }
 
             header.addView(tvNickname)
@@ -327,7 +327,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                     text = comment.tag
                     textSize = 10f
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     background = android.graphics.drawable.GradientDrawable().apply {
                         shape = android.graphics.drawable.GradientDrawable.RECTANGLE
                         cornerRadius = 8f
@@ -345,7 +345,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 text = comment.content
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setPadding(0, 12, 0, 0)
             }
             holder.content.addView(tvContent)
@@ -363,7 +363,7 @@ class DiscussionActivity : BaseActivity<ActivityCommentBinding>() {
                 setTextColor(resources.getColor(
                     if (isLiked) R.color.claude_terracotta else R.color.claude_text_hint, null
                 ))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setOnClickListener { viewModel.likeComment(comment) }
             }
             likeRow.addView(likeBtn)

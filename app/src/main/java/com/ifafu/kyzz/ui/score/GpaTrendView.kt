@@ -94,6 +94,13 @@ class GpaTrendView @JvmOverloads constructor(
         val path = Path()
         val stepX = chartW / (points.size - 1)
 
+        // drawText 不支持换行，标签里的 \n 会渲染成不可见字符，统一拉平成一行；
+        // 学期标签（约 15 个字符）在 8 个学期时远宽于点间距，按最长标签宽度
+        // 自动抽稀，否则全部叠压成一团不可读。数值标签只有 4 个字符，保持每点都画。
+        val labels = points.map { it.label.replace('\n', ' ') }
+        val maxLabelWidth = labels.maxOf { textPaint.measureText(it) }
+        val labelStride = kotlin.math.ceil(maxLabelWidth / stepX).toInt().coerceAtLeast(1)
+
         for ((i, pt) in points.withIndex()) {
             val x = padLeft + i * stepX
             val y = padTop + chartH * (1 - (pt.value - minVal) / range)
@@ -101,7 +108,11 @@ class GpaTrendView @JvmOverloads constructor(
             if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
 
             canvas.drawCircle(x, y, 8f, dotPaint)
-            canvas.drawText(pt.label, x, height - 10f, textPaint)
+            if (i % labelStride == 0) {
+                val half = maxLabelWidth / 2f
+                val drawX = x.coerceIn(half, width - half)
+                canvas.drawText(labels[i], drawX, height - 10f, textPaint)
+            }
             canvas.drawText(String.format("%.2f", pt.value), x, y - 20f, valuePaint)
         }
 

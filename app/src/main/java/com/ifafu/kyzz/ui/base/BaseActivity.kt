@@ -18,13 +18,11 @@ abstract class BaseActivity<VB : ViewBinding> : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // On some devices (e.g. iQOO), restored fragments conflict with Hilt injection
-        // and cause alternating crash patterns (1st OK, 2nd crash, 3rd OK...).
-        // Try restoring normally first; fall back to null only if restoration crashes.
-        try {
-            super.onCreate(savedInstanceState)
-        } catch (_: Exception) {
-            super.onCreate(null)
-        }
+        // and cause alternating crash patterns (1st OK, 2nd crash, 3rd OK...). Activity
+        // initialization is not retryable: calling super.onCreate twice after a partial
+        // failure corrupts FragmentManager state and can crash again. Disable framework
+        // view/fragment restoration consistently and let each screen reload its cached data.
+        super.onCreate(null)
         binding = createBinding()
         setContentView(binding.root)
 

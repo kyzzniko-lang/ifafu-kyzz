@@ -31,6 +31,9 @@ class AnrWatchdog(
     @Volatile private var tickReceived = false
     private var consecutiveMisses = 0
 
+    /** 同一次主线程阻塞只上报一次；主线程恢复响应（misses 归零）后重新武装 */
+    @Volatile private var anrReported = false
+
     private val watchdogThread = Thread({ runLoop() }, "AnrWatchdog")
 
     fun start() {
@@ -69,17 +72,22 @@ class AnrWatchdog(
             if (!tickReceived && running) {
                 // 主线程未在 timeout 内响应 → 连续多个周期无响应才判定疑似 ANR
                 consecutiveMisses++
-                if (consecutiveMisses >= MISSES_REQUIRED) {
-                    val blockedFor = timeoutMs * consecutiveMisses
+                if (consecutiveMisses >= MISSES_REQUIRED && !anrReported) {
+                    // 检测周期 = timeout + cooldown；不重置 anrReported 的话，一次
+                    // 30 秒的阻塞每 7 秒落一个 ANR 文件，会把真正的 crash 文件从
+                    // 10 个配额里挤掉，且每次都置 pending，下次启动必弹误导性弹窗
+                    val blockedFor = (timeoutMs + cooldownMs) * consecutiveMisses
                     Logger.w("AnrWatchdog", "ANR detected: main thread blocked > ${blockedFor}ms")
                     try {
                         CrashReporter.reportAnr(threadName = "main", blockedForMs = blockedFor)
+                        anrReported = true
                     } catch (e: Exception) {
                         Logger.e("AnrWatchdog", "report anr failed", e)
                     }
                 }
             } else {
                 consecutiveMisses = 0
+                anrReported = false
             }
             // 检测周期间冷却，避免同一次阻塞反复记录，也避免空转过频
             try {

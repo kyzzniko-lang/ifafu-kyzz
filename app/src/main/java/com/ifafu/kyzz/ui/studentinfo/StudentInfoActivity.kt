@@ -111,7 +111,7 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
             text = title
             setTextAppearance(R.style.ClaudeSubtitle)
             setTextColor(resources.getColor(R.color.claude_terracotta, null))
-            typeface = resources.getFont(R.font.claude_serif)
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             setPadding(0, 20, 0, 8)
         }
         binding.contentLayout.addView(sectionTitle)
@@ -148,7 +148,7 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
             val labelView = TextView(this).apply {
                 text = label
                 setTextAppearance(R.style.ClaudeCaption)
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f)
             }
 
@@ -156,7 +156,7 @@ class StudentInfoActivity : BaseActivity<ActivityStudentInfoBinding>() {
                 text = maskSensitiveValue(label, value)
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3f)
                 gravity = Gravity.END
                 if (label == "身份证号" || label == "联系电话") {

@@ -1,9 +1,11 @@
 package com.ifafu.kyzz.ui.comment
 
 import androidx.lifecycle.viewModelScope
+import android.app.Application
 import com.ifafu.kyzz.data.model.Comment
 import com.ifafu.kyzz.data.repository.CommentRepository
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.util.AuthorId
 import com.ifafu.kyzz.data.util.ContentFilter
 import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -16,7 +18,8 @@ import javax.inject.Inject
 @HiltViewModel
 class DiscussionViewModel @Inject constructor(
     private val commentRepository: CommentRepository,
-    private val userRepository: UserRepository
+    private val userRepository: UserRepository,
+    private val app: Application
 ) : ReloginViewModel() {
 
     enum class Tag(val label: String) {
@@ -47,14 +50,7 @@ class DiscussionViewModel @Inject constructor(
     private var networkLoadStarted = false
 
     val userId: String
-        get() {
-            val account = userRepository.getUser().account
-            return if (account.isNotEmpty()) {
-                val digest = java.security.MessageDigest.getInstance("SHA-256")
-                val hash = digest.digest(account.toByteArray())
-                "u_${hash.take(8).joinToString("") { "%02x".format(it.toInt() and 0xFF) }}"
-            } else ""
-        }
+        get() = AuthorId.discussionUserId(app, userRepository.getUser().account)
 
     private fun oldUserId(): String {
         val account = userRepository.getUser().account

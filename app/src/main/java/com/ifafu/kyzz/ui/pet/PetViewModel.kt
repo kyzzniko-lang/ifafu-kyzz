@@ -156,19 +156,18 @@ class PetViewModel @Inject constructor(
             hour in 6..7 -> {
                 pet.state = PetState.IDLE
             }
-            // 上课时间段
-            nowMinutes in 480..765 || nowMinutes in 840..1060 -> {
-                pet.state = PetState.STUDYING
-            }
-            // 晚自习
-            nowMinutes in 1140..1295 -> {
-                pet.state = PetState.STUDYING
-            }
+            // 饥饿/难过优先于"上课时间段"：时间段判断不区分当天是否有课，
+            // 若排在其前，寒暑假/周末宠物饿到 0 也会一直显示"学习中"，
+            // 依赖 HUNGRY 状态的饥饿气泡提醒会被完全掩盖。
             pet.hunger < 30 -> {
                 pet.state = PetState.HUNGRY
             }
             pet.mood < 30 -> {
                 pet.state = PetState.SAD
+            }
+            // 上课时间段 / 晚自习
+            nowMinutes in 480..765 || nowMinutes in 840..1060 || nowMinutes in 1140..1295 -> {
+                pet.state = PetState.STUDYING
             }
             pet.mood > 80 -> {
                 pet.state = PetState.HAPPY
@@ -182,7 +181,9 @@ class PetViewModel @Inject constructor(
     fun onPetClicked() {
         launchSafe {
             petMutex.withLock {
-                val pet = _pet.value ?: return@withLock
+                // 从磁盘读最新值而不是 _pet.value 快照：番茄钟/设置页等外部写者
+                // 可能刚改过，用旧快照全量写回会回滚它们的修改
+                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
                 pet.lastInteractTime = System.currentTimeMillis()
                 pet.mood = (pet.mood + 3).coerceAtMost(100)
                 val leveled = pet.addExp(2)
@@ -416,7 +417,9 @@ class PetViewModel @Inject constructor(
         launchSafe {
             var fed = false
             petMutex.withLock {
-                val pet = _pet.value ?: return@withLock
+                // 从磁盘读最新值：_pet.value 可能是几分钟前的快照，喂食次数/饱食度
+                // 按旧值判定后全量写回，会把外部写者(番茄钟经验、设置页改名)回滚
+                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
                 if (!pet.canFeed()) {
                     val mins = (pet.nextFeedRecoverIn() / 60_000).toInt()
                     showBubble("肚子还饱着呢~ ${mins}分钟后再喂我吧，你以为我是饭桶吗？", 2000L)
@@ -425,18 +428,16 @@ class PetViewModel @Inject constructor(
                 pet.feed()
                 pet.lastInteractTime = System.currentTimeMillis()
                 pet.state = PetState.EATING
+                // 状态推导与持久化必须同处一个临界区:若拆成两段锁,间隙里
+                // onGradeChanged 等外部写者落盘后会被这里旧快照的全量 save 回滚。
+                // 刚喂食时 updatePetState 会因 15 秒交互保护直接返回,属常规守卫。
+                updatePetState(pet)
                 showBubble(getFeedResponse(), 3000L)
                 _pet.value = pet
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
                 fed = true
             }
             if (!fed) return@launchSafe
-            petMutex.withLock {
-                val current = _pet.value ?: return@withLock
-                updatePetState(current)
-                _pet.value = current
-                withContext(Dispatchers.IO) { petRepository.savePet(current) }
-            }
         }
     }
 
@@ -500,7 +501,8 @@ class PetViewModel @Inject constructor(
         launchSafe {
             var played = false
             petMutex.withLock {
-                val pet = _pet.value ?: return@withLock
+                // 同 feed()：从磁盘读最新值，避免旧快照全量写回覆盖外部修改
+                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
                 if (!pet.canPlay()) {
                     val mins = (pet.nextPlayRecoverIn() / 60_000).toInt()
                     showBubble("我有点累了~ ${mins}分钟后再陪我玩吧，你以为我是永动机吗？", 2000L)
@@ -509,18 +511,14 @@ class PetViewModel @Inject constructor(
                 pet.play()
                 pet.lastInteractTime = System.currentTimeMillis()
                 pet.state = PetState.HAPPY
+                // 同 feed():推导+落盘合并在同一临界区,避免二段锁间隙回滚外部写入
+                updatePetState(pet)
                 showBubble(getPlayResponse(), 3000L)
                 _pet.value = pet
                 withContext(Dispatchers.IO) { petRepository.savePet(pet) }
                 played = true
             }
             if (!played) return@launchSafe
-            petMutex.withLock {
-                val current = _pet.value ?: return@withLock
-                updatePetState(current)
-                _pet.value = current
-                withContext(Dispatchers.IO) { petRepository.savePet(current) }
-            }
         }
     }
 
@@ -580,7 +578,9 @@ class PetViewModel @Inject constructor(
     fun onGradeChanged(isImproved: Boolean, courseName: String) {
         launchSafe {
             petMutex.withLock {
-                val pet = _pet.value ?: return@withLock
+                // 从磁盘读最新值（与 feed() 一致）：成绩提醒触发时若番茄钟/设置页
+                // 刚写过宠物，_pet.value 旧快照全量写回会把那些修改回滚。
+                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
                 val isCrab = pet.petType == "crab"
                 val isCloudling = pet.petType == "cloudling"
                 val advice = if (isImproved) {
@@ -647,7 +647,8 @@ class PetViewModel @Inject constructor(
                 val remindKey = "$courseName#$daysLeft"
                 if (remindKey == lastExamRemindKey) return@withLock
                 lastExamRemindKey = remindKey
-                val pet = _pet.value ?: return@withLock
+                // 从磁盘读最新值：避免旧内存快照全量写回覆盖并发的外部修改
+                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
                 pet.state = PetState.EXAM_REMIND
                 val isCrab = pet.petType == "crab"
                 val isCloudling = pet.petType == "cloudling"
@@ -726,7 +727,8 @@ class PetViewModel @Inject constructor(
     fun checkIn() {
         launchSafe {
             petMutex.withLock {
-                val pet = _pet.value ?: return@withLock
+                // 同 feed()：从磁盘读最新值再判定签到状态
+                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
                 if (pet.isCheckedInToday()) {
                     _checkInResult.value = CheckInResult(0, pet.checkInStreak, true)
                     return@withLock
@@ -957,7 +959,9 @@ class PetViewModel @Inject constructor(
     fun onExamProgressUpdate(examName: String, newStatus: Int) {
         launchSafe {
             petMutex.withLock {
-                val pet = _pet.value ?: return@withLock
+                // 从磁盘读最新值：考试进度更新与番茄钟加经验并发时，
+                // 旧内存快照全量写回会回滚后者的修改
+                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
                 when (newStatus) {
                     1 -> {
                         pet.mood = (pet.mood + 3).coerceAtMost(100)

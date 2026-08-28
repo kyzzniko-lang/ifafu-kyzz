@@ -4,7 +4,7 @@
 
     <item
         android:id="@+id/action_share_score"
-        android:icon="@android:drawable/ic_menu_share"
+        android:icon="@drawable/ic_share"
         android:title="分享成绩"
         app:showAsAction="always"
         app:iconTint="@color/claude_terracotta" />

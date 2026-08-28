@@ -118,7 +118,7 @@ class ToolboxFragment : Fragment() {
             }
 
             val title = TextView(parent.context).apply {
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
                 textSize = 15f
             }
@@ -131,7 +131,7 @@ class ToolboxFragment : Fragment() {
             textContainer.addView(subtitle)
 
             val arrow = ImageView(parent.context).apply {
-                setImageResource(android.R.drawable.ic_media_play)
+                setImageResource(R.drawable.ic_play)
                 layoutParams = LinearLayout.LayoutParams(16, 16)
                 imageTintList = androidx.core.content.ContextCompat.getColorStateList(context, R.color.claude_text_tertiary)
                 alpha = 0.3f

@@ -26,6 +26,14 @@ class UserApi @Inject constructor(
 ) {
     private val loginMutex = Mutex()
 
+    /**
+     * 等待前台登录(验证码加载/提交)的计数。后台自动重登在每次重试间隙检查它：
+     * 教务系统挂起时后台重登可占锁最长 90s,若不避让,用户退到登录页后
+     * prepareLogin/login 会一直排队(按钮转圈数分钟)。让位后前台自己会
+     * clearCookies 开新会话,不存在状态竞争。
+     */
+    private val foregroundLoginWaiting = java.util.concurrent.atomic.AtomicInteger(0)
+
     companion object {
         private const val TAG = "UserApi"
         private const val RELOGIN_TOTAL_TIMEOUT_MS = 90_000L
@@ -38,8 +46,15 @@ class UserApi @Inject constructor(
         internal val viewState: String
     )
 
-    suspend fun prepareLogin(host: String): LoginChallenge? = loginMutex.withLock {
-        prepareLoginLocked(host, clearCookies = true)
+    suspend fun prepareLogin(host: String): LoginChallenge? {
+        foregroundLoginWaiting.incrementAndGet()
+        try {
+            return loginMutex.withLock {
+                prepareLoginLocked(host, clearCookies = true)
+            }
+        } finally {
+            foregroundLoginWaiting.decrementAndGet()
+        }
     }
 
     private suspend fun prepareLoginLocked(host: String, clearCookies: Boolean): LoginChallenge? {
@@ -56,7 +71,7 @@ class UserApi @Inject constructor(
                 return null
             }
             val sessionToken = tokenMatch.groupValues[1]
-            Log.d(TAG, "prepareLogin: sessionToken=$sessionToken")
+            Log.d(TAG, "prepareLogin: sessionToken acquired (len=${sessionToken.length})")
 
             val captchaUrl = "${host}/(${sessionToken})/CheckCode.aspx"
             val bytes = htmlClient.getBytesCancellable(captchaUrl)
@@ -75,8 +90,15 @@ class UserApi @Inject constructor(
         captcha: String,
         user: User,
         challenge: LoginChallenge
-    ): Response = loginMutex.withLock {
-        loginLocked(account, password, captcha, user, challenge)
+    ): Response {
+        foregroundLoginWaiting.incrementAndGet()
+        try {
+            return loginMutex.withLock {
+                loginLocked(account, password, captcha, user, challenge)
+            }
+        } finally {
+            foregroundLoginWaiting.decrementAndGet()
+        }
     }
 
     private suspend fun loginLocked(
@@ -112,10 +134,14 @@ class UserApi @Inject constructor(
         }
 
         if (postHtml.contains("输入新密码")) {
-            user.token = challenge.sessionToken
-            user.account = account
-            user.isLogin = true
-            return Response(true, 1, "新生")
+            // 新生首次登录被教务强制跳转到改密页：此时会话停在 mmxg.aspx，并没有
+            // 真正进入 xs_main。旧实现把它当登录成功（isLogin=true）保存，随后所有
+            // 数据接口都判会话过期→触发自动重登→再次命中改密页→又"成功"……形成
+            // 死循环，首页永远拿不到数据。必须按失败处理并明确引导用户先改密。
+            // 保留 code=1 供 UI 识别这一特定场景；isLogin/token 均不写入。
+            user.token = ""
+            user.isLogin = false
+            return Response(false, 1, "检测到该账号首次登录需修改初始密码，请先在教务系统官网修改密码后重新登录")
         }
 
         if (finalUrl.contains("xs_main.aspx")) {
@@ -127,7 +153,7 @@ class UserApi @Inject constructor(
 
         val authenticatedPage = SessionResponseClassifier.isAuthenticatedLoginResponse(finalUrl, postHtml)
         if (!authenticatedPage) {
-            Log.w(TAG, "Login response did not contain an authenticated-page marker: $finalUrl")
+            Log.w(TAG, "Login response did not contain an authenticated-page marker: ${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(finalUrl)}")
             user.token = ""
             user.isLogin = false
             return Response(false, -1, "登录结果无法确认，请刷新验证码后重试")
@@ -138,7 +164,7 @@ class UserApi @Inject constructor(
         if (nameMatch != null) {
             user.name = nameMatch.groupValues[1].trim()
         } else {
-            Log.w(TAG, "Name extraction failed, html snippet: ${postHtml.take(1000)}")
+            Log.w(TAG, "Name extraction failed, html snippet: ${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(postHtml.take(1000))}")
         }
 
         if (user.token.isEmpty()) {
@@ -200,7 +226,7 @@ class UserApi @Inject constructor(
         val snapshot = userRepository.getAuthSnapshot()
         val user = snapshot.user
         val password = snapshot.password
-        Log.d(TAG, "Relogin: account=${user.account}, hasPassword=${password.isNotBlank()}, token=${user.token.take(10)}...")
+        Log.d(TAG, "Relogin: hasPassword=${password.isNotBlank()}")
         if (user.account.isBlank() || password.isBlank()) {
             Log.w(TAG, "Relogin failed: account or password is blank")
             return Response(false, -1, "未保存登录信息")
@@ -209,6 +235,12 @@ class UserApi @Inject constructor(
         // 权重懒加载后无法在此预判，识别失败走 recognize 返回空串的重试路径
         val maxRetry = 5
         for (i in 1..maxRetry) {
+            // 前台登录(验证码加载/提交)在等锁时让位：最多再等完当前这一个
+            // 在途请求(15s 超时)即返回,而不是把前台登录卡满整个 90s 重试链。
+            if (foregroundLoginWaiting.get() > 0) {
+                Log.w(TAG, "Relogin yielded: a foreground login is waiting for the lock")
+                return Response(false, -1, "前台登录进行中，已暂停后台自动登录")
+            }
             try {
                 Log.d(TAG, "Relogin attempt $i/$maxRetry")
                 val challenge = prepareLoginLocked(snapshot.host, clearCookies = true)
@@ -247,8 +279,7 @@ class UserApi @Inject constructor(
                         htmlClient.clearCookies()
                         return Response(false, -1, "账号已切换或已退出，本次自动登录已取消")
                     }
-                    val savedUser = userRepository.getUser()
-                    Log.d(TAG, "Relogin succeeded on attempt $i, savedToken=${savedUser.token.take(10)}...")
+                    Log.d(TAG, "Relogin succeeded on attempt $i")
                     return response
                 } else {
                     Log.w(TAG, "Relogin attempt $i: login failed - ${response.message}")

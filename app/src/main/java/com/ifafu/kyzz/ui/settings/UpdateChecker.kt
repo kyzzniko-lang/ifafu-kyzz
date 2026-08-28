@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.google.gson.Gson
 import com.google.gson.annotations.SerializedName
@@ -66,7 +67,8 @@ object UpdateChecker {
 
     sealed class CheckResult {
         data class UpdateAvailable(val release: ReleaseInfo) : CheckResult()
-        data class UpToDate(val latestVersion: String) : CheckResult()
+        /** 当前安装版本已经不低于线上版本；提示必须展示本机版本。 */
+        data class UpToDate(val currentVersion: String) : CheckResult()
         data class ReleaseNotReady(val latestVersion: String) : CheckResult()
         data class Failed(val message: String? = null) : CheckResult()
     }
@@ -113,7 +115,10 @@ object UpdateChecker {
                         return@launch
                     }
                     if (!isNewer) {
-                        deliver(CheckResult.UpToDate(release.versionName))
+                        // 本机可能比 GitHub 最新 release 更高（例如测试中的 2.6.0
+                        // 对线上 2.5.9）。此处若返回远端版本，UI 会显示
+                        // “已是最新版本 v2.5.9”，与设置页的 2.6.0 (26) 自相矛盾。
+                        deliver(CheckResult.UpToDate(currentVersion))
                         return@launch
                     }
                     latestVersionWithoutApk = release.versionName
@@ -166,8 +171,15 @@ object UpdateChecker {
     }
 
     fun isNewerVersion(latest: String, current: String): Boolean {
-        val latestParts = latest.split(".").map { it.takeWhile { c -> c.isDigit() }.toIntOrNull() ?: 0 }
-        val currentParts = current.split(".").map { it.takeWhile { c -> c.isDigit() }.toIntOrNull() ?: 0 }
+        fun numericParts(version: String): List<Long> = version
+            .trim()
+            .removePrefix("v")
+            .removePrefix("V")
+            .split(".")
+            .map { it.takeWhile(Char::isDigit).toLongOrNull() ?: 0L }
+
+        val latestParts = numericParts(latest)
+        val currentParts = numericParts(current)
         val maxLen = maxOf(latestParts.size, currentParts.size)
         for (i in 0 until maxLen) {
             val l = latestParts.getOrElse(i) { 0 }
@@ -190,11 +202,18 @@ object UpdateChecker {
 
     @Volatile
     private var isDownloading = false
+    private val downloadStartLock = Any()
 
     fun downloadAndInstall(context: Context, release: ReleaseInfo) {
-        if (isDownloading) return
+        // check-then-act 必须原子：@Volatile 只保证可见性，双击/两入口并发调用
+        // 都会通过检查，各自 enqueue 一个 DownloadManager 写同一文件并注册两个
+        // receiver，完成时弹两个安装器。
+        synchronized(downloadStartLock) {
+            if (isDownloading) return
+            release.apkAsset ?: return
+            isDownloading = true
+        }
         val asset = release.apkAsset ?: return
-        isDownloading = true
         // DownloadManager does not reliably replace an existing destination.
         // Remove the previous installer before enqueuing a newer release.
         context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
@@ -205,13 +224,18 @@ object UpdateChecker {
     }
 
     private fun tryDownload(context: Context, release: ReleaseInfo, originalUrl: String, mirrorIndex: Int) {
+        // 后续所有长生命周期引用(receiver 注册、超时轮询闭包)必须挂在
+        // applicationContext 上:调用方传入的是 Activity,慢网下载可达数十分钟,
+        // 若闭包/注册持有 Activity,整个下载期间都无法回收。
+        val appContext = context.applicationContext
+
         val url = if (mirrorIndex < mirrors.size) {
             "${mirrors[mirrorIndex]}/$originalUrl"
         } else {
             originalUrl
         }
 
-        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val dm = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
         val request = DownloadManager.Request(Uri.parse(url))
             .setTitle("iFAFU 更新")
             .setDescription("正在下载 v${release.versionName}")
@@ -222,86 +246,121 @@ object UpdateChecker {
         val downloadId = dm.enqueue(request)
 
         var receiver: BroadcastReceiver? = null
+        val timeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        // 慢网（校园 WiFi/镜像限速）下载大 APK 常超过 10 分钟：到点直接反注册
+        // receiver 的话，之后完成的下载无人处理，用户永远等不到安装界面。
+        // 改为查询状态：仍在进行就续等，已完成就地安装，失败才放弃。
+        val checkTimeout = object : Runnable {
+            override fun run() {
+                val status = queryStatus(dm, downloadId)
+                when (status) {
+                    DownloadManager.STATUS_SUCCESSFUL -> {
+                        try { appContext.unregisterReceiver(receiver) } catch (_: Exception) {}
+                        handleDownloadCompleted(appContext, dm, downloadId, release, originalUrl, mirrors.size)
+                    }
+                    DownloadManager.STATUS_PENDING,
+                    DownloadManager.STATUS_RUNNING,
+                    DownloadManager.STATUS_PAUSED ->
+                        timeoutHandler.postDelayed(this, 10 * 60 * 1000L)
+                    else -> {
+                        // 失败或记录已被清除：放弃本次监听，允许用户重新发起
+                        try { appContext.unregisterReceiver(receiver) } catch (_: Exception) {}
+                        isDownloading = false
+                    }
+                }
+            }
+        }
+
         receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
                 val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
                 if (id != downloadId) return
 
-                try { ctx.unregisterReceiver(receiver) } catch (_: Exception) {}
+                timeoutHandler.removeCallbacksAndMessages(null)
+                try { appContext.unregisterReceiver(receiver) } catch (_: Exception) {}
 
-                val query = DownloadManager.Query().setFilterById(downloadId)
-                val status = dm.query(query).use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                    } else {
-                        DownloadManager.STATUS_FAILED
-                    }
-                }
-
-                if (status == DownloadManager.STATUS_FAILED) {
-                    dm.remove(downloadId)
-                    if (mirrorIndex < mirrors.size) {
-                        android.util.Log.w("UpdateChecker", "Mirror $mirrorIndex failed, trying next")
-                        tryDownload(ctx, release, originalUrl, mirrorIndex + 1)
-                    } else if (mirrorIndex == mirrors.size) {
-                        // Direct GitHub also failed, open browser
-                        android.util.Log.w("UpdateChecker", "Direct download failed, opening browser")
-                        isDownloading = false
-                        android.widget.Toast.makeText(ctx, "下载失败，请在浏览器中下载", android.widget.Toast.LENGTH_SHORT).show()
-                        ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(originalUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    } else {
-                        isDownloading = false
-                    }
-                    return
-                }
-
-                isDownloading = false
-                if (status != DownloadManager.STATUS_SUCCESSFUL) return
-
-                val dir = ctx.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
-                val file = File(dir, "ifafu-update.apk")
-
-                val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-                    FileProvider.getUriForFile(ctx, "${ctx.packageName}.fileprovider", file)
-                } else {
-                    Uri.fromFile(file)
-                }
-
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !ctx.packageManager.canRequestPackageInstalls()) {
-                    android.widget.Toast.makeText(ctx, "请允许安装未知来源应用", android.widget.Toast.LENGTH_LONG).show()
-                    val intent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                        Uri.parse("package:${ctx.packageName}"))
-                    intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    ctx.startActivity(intent)
-                    return
-                }
-
-                val install = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "application/vnd.android.package-archive")
-                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                ctx.startActivity(install)
+                handleDownloadCompleted(ctx, dm, downloadId, release, originalUrl, mirrorIndex)
             }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            context.registerReceiver(
-                receiver,
-                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-                Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            context.registerReceiver(
-                receiver,
-                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-            )
+        ContextCompat.registerReceiver(
+            appContext,
+            receiver,
+            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+
+        timeoutHandler.postDelayed(checkTimeout, 10 * 60 * 1000L)
+    }
+
+    private fun queryStatus(dm: DownloadManager, downloadId: Long): Int {
+        return try {
+            dm.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
+                if (cursor.moveToFirst()) {
+                    cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                } else {
+                    DownloadManager.STATUS_FAILED
+                }
+            }
+        } catch (_: Exception) {
+            DownloadManager.STATUS_FAILED
+        }
+    }
+
+    /**
+     * 下载完成后的统一出口：失败按镜像顺序重试，镜像耗尽后回退浏览器下载；
+     * 成功则校验安装权限并拉起安装器。
+     */
+    private fun handleDownloadCompleted(
+        context: Context,
+        dm: DownloadManager,
+        downloadId: Long,
+        release: ReleaseInfo,
+        originalUrl: String,
+        failedMirrorIndex: Int
+    ) {
+        val status = queryStatus(dm, downloadId)
+        if (status == DownloadManager.STATUS_FAILED) {
+            dm.remove(downloadId)
+            if (failedMirrorIndex < mirrors.size) {
+                android.util.Log.w("UpdateChecker", "Mirror $failedMirrorIndex failed, trying next")
+                tryDownload(context, release, originalUrl, failedMirrorIndex + 1)
+            } else {
+                android.util.Log.w("UpdateChecker", "Direct download failed, opening browser")
+                isDownloading = false
+                android.widget.Toast.makeText(context, "下载失败，请在浏览器中下载", android.widget.Toast.LENGTH_SHORT).show()
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(originalUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            return
         }
 
-        android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-            try { context.unregisterReceiver(receiver) } catch (_: Exception) {}
-            isDownloading = false
-        }, 10 * 60 * 1000L)
+        isDownloading = false
+        if (status != DownloadManager.STATUS_SUCCESSFUL) return
+
+        val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
+        val file = File(dir, "ifafu-update.apk")
+
+        val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        } else {
+            Uri.fromFile(file)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            android.widget.Toast.makeText(context, "请允许安装未知来源应用", android.widget.Toast.LENGTH_LONG).show()
+            val intent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}"))
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+            return
+        }
+
+        val install = Intent(Intent.ACTION_VIEW).apply {
+            setDataAndType(uri, "application/vnd.android.package-archive")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(install)
     }
 
     fun formatSize(bytes: Long): String {

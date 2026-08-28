@@ -34,6 +34,11 @@ class LoginActivity : BaseActivity<ActivityLoginBinding>() {
 
     override fun createBinding(): ActivityLoginBinding = ActivityLoginBinding.inflate(layoutInflater)
 
+    override fun onSessionExpired() {
+        // 已在登录页：后台残余请求（如 12:00 成绩 Worker 的自动重登失败）触发的
+        // 会话过期事件不应重启本页——那会清空用户正在输入的账号密码。
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

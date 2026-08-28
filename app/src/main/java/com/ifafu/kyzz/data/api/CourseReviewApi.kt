@@ -24,7 +24,12 @@ class CourseReviewApi @Inject constructor(
         private const val BASE = "https://api.github.com/repos/$OWNER/$REPO"
     }
 
-    suspend fun getReviews(page: Int = 1, perPage: Int = 20): List<CourseReview> = withContext(Dispatchers.IO) {
+    /**
+     * 拉取课程评价。返回 null 表示"拉取失败"（网络断开/GitHub 限流 403/响应异常），
+     * 与"真的没有评价"（空列表）区分——否则失败会被 UI 当成"暂无评价"展示，
+     * 误导用户去写第一条评价，且分页游标被错误终止。
+     */
+    suspend fun getReviews(page: Int = 1, perPage: Int = 20): List<CourseReview>? = withContext(Dispatchers.IO) {
         try {
             val url = "$BASE/issues/$ISSUE_NUMBER/comments?per_page=$perPage&page=$page&sort=created&direction=desc"
             val request = Request.Builder().url(url)
@@ -32,8 +37,11 @@ class CourseReviewApi @Inject constructor(
                 .get().build()
 
             client.newCall(request).execute().use { response ->
-                val body = response.body?.string() ?: return@withContext emptyList()
-                if (!response.isSuccessful) return@withContext emptyList()
+                val body = response.body?.string() ?: return@withContext null
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "getReviews failed: HTTP ${response.code}")
+                    return@withContext null
+                }
                 val arr = JsonParser.parseString(body).asJsonArray
                 arr.mapNotNull { element ->
                     try {
@@ -62,7 +70,7 @@ class CourseReviewApi @Inject constructor(
             throw e
         } catch (e: Exception) {
             Log.e(TAG, "getReviews error", e)
-            emptyList()
+            null
         }
     }
 

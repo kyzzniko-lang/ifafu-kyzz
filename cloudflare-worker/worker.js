@@ -17,6 +17,18 @@ function text(value, max) {
   return String(value ?? "").trim().slice(0, max);
 }
 
+// 崩溃内容服务端二次脱敏（与客户端 TraceSanitizer 同规则）：
+// 崩溃最终发布到公开可读的 GitHub Issue，异常消息可能内嵌正方会话
+// token（/(token)/ 路径）、sessionToken=xxx 日志、xm= 编码姓名或 8-12
+// 位学号形态数字。客户端已净化，这里是防御纵深（覆盖旧版本客户端）。
+function sanitizeCrashText(value) {
+  return String(value ?? "")
+    .replace(/\(([a-z0-9]{20,40})\)/g, "(TOKEN)")
+    .replace(/sessionToken=\S+/gi, "sessionToken=<redacted>")
+    .replace(/\bxm=[^&\s]+/g, "xm=<NAME>")
+    .replace(/\b\d{8,12}\b/g, "[ID]");
+}
+
 async function readJson(request) {
   const length = Number(request.headers.get("content-length") || 0);
   if (length > 20_000) throw new Error("payload_too_large");
@@ -141,8 +153,10 @@ export default {
       if (request.method === "POST" && url.pathname === "/crash") {
         const body = JSON.stringify({
           type: text(input.type, 30), time: text(input.time, 40), appVersion: text(input.appVersion, 30),
-          device: text(input.device, 300), thread: text(input.thread, 100), message: text(input.message, 2_000),
-          trace: text(input.trace, 8_000), description: text(input.description, 2_000),
+          device: text(input.device, 300), thread: text(input.thread, 100),
+          message: sanitizeCrashText(text(input.message, 2_000)),
+          trace: sanitizeCrashText(text(input.trace, 8_000)),
+          description: text(input.description, 2_000),
         });
         const result = await github(env, COMMENT_REPO, "issues/3/comments", "POST", { body });
         return result.response.ok ? json({ ok: true }) : json({ ok: false, message: "提交失败" }, 502);

@@ -50,8 +50,11 @@ class ElectiveScoreViewModel @Inject constructor(
                     userRepository.host, user.token, user.account, user.name
                 )
                 if (scores != null) {
-                    cacheManager.saveScores(user.account, scores)
-                    filterElectives(scores)
+                    // POST 超时降级可能只返回本学期子集，直接覆盖会清掉其它学期的
+                    // 选修记录(并与成绩页/后台监控的缓存口径打架)，缩水时合并。
+                    // 合并+落盘走原子方法，与后台成绩检查互斥。
+                    val effective = cacheManager.mergeScoresIfShrunkAndSave(user.account, scores)
+                    filterElectives(effective)
                 } else {
                     _state.value = State.Error("加载失败")
                 }
@@ -76,7 +79,8 @@ class ElectiveScoreViewModel @Inject constructor(
         val electives = scores.filter {
             it.courseType.contains("选修") || it.courseType.contains("公选")
         }
-        val totalCredits = electives.filter { it.score > 0 }.sumOf { it.studyScore.toDouble() }.toFloat()
+        // 只有及格的选修课才计入"已获选修学分"，45 分的课学分并未到手
+        val totalCredits = electives.filter { it.score >= 60f }.sumOf { it.studyScore.toDouble() }.toFloat()
         _state.value = State.Success(electives, totalCredits)
     }
 

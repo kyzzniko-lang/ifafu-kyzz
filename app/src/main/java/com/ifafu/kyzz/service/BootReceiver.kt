@@ -1,13 +1,9 @@
 package com.ifafu.kyzz.service
 
-import android.app.AlarmManager
-import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
-import androidx.core.content.ContextCompat
-import java.util.Calendar
 
 class BootReceiver : BroadcastReceiver() {
 
@@ -21,54 +17,18 @@ class BootReceiver : BroadcastReceiver() {
         val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("isLogin", false)) return
 
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-
-        run {
-            // Course reminder at 7:30 AM daily
-            val courseIntent = Intent(context, CourseReminderReceiver::class.java)
-            val coursePending = PendingIntent.getBroadcast(
-                context, 0, courseIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val courseCal = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
-                if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
-            }
-            try {
-                am.setAlarmClock(AlarmManager.AlarmClockInfo(courseCal.timeInMillis, null), coursePending)
-            } catch (e: SecurityException) {
-                // Android 14+ 默认不授予精确闹钟权限；降级为非精确闹钟，保证提醒不静默失效
-                Log.w("BootReceiver", "无精确闹钟权限，课程提醒降级为非精确闹钟", e)
-                try {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, courseCal.timeInMillis, coursePending)
-                } catch (e2: Exception) {
-                    Log.w("BootReceiver", "课程提醒闹钟注册失败", e2)
-                }
-            }
+        // 每日 7:30 课表摘要 / 12:00 成绩检查。挂链逻辑统一在各 Receiver 的
+        // ensureScheduled（含 Android 14+ 无精确闹钟权限的降级路径），
+        // 与 MainViewModel 登录态重挂共用同一实现。
+        try {
+            CourseReminderReceiver.ensureScheduled(context)
+        } catch (e: Exception) {
+            Log.w("BootReceiver", "课程提醒闹钟注册失败", e)
         }
-
-        run {
-            // Score check at 12:00 PM daily
-            val scoreIntent = Intent(context, ScoreCheckReceiver::class.java)
-            val scorePending = PendingIntent.getBroadcast(
-                context, 1, scoreIntent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val scoreCal = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 12); set(Calendar.MINUTE, 0); set(Calendar.SECOND, 0)
-                if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
-            }
-            try {
-                am.setAlarmClock(AlarmManager.AlarmClockInfo(scoreCal.timeInMillis, null), scorePending)
-            } catch (e: SecurityException) {
-                // Android 14+ 默认不授予精确闹钟权限；降级为非精确闹钟，保证成绩检查不静默失效
-                Log.w("BootReceiver", "无精确闹钟权限，成绩检查降级为非精确闹钟", e)
-                try {
-                    am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, scoreCal.timeInMillis, scorePending)
-                } catch (e2: Exception) {
-                    Log.w("BootReceiver", "成绩检查闹钟注册失败", e2)
-                }
-            }
+        try {
+            ScoreCheckReceiver.ensureScheduled(context)
+        } catch (e: Exception) {
+            Log.w("BootReceiver", "成绩检查闹钟注册失败", e)
         }
 
         try {
@@ -81,6 +41,14 @@ class BootReceiver : BroadcastReceiver() {
             context.sendBroadcast(reschedule)
         } catch (e: Exception) {
             Log.w("BootReceiver", "补挂课程提醒失败", e)
+        }
+
+        try {
+            // Widget 的 30 分钟更新闹钟同样被系统清空：补发一次更新广播，
+            // 有小部件时它会自续后续闹钟，没有则链条自然终止
+            com.ifafu.kyzz.widget.iFAFUWidget.pokeAfterBoot(context)
+        } catch (e: Exception) {
+            Log.w("BootReceiver", "补挂小部件更新失败", e)
         }
     }
 }

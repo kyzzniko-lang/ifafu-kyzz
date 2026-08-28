@@ -5,6 +5,8 @@ import com.ifafu.kyzz.data.model.Response
 import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.ui.event.GlobalEvent
+import com.ifafu.kyzz.ui.event.GlobalEventBus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
@@ -18,15 +20,29 @@ class ReloginHelper @Inject constructor(
 ) {
     private val mutex = Mutex()
 
-    /** 上一次成功 relogin 的时间与完成后写入的 token，用于并发幂等去重。 */
-    @Volatile private var lastReloginAt = 0L
-    @Volatile private var lastReloginToken: String = ""
-    @Volatile private var lastReloginAccount: String = ""
-
     companion object {
         private const val TAG = "ReloginHelper"
-        /** 视为"近期已重登录"的窗口：若另一并发 caller 在此窗口内已成功重登录，则复用其结果。 */
-        private const val RELOGIN_FRESH_WINDOW_MS = 10_000L
+    }
+
+    /**
+     * 失败消息是否表明"保存的账号/密码已失效"（用户在教务改过密码、账号被冻结等）。
+     * 这类失败重试永远无效：继续留在"僵尸登录态"会让每个操作都白跑一轮
+     * prepareLogin+识别+login（3 个请求）还拿不到数据。此时发出 SessionExpired
+     * 让 BaseActivity 统一跳登录页，用户重新输入密码后自愈。
+     * 网络超时/教务繁忙等瞬时失败不在此列，避免弱网误踢用户。
+     */
+    private fun isCredentialError(message: String?): Boolean {
+        val m = message.orEmpty()
+        if (m.isEmpty()) return false
+        return listOf("密码不正确", "密码错误", "用户名或密码", "帐号或密码", "账号或密码", "修改初始密码", "用户名不存在", "不存在或密码").any(m::contains)
+    }
+
+    private fun handleReloginFailure(response: Response) {
+        if (response.success) return
+        if (isCredentialError(response.message)) {
+            Log.w(TAG, "Relogin failed due to credential error, directing user to login screen")
+            GlobalEventBus.emit(GlobalEvent.SessionExpired)
+        }
     }
 
     suspend fun relogin(): Response {
@@ -42,23 +58,16 @@ class ReloginHelper @Inject constructor(
                 Log.w(TAG, "Relogin cancelled because account/host changed while waiting")
                 return@withLock Response(false, -1, "账号或教务地址已变更，本次自动登录已取消")
             }
-            if (tokenBefore != userAfterLock.token &&
-                userAfterLock.token == lastReloginToken &&
-                userAfterLock.account == userBefore.account &&
-                userAfterLock.account == lastReloginAccount &&
-                lastReloginAt > 0L &&
-                System.currentTimeMillis() - lastReloginAt < RELOGIN_FRESH_WINDOW_MS
-            ) {
-                Log.d(TAG, "Relogin skipped: a concurrent caller just relogged in within the fresh window")
-                return@withLock Response(true, 0, "已复用并发重登录的会话")
+            // 并发幂等：若在等待锁期间会话已被刷新（并发 caller 重登录成功，
+            // 或用户在登录页手动登录成功），直接复用新会话。判定只看 token 是否
+            // 变化：不能比对 lastReloginToken——前台手动登录不经过本类，若只认
+            // 自己刷出的 token，排队的后台重登会 clearCookies 把前台刚建立的
+            // 会话冲掉，用户下一个请求又"会话过期"。
+            if (tokenBefore != userAfterLock.token && userAfterLock.token.isNotEmpty()) {
+                Log.d(TAG, "Relogin skipped: session was refreshed while waiting for the lock")
+                return@withLock Response(true, 0, "已复用刚刚建立的新会话")
             }
             val response = userApi.relogin()
-            if (response.success) {
-                val saved = userRepository.getUser()
-                lastReloginToken = saved.token
-                lastReloginAccount = saved.account
-                lastReloginAt = System.currentTimeMillis()
-            }
             response
         }
     }
@@ -85,10 +94,11 @@ class ReloginHelper @Inject constructor(
         if (!userApi.isSessionExpired(html)) return html
 
         // Session 过期，尝试重登录
-        Log.d(TAG, "Session expired, token=${token.take(10)}..., attempting relogin...")
+        Log.d(TAG, "Session expired, attempting relogin...")
         val response = relogin()
         if (!response.success) {
             Log.w(TAG, "Relogin failed: ${response.message}")
+            handleReloginFailure(response)
             return null
         }
 
@@ -97,7 +107,7 @@ class ReloginHelper @Inject constructor(
             Log.w(TAG, "Relogin retry cancelled because the active account or host changed")
             return null
         }
-        Log.d(TAG, "Relogin ok, retrying with token=${user.token.take(10)}...")
+        Log.d(TAG, "Relogin ok, retrying with fresh token")
 
         // 用新 token 重试
         val retryHtml = action(userRepository.host, user.token, user.account)
@@ -132,7 +142,10 @@ class ReloginHelper @Inject constructor(
         if (!userApi.isSessionExpired(html)) return html
 
         val response = relogin()
-        if (!response.success) return null
+        if (!response.success) {
+            handleReloginFailure(response)
+            return null
+        }
 
         val user = userRepository.getUser()
         if (user.account != account || userRepository.host != host) return null

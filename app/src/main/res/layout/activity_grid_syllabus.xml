@@ -107,7 +107,7 @@
             android:layout_height="32dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:padding="4dp"
-            android:src="@android:drawable/ic_media_previous"
+            android:src="@drawable/ic_week_prev"
             app:tint="@color/claude_terracotta" />
 
         <TextView
@@ -126,7 +126,7 @@
             android:layout_height="32dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:padding="4dp"
-            android:src="@android:drawable/ic_media_next"
+            android:src="@drawable/ic_week_next"
             app:tint="@color/claude_terracotta" />
 
     </LinearLayout>

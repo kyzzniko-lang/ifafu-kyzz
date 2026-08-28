@@ -92,8 +92,10 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
             selectedYear = latestTerm.first
             selectedTerm = latestTerm.second
         }
-        val restoreIndex = if (selectedYear != null) options.indexOf(selectedYear).coerceAtLeast(0) else 0
-        binding.spinnerYear.setSelection(restoreIndex)
+        // 先注册 listener 再 setSelection，否则初始选中不触发过滤，spinner 显示
+        // "最新学年"而列表是全量；恢复的学年不在选项里时回退"全部"。
+        val restoreIndex = if (selectedYear != null) options.indexOf(selectedYear) else 0
+        if (restoreIndex < 0) selectedYear = null
 
         binding.spinnerYear.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
@@ -102,6 +104,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
             }
             override fun onNothingSelected(parent: AdapterView<*>?) {}
         }
+        binding.spinnerYear.setSelection(restoreIndex.coerceAtLeast(0))
     }
 
     private fun setupTermButtons() {
@@ -185,7 +188,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
                 text = "我的成绩单"
                 textSize = 22f
                 setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setPadding(0, 0, 0, 20)
             }
             container.addView(title)
@@ -194,7 +197,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
                 text = "GPA: ${binding.tvGPA.text}  |  加权均分: ${binding.tvWeightedAvg.text}  |  总学分: ${binding.tvTotalCredits.text}"
                 textSize = 16f
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setPadding(0, 0, 0, 30)
             }
             container.addView(statsText)
@@ -209,14 +212,14 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
                     text = score.courseName
                     textSize = 14f
                     setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
                 val scoreVal = TextView(this).apply {
                     text = "${score.score}"
                     textSize = 14f
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 row.addView(name); row.addView(scoreVal)
                 container.addView(row)
@@ -297,7 +300,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
                     text = "GPA趋势"
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     textSize = 14f
                 }
                 holder.content.addView(title)
@@ -314,12 +317,12 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
                 val name = TextView(this@ScoreActivity).apply {
                     text = score.courseName; setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 }
                 val scoreValue = TextView(this@ScoreActivity).apply {
                     text = if (score.score > 0) "${score.score}" else "--"
-                    typeface = resources.getFont(R.font.claude_serif); textSize = 22f
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif); textSize = 22f
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                 }
                 topRow.addView(name); topRow.addView(scoreValue); holder.content.addView(topRow)
@@ -327,7 +330,7 @@ class ScoreActivity : BaseActivity<ActivityScoreBinding>() {
                 if (score.makeupScore > 0) infoParts.add("补考: ${score.makeupScore}")
                 val info = TextView(this@ScoreActivity).apply {
                     text = infoParts.joinToString(" | "); setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 holder.content.addView(info)
             }

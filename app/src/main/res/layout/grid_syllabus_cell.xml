@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/courseCell"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
@@ -8,21 +9,25 @@
     android:orientation="vertical"
     android:paddingTop="4dp"
     android:paddingBottom="4dp"
-    android:paddingStart="3dp"
-    android:paddingEnd="3dp">
+    android:paddingStart="2dp"
+    android:paddingEnd="2dp">
 
+    <!-- 二维课表格子宽度只有约 47dp（7 列平分），固定字号 + maxLines 会让
+         "08:00-09:35" 折行成 "08:00-09:3/5"，教师/教室被 … 截断。
+         改用自动缩字：文字整体等比缩小到恰好放进格子，时间/教师/教室完整可见。 -->
     <TextView
         android:id="@+id/tvCourseName"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
-        android:ellipsize="end"
         android:fontFamily="sans-serif"
         android:gravity="center"
-        android:maxLines="2"
         android:textColor="@color/white"
-        android:textSize="9sp"
-        android:textStyle="bold" />
+        android:textStyle="bold"
+        app:autoSizeTextType="uniform"
+        app:autoSizeMinTextSize="6sp"
+        app:autoSizeMaxTextSize="9sp"
+        app:autoSizeStepGranularity="0.5sp" />
 
     <View
         android:id="@+id/divider"
@@ -38,12 +43,13 @@
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1.2"
-        android:ellipsize="end"
         android:fontFamily="sans-serif"
         android:gravity="center"
         android:lineSpacingMultiplier="1.0"
-        android:maxLines="3"
         android:textColor="#E6FFFFFF"
-        android:textSize="8sp" />
+        app:autoSizeTextType="uniform"
+        app:autoSizeMinTextSize="6sp"
+        app:autoSizeMaxTextSize="8sp"
+        app:autoSizeStepGranularity="0.5sp" />
 
 </LinearLayout>

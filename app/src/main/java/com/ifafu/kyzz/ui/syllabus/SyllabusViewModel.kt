@@ -59,12 +59,18 @@ class SyllabusViewModel @Inject constructor(
             _state.value = UiState.Error("未登录")
             return
         }
+        // 学年与学期必须成对出现。外部恢复状态、Spinner 初始化时可能短暂只提供
+        // 其中一项；旧代码把“任一不为空”视为显式选择，随后 year!!/term!! 崩溃。
+        if ((year == null) != (term == null)) {
+            _state.value = UiState.Error("学年和学期信息不完整，请重新选择")
+            return
+        }
         cacheManager.migrateSyllabusCacheIfNeeded(user.account)
 
         selectedYear = year
         selectedTerm = term
         val generation = ++loadGeneration
-        val explicitSelection = year != null || term != null
+        val explicitSelection = year != null && term != null
         if ((explicitSelection || forceRefresh) && loadJob?.isActive == true) {
             // 用户连续切换学年/学期时，后一次选择优先，取消前一次请求。
             loadJob?.cancel()

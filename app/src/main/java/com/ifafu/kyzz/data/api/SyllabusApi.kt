@@ -30,17 +30,21 @@ class SyllabusApi @Inject constructor(
     suspend fun getSyllabus(host: String, token: String, number: String, name: String): Syllabus? {
         return try {
             val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
-            htmlClient.setReferer(mainUrl)
 
             var accessUrl = "${host}/(${token})/xskbcx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
-            var doc = htmlClient.get(accessUrl)
+            var doc = htmlClient.getWithReferer(accessUrl, mainUrl)
             var html = doc.html()
             if (userApi.isSessionExpired(html)) {
                 val response = reloginHelper.relogin()
                 if (!response.success) return null
                 val user = userRepository.getUser()
-                accessUrl = "${host}/(${user.token})/xskbcx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
-                doc = htmlClient.get(accessUrl)
+                // 重登等待期间账号可能已切换：旧 name 混入新会话会把数据缓存串台
+                if (user.account != number || userRepository.host != host) return null
+                accessUrl = "${host}/(${user.token})/xskbcx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121603"
+                doc = htmlClient.getWithReferer(
+                    accessUrl,
+                    "${host}/(${user.token})/xs_main.aspx?xh=${user.account}"
+                )
                 html = doc.html()
                 if (userApi.isSessionExpired(html)) {
                     try {
@@ -86,41 +90,51 @@ class SyllabusApi @Inject constructor(
 
             val transition = TermResolver.breakTransition()
             if (transition != null) {
-                val upcoming = transition.upcoming
-                val upcomingAvailable = yearResult.options.contains(upcoming.year) &&
-                    termResult.options.contains(upcoming.term)
-                val upcomingSyllabus = when {
-                    !upcomingAvailable -> null
-                    targetYear == upcoming.year && targetTerm == upcoming.term -> syllabus
-                    else -> getSyllabusWithTerm(
-                        host, userRepository.getUser().token, number, name,
-                        upcoming.year, upcoming.term
-                    )
-                }
-                if (upcomingSyllabus?.hasPublishedContent() == true) {
-                    Log.i("SyllabusApi", "检测到${upcoming.display()}课表已发布，提升为默认课表")
-                    return upcomingSyllabus
-                }
-
-                // 新课表尚未发布时继续使用上一学期，避免寒暑假进入空白课表。
-                val previous = transition.previous
-                val previousSyllabus = when {
-                    targetYear == previous.year && targetTerm == previous.term -> syllabus
-                    serverYear == previous.year && serverTerm == previous.term ->
-                        syllabusParser.parseSyllabus(doc, number)
-                    yearResult.options.contains(previous.year) &&
-                        termResult.options.contains(previous.term) ->
-                        getSyllabusWithTerm(
+                // 主流程的当前学期课表已经解析成功。假期探测（upcoming/previous
+                // 学期的额外请求）只是优化项：探测请求超时/会话过期时不应把整次
+                // getSyllabus 判为失败——那会让首页把已经拿到的课表也丢掉。
+                try {
+                    val upcoming = transition.upcoming
+                    val upcomingAvailable = yearResult.options.contains(upcoming.year) &&
+                        termResult.options.contains(upcoming.term)
+                    val upcomingSyllabus = when {
+                        !upcomingAvailable -> null
+                        targetYear == upcoming.year && targetTerm == upcoming.term -> syllabus
+                        else -> getSyllabusWithTerm(
                             host, userRepository.getUser().token, number, name,
-                            previous.year, previous.term
+                            upcoming.year, upcoming.term
                         )
-                    else -> null
-                }
-                if (previousSyllabus != null) {
-                    if (previous.year == inferred.year && previous.term == inferred.term) {
-                        saveTermFirstDayIfNeeded(previousSyllabus)
                     }
-                    return previousSyllabus
+                    if (upcomingSyllabus?.hasPublishedContent() == true) {
+                        Log.i("SyllabusApi", "检测到${upcoming.display()}课表已发布，提升为默认课表")
+                        syncTermFirstDayForUpcoming(upcoming)
+                        return upcomingSyllabus
+                    }
+
+                    // 新课表尚未发布时继续使用上一学期，避免寒暑假进入空白课表。
+                    val previous = transition.previous
+                    val previousSyllabus = when {
+                        targetYear == previous.year && targetTerm == previous.term -> syllabus
+                        serverYear == previous.year && serverTerm == previous.term ->
+                            syllabusParser.parseSyllabus(doc, number)
+                        yearResult.options.contains(previous.year) &&
+                            termResult.options.contains(previous.term) ->
+                            getSyllabusWithTerm(
+                                host, userRepository.getUser().token, number, name,
+                                previous.year, previous.term
+                            )
+                        else -> null
+                    }
+                    if (previousSyllabus != null) {
+                        if (previous.year == inferred.year && previous.term == inferred.term) {
+                            saveTermFirstDayIfNeeded(previousSyllabus)
+                        }
+                        return previousSyllabus
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w("SyllabusApi", "假期课表探测失败，回退使用当前解析结果", e)
                 }
             }
 
@@ -144,18 +158,21 @@ class SyllabusApi @Inject constructor(
     ): Syllabus? {
         return try {
             val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
-            htmlClient.setReferer(mainUrl)
 
             var accessUrl = "${host}/(${token})/xskbcx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
             // 1. GET 获取 __VIEWSTATE
-            var initialDoc = htmlClient.get(accessUrl)
+            var initialDoc = htmlClient.getWithReferer(accessUrl, mainUrl)
             var initialHtml = initialDoc.html()
             if (userApi.isSessionExpired(initialHtml)) {
                 val response = reloginHelper.relogin()
                 if (!response.success) return null
                 val user = userRepository.getUser()
-                accessUrl = "${host}/(${user.token})/xskbcx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
-                initialDoc = htmlClient.get(accessUrl)
+                if (user.account != number || userRepository.host != host) return null
+                accessUrl = "${host}/(${user.token})/xskbcx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121603"
+                initialDoc = htmlClient.getWithReferer(
+                    accessUrl,
+                    "${host}/(${user.token})/xs_main.aspx?xh=${user.account}"
+                )
                 initialHtml = initialDoc.html()
                 if (userApi.isSessionExpired(initialHtml)) {
                     try {
@@ -214,8 +231,47 @@ class SyllabusApi @Inject constructor(
 
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         val termFirstDay = sdf.format(cal.time)
+        // currentWeek 的解析正则较宽松,页面残留的"第18周教学检查"类横幅会被
+        // 误读为当前周次,回推出的开学日整体偏移并永久污染周次基准。与按校历
+        // 惯例估算的首日交叉验证:偏差超过两周时宁可放弃写入。
+        TermResolver.estimatedFirstDay(TermResolver.inferCurrentTerm())?.let { estimated ->
+            if (kotlin.math.abs(estimated.timeInMillis - cal.timeInMillis) > 14L * 24 * 60 * 60 * 1000) {
+                Log.w("SyllabusApi",
+                    "currentWeek=${syllabus.currentWeek} 回推的开学日($termFirstDay)偏离校历估算超过两周,放弃自动写入")
+                return
+            }
+        }
         Log.d("SyllabusApi", "Calculated termFirstDay=$termFirstDay from currentWeek=${syllabus.currentWeek}")
         userRepository.termFirstDay = termFirstDay
+    }
+
+    /**
+     * 假期把新学期课表提升为默认后，termFirstDay 往往还停留在上一学期的开学日：
+     * 周次会按旧学期计算（课表页显示"第25周/课程已结束"），导出日历更是整学期
+     * 错位。服务器对未开学的学期通常不标注"第N教学周"，saveTermFirstDayIfNeeded
+     * 帮不上忙，这里按校历惯例（9月1日/3月2日对齐周一）估算新学期首日。仅在现有
+     * 值明显不属于新学期（误差超过 8 周，即还是旧学期日期）时才覆盖；之后 GitHub
+     * 配置或服务器周次标签仍可把它校正到真实日期。
+     */
+    private fun syncTermFirstDayForUpcoming(upcoming: TermResolver.Term) {
+        if (userRepository.termFirstDayManual) return
+        val estimated = TermResolver.estimatedFirstDay(upcoming) ?: return
+        val existing = userRepository.termFirstDay
+        if (existing.isNotEmpty()) {
+            try {
+                val parsed = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(existing)
+                if (parsed != null &&
+                    kotlin.math.abs(parsed.time - estimated.timeInMillis) < 8L * 7 * 24 * 60 * 60 * 1000
+                ) {
+                    return
+                }
+            } catch (_: Exception) {
+                // 现有值解析失败则直接覆盖
+            }
+        }
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        userRepository.termFirstDay = sdf.format(estimated.time)
+        Log.i("SyllabusApi", "假期提升新课表，termFirstDay 按惯例估算为 ${sdf.format(estimated.time)}")
     }
 
     /**
@@ -270,13 +326,12 @@ class SyllabusApi @Inject constructor(
             "xqd" to term,
             state = state
         )
-        val result = htmlClient.post(accessUrl, formBody)
-        val html = result.html()
+        val html = htmlClient.postStringWithReferer(accessUrl, formBody, accessUrl)
         if (userApi.isSessionExpired(html)) {
             throw AlertException("会话已过期，请重新登录", true)
         }
         htmlClient.throwIfAlert(html)
-        return result
+        return org.jsoup.Jsoup.parse(html)
     }
 
     private fun selectedOption(doc: Document, selectId: String): String {

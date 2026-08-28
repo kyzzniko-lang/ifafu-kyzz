@@ -20,16 +20,32 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import com.ifafu.kyzz.R
+import com.ifafu.kyzz.data.api.ScoreApi
+import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Score
+import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.data.util.GpaCalculator
 import com.ifafu.kyzz.databinding.ActivityScoreCardBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
+import dagger.hilt.android.AndroidEntryPoint
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.lifecycle.lifecycleScope
 import java.io.File
 import java.io.FileOutputStream
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
 
     override fun createBinding() = ActivityScoreCardBinding.inflate(layoutInflater)
+
+    @Inject lateinit var scoreApi: ScoreApi
+    @Inject lateinit var userRepository: UserRepository
+    @Inject lateinit var cacheManager: CacheManager
 
     private var scores: List<Score> = emptyList()
     private var userName = ""
@@ -53,24 +69,30 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
             } catch (_: Exception) { emptyList() }
         } else emptyList()
 
+        binding.btnSave.setOnClickListener { saveImage() }
+        binding.btnShare.setOnClickListener { shareImage() }
+
         if (scores.isEmpty()) {
-            binding.tvTotalCredits.text = "--"
-            binding.tvAvgScore.text = "--"
-            binding.tvAvgGpa.text = "--"
+            // 首次安装登录后缓存尚未落库是常态:旧逻辑读死一次缓存,用户在后台
+            // 首次拉取完成前进入只会看到空数据,退出重进才恢复。这里展示加载态
+            // 并主动走与成绩页相同的拉取链路,完成后自动渲染。
+            binding.tvTotalCredits.text = "…"
+            binding.tvAvgScore.text = "…"
+            binding.tvAvgGpa.text = "…"
             binding.btnSave.isEnabled = false
             binding.btnShare.isEnabled = false
+            fetchScoresThenRender()
             return
         }
 
         setupSummary()
         setupRecyclerView()
-
-        binding.btnSave.setOnClickListener { saveImage() }
-        binding.btnShare.setOnClickListener { shareImage() }
     }
 
     private fun setupSummary() {
-        val totalCredits = scores.sumOf { it.studyScore.toDouble() }.toFloat()
+        // 总学分与 GPA/平均分同口径（重修去重、剔除免修/缺考）：直接对原始列表求和，
+        // 挂科+重修两行会把学分双计，与同卡片上已归一的 GPA 数字互相矛盾。
+        val totalCredits = GpaCalculator.computeTotalCredits(scores)
         // 与成绩页/首页统一口径：GPA 用 GpaCalculator（学分加权、剔除 0 绩点课），
         // 平均分用学分加权平均；此前直接对原始 scorePoint 求算术平均，
         // 同一学期的绩点会和成绩页显示的不一致。
@@ -85,6 +107,54 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
     private fun setupRecyclerView() {
         binding.recyclerView.layoutManager = LinearLayoutManager(this)
         binding.recyclerView.adapter = ScoreAdapter(scores)
+    }
+
+    private companion object {
+        /** 单次主动拉取上限,与成绩页刷新同级:弱网重登链路最长约 90s。 */
+        const val SCORE_FETCH_TIMEOUT_MS = 120_000L
+    }
+
+    /**
+     * 缓存为空时的补拉:复用成绩页同一条链路(getAllScores 含重登自愈),
+     * 结果经 commitFreshScores 原子落盘后重读缓存渲染。数据到达即填充,
+     * 失败回落到 "--" 并提示,不阻塞用户退出。
+     */
+    private fun fetchScoresThenRender() {
+        lifecycleScope.launch {
+            val fetched = try {
+                withTimeoutOrNull(SCORE_FETCH_TIMEOUT_MS) {
+                    val user = userRepository.getUser()
+                    scoreApi.getAllScores(
+                        userRepository.host, user.token, user.account, user.name
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (isFinishing || isDestroyed) return@launch
+
+            // 空列表不落盘(与成绩页/后台检查同口径),避免把异常页解析的空集
+            // 写成"真实无成绩"基线;提交后重读,拿到合并与 firstSeen 归一的数据
+            val account = userRepository.getUser().account
+            if (!fetched.isNullOrEmpty()) {
+                cacheManager.commitFreshScores(account, fetched)
+            }
+            val fresh = cacheManager.loadScores(account).orEmpty()
+            if (fresh.isNotEmpty()) {
+                scores = fresh
+                setupSummary()
+                setupRecyclerView()
+                binding.btnSave.isEnabled = true
+                binding.btnShare.isEnabled = true
+            } else {
+                binding.tvTotalCredits.text = "--"
+                binding.tvAvgScore.text = "--"
+                binding.tvAvgGpa.text = "--"
+                Toast.makeText(this@ScoreCardActivity, "成绩加载失败，请稍后重试", Toast.LENGTH_SHORT).show()
+            }
+        }
     }
 
     private fun generateBitmap(): Bitmap {
@@ -148,7 +218,7 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
 
         val avgScore = GpaCalculator.computeWeightedAvg(scores)
         val avgGpa = GpaCalculator.computeGpa(scores)
-        val totalCredits = scores.sumOf { it.studyScore.toDouble() }
+        val totalCredits = GpaCalculator.computeTotalCredits(scores)
 
         val footerPaint = Paint().apply { color = hintColor; textSize = 14f; isAntiAlias = true }
         canvas.drawText("共${scores.size}门课  总学分${"%.1f".format(totalCredits)}  平均分${"%.1f".format(avgScore)}  绩点${"%.2f".format(avgGpa)}", padding.toFloat(), footerY + 30f, footerPaint)
@@ -160,51 +230,100 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
     }
 
     private fun saveImage() {
-        try {
-            val bitmap = generateBitmap()
-            val filename = "成绩单_${System.currentTimeMillis()}.png"
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                val values = ContentValues().apply {
-                    put(MediaStore.Images.Media.DISPLAY_NAME, filename)
-                    put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                    put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/iFAFU")
+        // 大四成绩单 50+ 门课：Bitmap 约 800x4300（ARGB_8888 ~14MB）+ PNG 压缩 +
+        // 写盘，主线程做会冻结 UI 数秒甚至 ANR，全部挪到 IO 线程。
+        setActionsEnabled(false)
+        lifecycleScope.launch {
+            val result = withContext(Dispatchers.IO) {
+                try {
+                    val bitmap = generateBitmap()
+                    val filename = "成绩单_${System.currentTimeMillis()}.png"
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                        val values = ContentValues().apply {
+                            put(MediaStore.Images.Media.DISPLAY_NAME, filename)
+                            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+                            put(MediaStore.Images.Media.RELATIVE_PATH, "Pictures/iFAFU")
+                        }
+                        val uri = contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
+                        if (uri == null) Result.failure(IllegalStateException("无法写入相册"))
+                        else {
+                            // openOutputStream 可能为 null（存储满/权限异常）：
+                            // 静默跳过压缩却报"已保存成功"会在相册留下 0 字节文件。
+                            val stream = contentResolver.openOutputStream(uri)
+                            if (stream == null) {
+                                try { contentResolver.delete(uri, null, null) } catch (_: Exception) {}
+                                bitmap.recycle()
+                                Result.failure(IllegalStateException("无法打开相册写入流"))
+                            } else {
+                                stream.use {
+                                    val ok = bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)
+                                    if (!ok) throw IllegalStateException("图片压缩写入失败")
+                                }
+                                bitmap.recycle()
+                                Result.success("已保存到相册")
+                            }
+                        }
+                    } else {
+                        // Android 9 及以下没有 WRITE_EXTERNAL_STORAGE 权限（manifest
+                        // 未声明），公共 Pictures 目录必然 Permission denied。改写
+                        // 应用专属外部目录：无需任何权限，路径在提示里告知用户。
+                        val dir = getExternalFilesDir(android.os.Environment.DIRECTORY_PICTURES)
+                        val file = File(dir, "iFAFU/$filename")
+                        file.parentFile?.mkdirs()
+                        FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        bitmap.recycle()
+                        Result.success("已保存到 ${file.absolutePath}")
+                    }
+                } catch (e: Exception) {
+                    Result.failure(e)
                 }
-                contentResolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)?.let { uri ->
-                    contentResolver.openOutputStream(uri)?.use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                    Toast.makeText(this, "已保存到相册", Toast.LENGTH_SHORT).show()
-                }
-            } else {
-                @Suppress("DEPRECATION")
-                val dir = android.os.Environment.getExternalStoragePublicDirectory(android.os.Environment.DIRECTORY_PICTURES)
-                val file = File(dir, "iFAFU/$filename")
-                file.parentFile?.mkdirs()
-                FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                Toast.makeText(this, "已保存到 ${file.absolutePath}", Toast.LENGTH_SHORT).show()
             }
-        } catch (e: Exception) {
-            Toast.makeText(this, "保存失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            setActionsEnabled(true)
+            result.fold(
+                onSuccess = { Toast.makeText(this@ScoreCardActivity, it, Toast.LENGTH_SHORT).show() },
+                onFailure = { Toast.makeText(this@ScoreCardActivity, "保存失败: ${it.message}", Toast.LENGTH_SHORT).show() }
+            )
         }
     }
 
     private fun shareImage() {
-        try {
-            val bitmap = generateBitmap()
-            val file = File(cacheDir, "score_card_share.png")
-            FileOutputStream(file).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-
-            val uri = androidx.core.content.FileProvider.getUriForFile(
-                this, "${packageName}.fileprovider", file
-            )
-            val intent = Intent(Intent.ACTION_SEND).apply {
-                type = "image/png"
-                putExtra(Intent.EXTRA_STREAM, uri)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        setActionsEnabled(false)
+        lifecycleScope.launch {
+            val file: File? = withContext(Dispatchers.IO) {
+                try {
+                    val bitmap = generateBitmap()
+                    val f = File(cacheDir, "score_card_share.png")
+                    FileOutputStream(f).use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                    bitmap.recycle()
+                    f
+                } catch (_: Exception) {
+                    null
+                }
             }
-            startActivity(Intent.createChooser(intent, "分享成绩单"))
-        } catch (e: Exception) {
-            Toast.makeText(this, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            setActionsEnabled(true)
+            if (file == null) {
+                Toast.makeText(this@ScoreCardActivity, "分享失败", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+            try {
+                val uri = androidx.core.content.FileProvider.getUriForFile(
+                    this@ScoreCardActivity, "${packageName}.fileprovider", file
+                )
+                val intent = Intent(Intent.ACTION_SEND).apply {
+                    type = "image/png"
+                    putExtra(Intent.EXTRA_STREAM, uri)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                }
+                startActivity(Intent.createChooser(intent, "分享成绩单"))
+            } catch (e: Exception) {
+                Toast.makeText(this@ScoreCardActivity, "分享失败: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
         }
+    }
+
+    private fun setActionsEnabled(enabled: Boolean) {
+        binding.btnSave.isEnabled = enabled
+        binding.btnShare.isEnabled = enabled
     }
 
     inner class ScoreAdapter(private val data: List<Score>) : RecyclerView.Adapter<ScoreAdapter.VH>() {
@@ -226,7 +345,7 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
                 text = score.courseName
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f)
             })
 
@@ -240,7 +359,7 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
                     this.text = text
                     textSize = 13f
                     setTextColor(resources.getColor(R.color.claude_text_secondary, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     gravity = Gravity.CENTER
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })

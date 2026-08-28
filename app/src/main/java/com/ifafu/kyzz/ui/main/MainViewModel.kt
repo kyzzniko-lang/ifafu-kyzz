@@ -24,7 +24,8 @@ class MainViewModel @Inject constructor(
     private val userRepository: UserRepository,
     private val cacheManager: CacheManager,
     private val examApi: com.ifafu.kyzz.data.api.ExamApi,
-    private val syllabusApi: com.ifafu.kyzz.data.api.SyllabusApi
+    private val syllabusApi: com.ifafu.kyzz.data.api.SyllabusApi,
+    @dagger.hilt.android.qualifiers.ApplicationContext private val appContext: android.content.Context
 ) : ReloginViewModel() {
 
     private val _user = MutableLiveData<User>()
@@ -49,6 +50,13 @@ class MainViewModel @Inject constructor(
     fun refreshUser(force: Boolean = false) {
         _user.value = userRepository.getUser()
         _currentWeek.value = calculateCurrentWeek()
+        if (isLoggedIn) {
+            // 登出会拆掉每日提醒闹钟链（cancel），但重新登录后没有 boot 广播可依赖，
+            // 必须在这里重挂；ensureScheduled 幂等（固定 requestCode 覆盖同一
+            // PendingIntent），频繁调用只会原地刷新，不会叠加闹钟。
+            com.ifafu.kyzz.service.CourseReminderReceiver.ensureScheduled(appContext)
+            com.ifafu.kyzz.service.ScoreCheckReceiver.ensureScheduled(appContext)
+        }
         if (!force && _todayCourses.value != null && _nextExam.value != null) {
             return
         }
@@ -82,7 +90,11 @@ class MainViewModel @Inject constructor(
                 set(Calendar.MILLISECOND, 0)
             }
             val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
-            val week = ((diffDays / 7) + 1).coerceAtLeast(0)
+            // 开学前（termFirstDay 在未来 1-6 天内）：Kotlin 整数除法向零截断会把
+            // diffDays=-6..-1 算成 week=1，把"下周才开的第一周课"顶到首页当今日
+            // 课程。与小组件/课程提醒一致地按未开学处理，返回 0。
+            if (diffDays < 0) return 0
+            val week = (diffDays / 7) + 1
             // 上限 clamp：正常学期最多约 30 周（含小学期）。超过几乎一定是
             // termFirstDay 过期未更新，此时显示"第40周"既荒谬又与今日课程区域
             // （loadTodayCourses 用 maxCourseWeek+4 判假期）自相矛盾。
@@ -92,6 +104,17 @@ class MainViewModel @Inject constructor(
     }
 
     fun logout() {
+        // 登出时清掉本账号的缓存与聊天记录：成绩/课表/学籍信息（含身份证号、
+        // 电话、住址等明文）不应在设备上残留给下一个登录者，也避免多账号数据无界累积。
+        val account = userRepository.getUser().account
+        if (account.isNotEmpty()) {
+            cacheManager.clearCache(account)
+            cacheManager.clearChatHistory(account)
+        }
+        // 拆断每日提醒的自续闹钟链：scheduleNext 只受通知开关控制、不查登录态，
+        // 不主动取消的话登出后设备仍每天被唤醒且状态栏常驻闹钟图标。
+        com.ifafu.kyzz.service.CourseReminderReceiver.cancel(appContext)
+        com.ifafu.kyzz.service.ScoreCheckReceiver.cancel(appContext)
         userRepository.clearUser()
         _user.value = User()
     }
@@ -102,6 +125,9 @@ class MainViewModel @Inject constructor(
             if (!user.isLogin) { _todayCourses.postValue(emptyList()); return@launch }
 
             val syllabus = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                // schema 迁移（清掉旧版本写入的坏格式课表缓存）。课表页已调用，
+                // 首页也调一次保证用户只打开首页也能触发重新拉取。
+                cacheManager.migrateSyllabusCacheIfNeeded(user.account)
                 cacheManager.loadSyllabus(user.account)
             }
             if (syllabus == null) {
@@ -116,15 +142,21 @@ class MainViewModel @Inject constructor(
             val currentWeek = calculateCurrentWeek()
             val maxCourseWeek = if (syllabus.courses.isNotEmpty()) syllabus.courses.maxOf { it.weekEnd } else 20
             if (currentWeek > maxCourseWeek + 4) {
-                // 暑假/寒假期间，课表已结束，不显示课程也不反复请求网络
-                // 只有在课表缓存过期（30天）时才尝试刷新，以检测新学期课表是否已发布
-                // During a normal vacation do not poll repeatedly; only refresh after
-                // the long-term cache expires or when the inferred semester changes.
+                // 暑假/寒假期间，课表已结束，不显示课程也不反复请求网络。
+                // 缓存过期（30 天）时刷新一次以探测新学期课表是否发布；
+                // 缓存学期与推断学期不一致时（寒假后期 2 月起 inferCurrentTerm 已翻到
+                // 新学期，而服务器尚未发布新课表、拉回来的仍是上学期）按 6 小时
+                // 限频探测——不限频的话每次冷启动都会全量拉取一遍并原样存回。
                 val isCacheExpired = cacheManager.isCacheStale(user.account, "syllabus", 30L * 24 * 60 * 60 * 1000)
-                if (isCacheExpired || belongsToDifferentTerm(syllabus)) {
-                    fetchSyllabusAndShow()
-                } else {
-                    _todayCourses.postValue(emptyList())
+                val shouldProbeDifferentTerm = belongsToDifferentTerm(syllabus) &&
+                    cacheManager.isSyllabusUpcomingProbeStale(user.account, 6L * 60 * 60 * 1000)
+                when {
+                    isCacheExpired -> fetchSyllabusAndShow()
+                    shouldProbeDifferentTerm -> {
+                        cacheManager.markSyllabusUpcomingProbe(user.account)
+                        fetchSyllabusAndShow()
+                    }
+                    else -> _todayCourses.postValue(emptyList())
                 }
                 return@launch
             }
@@ -134,6 +166,11 @@ class MainViewModel @Inject constructor(
                 return@launch
             }
             computeTodayCourses(syllabus)
+            // 学期中的调课/退改选不会反映到"缓存存在即直接用"的旧逻辑里：
+            // 缓存超过 7 天时后台刷新一次，页面先用旧缓存渲染。
+            if (cacheManager.isCacheStale(user.account, "syllabus", 7L * 24 * 60 * 60 * 1000)) {
+                fetchSyllabusAndShow()
+            }
         }
     }
 
@@ -163,17 +200,28 @@ class MainViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val freshUser = userRepository.getUser()
+                if (!freshUser.isLogin) { _todayCourses.value = emptyList(); return@launch }
                 val syllabus = syllabusApi.getSyllabus(userRepository.host, freshUser.token, freshUser.account, freshUser.name)
                 if (syllabus != null) {
                     cacheManager.saveSyllabus(freshUser.account, syllabus)
                     computeTodayCourses(syllabus)
                 } else {
-                    _todayCourses.value = emptyList()
+                    // 拉取失败但旧缓存仍在：保留缓存渲染，不把首页今日课程清空
+                    // （刷新失败清空会让用户以为今天的课全没了）。
+                    val cached = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        cacheManager.loadSyllabus(freshUser.account)
+                    }
+                    if (cached != null) computeTodayCourses(cached)
+                    else _todayCourses.value = emptyList()
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                _todayCourses.value = emptyList()
+                val cached = withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    cacheManager.loadSyllabus(userRepository.getUser().account)
+                }
+                if (cached != null) computeTodayCourses(cached)
+                else _todayCourses.value = emptyList()
             }
         }
     }
@@ -198,7 +246,7 @@ class MainViewModel @Inject constructor(
             val todayDay = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
 
             val matched = syllabus.courses.filter { c ->
-                currentWeek in c.weekBegin..c.weekEnd && c.weekDay == todayDay &&
+                c.coversWeek(currentWeek) && c.weekDay == todayDay &&
                     (c.oddOrTwice == 0 || (c.oddOrTwice == 1 && currentWeek % 2 == 1) || (c.oddOrTwice == 2 && currentWeek % 2 == 0))
             }.sortedBy { it.begin }.map { TodayCourse(it.name, it.teacher, it.address, it.begin, it.end) }
             _todayCourses.postValue(matched)
@@ -220,6 +268,12 @@ class MainViewModel @Inject constructor(
                 return@launch
             }
             findNextExam(examTable.exams)
+            // 缓存里的考试全部过期后，补考/新学期考试永远不会出现在首页
+            // （旧逻辑缓存存在就只用缓存）。全部过期且缓存超 1 天时刷新一次。
+            val hasUpcoming = examTable.exams.any { com.ifafu.kyzz.data.util.ExamDates.hasUpcomingDay(it.datetime) }
+            if (!hasUpcoming && cacheManager.isCacheStale(user.account, "exams", 24 * 60 * 60 * 1000L)) {
+                fetchExamsAndShow()
+            }
         }
     }
 
@@ -243,57 +297,19 @@ class MainViewModel @Inject constructor(
     }
 
     private fun findNextExam(exams: List<com.ifafu.kyzz.data.model.Exam>) {
-        // 每次调用创建新的 SimpleDateFormat 实例，确保线程安全
-        fun dateFormats() = listOf(
-            SimpleDateFormat("yyyy-MM-dd", Locale.US),
-            SimpleDateFormat("yyyy/M/d", Locale.US),
-            SimpleDateFormat("yyyy.MM.dd", Locale.US),
-            SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.US),
-            SimpleDateFormat("yyyy年M月d日", Locale.US),
-            SimpleDateFormat("yyyy年MM月dd日", Locale.US)
-        )
-
-        val nowCal = Calendar.getInstance()
-        val todayDay = Calendar.getInstance().apply {
-            set(nowCal.get(Calendar.YEAR), nowCal.get(Calendar.MONTH), nowCal.get(Calendar.DAY_OF_MONTH), 0, 0, 0)
-            set(Calendar.MILLISECOND, 0)
-        }
-
-        val next = exams.filter { it.datetime.isNotEmpty() }.mapNotNull { exam ->
-            try {
-                val raw = exam.datetime
-                    .replace("（", "(").replace("）", ")")
-                    .replace("～", "~").replace("至", "~")
-                val datePart = raw.split("(", "~", " ").first().trim()
-                var parsed: java.util.Date? = null
-                for (fmt in dateFormats()) {
-                    try { parsed = fmt.parse(datePart); break } catch (_: Exception) {}
-                }
-                if (parsed == null) {
-                    android.util.Log.w("MainViewModel", "Cannot parse exam date: '${exam.datetime}' (datePart='$datePart')")
-                    return@mapNotNull null
-                }
-                val parsedTime = parsed.time
-
-                val examCal = Calendar.getInstance().apply { time = parsed }
-                val examDay = Calendar.getInstance().apply {
-                    set(examCal.get(Calendar.YEAR), examCal.get(Calendar.MONTH), examCal.get(Calendar.DAY_OF_MONTH), 0, 0, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }
-                val dayDiff = ((examDay.timeInMillis - todayDay.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
-                // 只显示未来7天内的考试（-1 表示考试当天仍可显示），过滤掉远未来的旧学期考试
-                if (dayDiff >= -1 && dayDiff <= 60) Triple(exam, dayDiff, parsedTime) else null
-            } catch (e: Exception) {
-                android.util.Log.w("MainViewModel", "Error parsing exam: ${e.message}")
-                null
+        // 统一走 ExamDates：支持跨天考试（旧逻辑只取首个日期，第二天倒计时显示
+        // -1、第三天被过滤；与考试页/冲突检测的口径也不一致）。
+        val next = exams.asSequence()
+            .filter { it.datetime.isNotEmpty() }
+            .mapNotNull { exam ->
+                val daysLeft = com.ifafu.kyzz.data.util.ExamDates.daysUntilNearest(exam.datetime)
+                // 只显示近期考试（-1 表示考试当天仍可显示），过滤掉远未来的旧学期考试
+                if (daysLeft in -1..60) exam to daysLeft else null
             }
-        }.sortedBy { it.third }.firstOrNull()
+            .sortedWith(compareBy({ it.second }, { com.ifafu.kyzz.data.util.ExamDates.timeKey(it.first.datetime) }))
+            .firstOrNull()
 
-        if (next != null) {
-            _nextExam.value = ExamCountdown(next.first, next.second)
-        } else {
-            _nextExam.value = null
-        }
+        _nextExam.value = next?.let { ExamCountdown(it.first, it.second) }
     }
 
     data class ExamCountdown(

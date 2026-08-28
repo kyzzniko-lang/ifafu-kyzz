@@ -74,7 +74,7 @@ class PetLoadingView @JvmOverloads constructor(
             ).apply { topMargin = 16 }
             setTextColor(resources.getColor(R.color.claude_text_secondary, null))
             textSize = 13f
-            typeface = resources.getFont(R.font.claude_serif)
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             gravity = Gravity.CENTER
         }
         container.addView(hintText)

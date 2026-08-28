@@ -67,13 +67,13 @@
                 android:id="@+id/cardMap"
                 style="@style/ClaudeCard"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
+                android:layout_height="250dp"
                 android:layout_marginTop="16dp">
 
                 <WebView
                     android:id="@+id/webView"
                     android:layout_width="match_parent"
-                    android:layout_height="250dp" />
+                    android:layout_height="match_parent" />
 
             </com.google.android.material.card.MaterialCardView>
 
@@ -493,7 +493,7 @@
                         android:textAllCaps="false"
                         android:textColor="@color/claude_terracotta"
                         app:cornerRadius="10dp"
-                        app:icon="@android:drawable/ic_lock_idle_lock"
+                        app:icon="@drawable/ic_lock"
                         app:iconTint="@color/claude_terracotta"
                         app:strokeColor="@color/claude_terracotta" />
 
@@ -507,7 +507,7 @@
                         android:textAllCaps="false"
                         android:textColor="@color/claude_terracotta"
                         app:cornerRadius="10dp"
-                        app:icon="@android:drawable/ic_lock_power_off"
+                        app:icon="@drawable/ic_power"
                         app:iconTint="@color/claude_terracotta"
                         app:strokeColor="@color/claude_terracotta" />
 
@@ -521,7 +521,7 @@
                         android:textAllCaps="false"
                         android:textColor="@color/claude_terracotta"
                         app:cornerRadius="10dp"
-                        app:icon="@android:drawable/ic_popup_reminder"
+                        app:icon="@drawable/ic_notification"
                         app:iconTint="@color/claude_terracotta"
                         app:strokeColor="@color/claude_terracotta" />
 

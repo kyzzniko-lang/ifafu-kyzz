@@ -70,6 +70,9 @@ class MockLocationService : Service() {
     private lateinit var locationManager: LocationManager
     private lateinit var locationThread: HandlerThread
     private lateinit var locationHandler: Handler
+    // onCreate 里 startForeground 失败时置位:此时系统已裁定服务不能成立,
+    // 后续 onStartCommand/注入逻辑一律直接退出。
+    @Volatile private var foregroundStartFailed = false
     // @Volatile: 这些字段在定位后台线程(updateRunnable)读写，Activity binder 线程也会写，
     // 必须保证可见性，否则后台线程可能读到旧值。
     @Volatile private var latitude: Double = 0.0
@@ -82,7 +85,9 @@ class MockLocationService : Service() {
     @Volatile private var isTrajectoryMode = false
     @Volatile private var trajectoryWaypoints: List<LatLng> = emptyList()
     @Volatile private var trajectorySpeed: Double = 1.2
-    private var elapsedTrajectoryTime = 0.0
+    // onStartCommand 重置 / 后台线程累加,可见性必须保证;累计值自身只在
+    // MockLocationThread 单线程推进(@Volatile 不提供复合操作原子性)
+    @Volatile private var elapsedTrajectoryTime = 0.0
     @Volatile private var totalTrajectoryDistance = 0.0
     @Volatile private var currentWaypointIndex = 0
     @Volatile private var isLoopMode = false
@@ -94,10 +99,12 @@ class MockLocationService : Service() {
 
     // Realism: drift noise, bearing, accuracy jitter
     private val random = Random()
-    private var driftLat = 0.0
-    private var driftLng = 0.0
-    private var currentBearing = 0f
-    private var currentAccuracy = 12f
+    // 主线程(binder.setPosition/悬浮窗拖动回调)与 MockLocationThread(advanceTrajectory/
+    // 漂移推进)并发读写,必须保证可见性。
+    @Volatile private var driftLat = 0.0
+    @Volatile private var driftLng = 0.0
+    @Volatile private var currentBearing = 0f
+    @Volatile private var currentAccuracy = 12f
 
     val binder = MockLocationBinder()
 
@@ -120,7 +127,18 @@ class MockLocationService : Service() {
         } catch (_: Exception) {}
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        try {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        } catch (e: Exception) {
+            // targetSdk 34 起 FGS type=location 在未授予 while-in-use 定位权限时
+            // startForeground 被系统直接拒绝(SecurityException/
+            // ForegroundServiceStartNotAllowedException)。不捕获会崩掉整个进程;
+            // 捕获后必须停止自身,否则五秒前台超时会二次崩溃。
+            android.util.Log.e("MockLocationService", "startForeground 被系统拒绝,定位权限可能未授予", e)
+            foregroundStartFailed = true
+            stopSelf()
+            return
+        }
 
         removeTestProviderNetwork()
         addTestProviderNetwork()
@@ -131,6 +149,10 @@ class MockLocationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (foregroundStartFailed) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (intent?.action == ACTION_STOP) {
             stopSelf()
             return START_NOT_STICKY
@@ -231,6 +253,14 @@ class MockLocationService : Service() {
         locationHandler = Handler(locationThread.looper)
         val updateRunnable = object : Runnable {
             override fun run() {
+                // 显式运行守卫:主线程 removeCallbacks 与本 runnable 尾部的
+                // postDelayed 存在竞态,remove 后仍可能再排一条,此时不能再
+                // 推进轨迹/注入位置。注意 onStartCommand 才置 isRunning=true,
+                // 早于此到达的 tick 必须继续自排而不能退出循环。
+                if (!isRunning) {
+                    locationHandler.postDelayed(this, 100L)
+                    return
+                }
                 try {
                     if (isTrajectoryMode) {
                         advanceTrajectory(0.1) // 100ms nominal
@@ -605,14 +635,19 @@ class MockLocationService : Service() {
         }
     }
 
+    // 限频的 check-then-act 必须整体互斥:主线程(悬浮窗拖动)与 MockLocationThread
+    // 都会调用,裸读写双写会让限频窗口互相击穿,退化为每 100ms 一次 binder notify。
+    private val notifyGate = Any()
     private var lastNotifyTime = 0L
 
     private fun updateNotification(lat: Double, lng: Double) {
         // 轨迹模式每 100ms 调一次；全量重建通知并 notify 会产生大量 binder 往返
         // 与耗电，且部分厂商ROM通知栏闪烁。限频到每 3 秒最多一次。
-        val now = android.os.SystemClock.elapsedRealtime()
-        if (now - lastNotifyTime < 3_000L) return
-        lastNotifyTime = now
+        synchronized(notifyGate) {
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - lastNotifyTime < 3_000L) return
+            lastNotifyTime = now
+        }
         try {
             val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
             nm.notify(NOTIFICATION_ID, buildNotification(lat, lng))

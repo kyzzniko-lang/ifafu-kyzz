@@ -19,6 +19,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -49,6 +50,20 @@ class MockLocationActivity : BaseActivity<ActivityMockLocationBinding>() {
         ActivityResultContracts.StartActivityForResult()
     ) {
         startMockLocation()
+    }
+
+    private val locationPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { result ->
+        // 前台服务 type=location 在 targetSdk 34 起要求 while-in-use 定位权限,
+        // 未授权时 startForegroundService 直接抛异常。拒绝则无法继续。
+        if (result[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            result[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        ) {
+            startMockLocation()
+        } else {
+            Toast.makeText(this, "需要定位权限才能注入模拟位置", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private var mockService: MockLocationService? = null
@@ -135,13 +150,15 @@ class MockLocationActivity : BaseActivity<ActivityMockLocationBinding>() {
         setupCampusButtons()
         updateRunningState(MockLocationService.isRunning)
 
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                moveTaskToBack(false)
+            }
+        })
+
         if (MockLocationService.isRunning) {
             bindMockService()
         }
-    }
-
-    override fun onBackPressed() {
-        moveTaskToBack(false)
     }
 
     override fun onDestroy() {
@@ -595,7 +612,7 @@ map.on('click',function(e){
             putExtra(MockLocationService.EXTRA_MODE, MockLocationService.MODE_SINGLE)
         }
         bindMockService()
-        startForegroundService(serviceIntent)
+        ContextCompat.startForegroundService(this, serviceIntent)
 
         updateRunningState(true)
         Toast.makeText(this, "虚拟定位已启动: ($lat, $lng)", Toast.LENGTH_SHORT).show()
@@ -615,7 +632,10 @@ map.on('click',function(e){
 
         if (!checkPermissions()) return
 
-        val laps = if (isLoopMode) (binding.etLapCount.text.toString().toIntOrNull() ?: 0) else 0
+        // 负数圈数会让服务端 completedLaps(>=1) >= target(负) 立即成立，
+        // 跑完第一圈就停，与"∞"的输入预期相悖；非法值一律按无限循环处理。
+        val laps = if (isLoopMode) (binding.etLapCount.text.toString().toIntOrNull() ?: 0)
+            .coerceAtLeast(0) else 0
 
         // Store trajectory in service companion object
         MockLocationService.pendingTrajectory = waypoints.toList()
@@ -636,7 +656,7 @@ map.on('click',function(e){
             putExtra(MockLocationService.EXTRA_TRAJECTORY_SPEED, speed)
         }
         bindMockService()
-        startForegroundService(serviceIntent)
+        ContextCompat.startForegroundService(this, serviceIntent)
 
         updateRunningState(true)
         val distKm = trajectoryDistance / 1000.0
@@ -699,6 +719,22 @@ map.on('click',function(e){
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                 return false
             }
+        }
+
+        // 定位运行时权限:Manifest 已声明但从未申请过的设备(或用户在系统设置里
+        // 拒绝过)走到这里,否则前台服务启动即崩溃。
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
+            != PackageManager.PERMISSION_GRANTED
+        ) {
+            locationPermissionLauncher.launch(
+                arrayOf(
+                    Manifest.permission.ACCESS_FINE_LOCATION,
+                    Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+            return false
         }
 
         return true
@@ -772,9 +808,13 @@ map.on('click',function(e){
         @JavascriptInterface
         fun onMapClick(lat: Double, lng: Double) {
             runOnUiThread {
-                binding.etLatitude.setText(String.format("%.6f", lat))
-                binding.etLongitude.setText(String.format("%.6f", lng))
-                binding.tvPickedCoords.text = "已选择: ${String.format("%.6f", lat)}, ${String.format("%.6f", lng)}"
+                // 固定 Locale.US：逗号小数区语言（德/法等）下 "%.6f" 会写成
+                // "26,123456"，toDoubleOrNull 解析失败，点"开始"被格式校验拦下。
+                val latStr = String.format(java.util.Locale.US, "%.6f", lat)
+                val lngStr = String.format(java.util.Locale.US, "%.6f", lng)
+                binding.etLatitude.setText(latStr)
+                binding.etLongitude.setText(lngStr)
+                binding.tvPickedCoords.text = "已选择: $latStr, $lngStr"
             }
         }
 

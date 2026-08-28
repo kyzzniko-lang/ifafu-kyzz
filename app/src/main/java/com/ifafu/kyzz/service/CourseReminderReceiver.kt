@@ -41,7 +41,18 @@ class CourseReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         val preferences = PreferenceManager.getDefaultSharedPreferences(context)
-        if (!preferences.getBoolean("notify_course", true)) return
+        if (!preferences.getBoolean("notify_course", true)) {
+            // 开关关闭时只跳过通知,不能提前 return:每日摘要闹钟是自续链,
+            // 这里不重排的话当天之后链条永久断裂,重新打开开关也无法恢复。
+            // 登录态仍优先——未登出干净时链应由 cancel 拆除,不能借续链复活。
+            val userPrefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
+            if (!userPrefs.getBoolean("isLogin", false)) {
+                cancel(context)
+            } else {
+                ensureScheduled(context)
+            }
+            return
+        }
 
         val courseName = intent?.getStringExtra(EXTRA_COURSE_NAME)
         if (!courseName.isNullOrEmpty()) {
@@ -51,6 +62,16 @@ class CourseReminderReceiver : BroadcastReceiver() {
                 intent.getStringExtra(EXTRA_COURSE_DETAIL).orEmpty(),
                 intent.getIntExtra(EXTRA_NOTIFICATION_ID, 1100)
             )
+            return
+        }
+
+        // 未登录（登出/切号后）不再自续每日摘要闹钟：scheduleNext 是无条件链式
+        // 重排，setAlarmClock 会在状态栏常驻图标并每天 7:30 唤醒设备。BootReceiver
+        // 只在开机时检查登录态，链路一旦建立，登出本身拆不掉它。
+        val userPrefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
+        if (!userPrefs.getBoolean("isLogin", false)) {
+            android.util.Log.i("CourseReminderReceiver", "用户未登录，停止课程提醒闹钟链")
+            cancel(context)
             return
         }
 
@@ -74,47 +95,19 @@ class CourseReminderReceiver : BroadcastReceiver() {
                     scheduleCourseReminders(context, courses)
                 }
 
-                scheduleNext(context)
+            } catch (e: Exception) {
+                // 通知权限、系统闹钟服务或缓存异常都不应把每日自续链永久打断。
+                android.util.Log.w("CourseReminderReceiver", "本次课程提醒处理失败", e)
             } finally {
+                try {
+                    ensureScheduled(context)
+                } catch (e: Exception) {
+                    android.util.Log.w("CourseReminderReceiver", "下一次课程提醒注册失败", e)
+                }
                 scope.cancel()
                 pendingResult.finish()
             }
         }
-    }
-
-    private fun scheduleNext(context: Context) {
-        try {
-            val intent = Intent(context, CourseReminderReceiver::class.java)
-            val pending = PendingIntent.getBroadcast(
-                context, 0, intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val cal = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
-                // 开机补挂场景下（7:30 前重启）今天的摘要还没发，不能直接跳到明天
-                if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
-            }
-            val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pending)
-        } catch (e: SecurityException) {
-            scheduleFallback(context)
-            android.util.Log.w("CourseReminderReceiver", "无精确闹钟权限", e)
-        }
-    }
-
-    private fun scheduleFallback(context: Context) {
-        val pending = PendingIntent.getBroadcast(
-            context, 0, Intent(context, CourseReminderReceiver::class.java),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        val triggerAt = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 7)
-            set(Calendar.MINUTE, 30)
-            set(Calendar.SECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
-        }.timeInMillis
-        val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
     }
 
     private fun loadTodayCourses(context: Context): List<Course> {
@@ -141,7 +134,7 @@ class CourseReminderReceiver : BroadcastReceiver() {
             // 但课表缓存未更新）。若缓存学期既不是推断当前学期、也不是已发布新学期，
             // 周数可能恰好落在旧课范围内而误推一条旧学期课程。与首页 belongsToDifferentTerm 对齐。
             if (upcoming != null && !cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty() &&
-                cachedYear != upcoming.year && cachedTerm != upcoming.term
+                (cachedYear != upcoming.year || cachedTerm != upcoming.term)
             ) {
                 val inferred = TermResolver.inferCurrentTerm()
                 if (cachedYear != inferred.year || cachedTerm != inferred.term) {
@@ -151,8 +144,17 @@ class CourseReminderReceiver : BroadcastReceiver() {
 
             val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
             val parsed = sdf.parse(firstDay) ?: return emptyList()
-            val termStart = Calendar.getInstance().apply { time = parsed }
-            val today = Calendar.getInstance()
+            // 双方归零到当日 00：00：termFirstDay 带保存时刻的时分秒，不归零时
+            // 周切换点会漂移到当天那个时刻（与首页/课表页的口径一致）。
+            val termStart = Calendar.getInstance().apply {
+                time = parsed
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }
+            val today = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+            }
             val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
             val currentWeek = ((diffDays / 7) + 1).coerceAtLeast(1)
             val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
@@ -170,7 +172,7 @@ class CourseReminderReceiver : BroadcastReceiver() {
             }
 
             val matched = syllabus.courses.filter { c ->
-                currentWeek in c.weekBegin..c.weekEnd && c.weekDay == todayDay &&
+                c.coversWeek(currentWeek) && c.weekDay == todayDay &&
                     (c.oddOrTwice == 0 || (c.oddOrTwice == 1 && currentWeek % 2 == 1) || (c.oddOrTwice == 2 && currentWeek % 2 == 0))
             }.sortedBy { it.begin }
 
@@ -196,7 +198,28 @@ class CourseReminderReceiver : BroadcastReceiver() {
                 set(Calendar.MILLISECOND, 0)
                 add(Calendar.MINUTE, -advanceMinutes)
             }.timeInMillis
-            if (trigger <= now) return@forEachIndexed
+            if (trigger <= now) {
+                // 每日汇总广播 7:30 才排今天的精确闹钟，提前量选 30/60 分钟时，
+                // 第一节课(8:00)的触发时刻(7:30/7:00)已经过了——直接跳过会让
+                // 每天第一节课永远收不到课前提醒。只要还没上课就立即补发，
+                // 按真实剩余分钟数展示。
+                val startMillis = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, start.first)
+                    set(Calendar.MINUTE, start.second)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                if (now < startMillis) {
+                    val remainMinutes = ((startMillis - now) / 60_000L).toInt().coerceAtLeast(1)
+                    showNotification(
+                        context,
+                        "即将上课 · ${course.name}",
+                        "${remainMinutes}分钟后 · 第${course.begin}-${course.end}节 · ${course.address}",
+                        1100 + index
+                    )
+                }
+                return@forEachIndexed
+            }
 
             // requestCode 须全局唯一。原仅用 DAY_OF_YEAR（每年重复），跨年的 PendingIntent
             // 会因 FLAG_UPDATE_CURRENT 互相覆盖，导致旧一年同一天的提醒顶掉新一年的。
@@ -258,6 +281,57 @@ class CourseReminderReceiver : BroadcastReceiver() {
         private const val EXTRA_COURSE_NAME = "course_name"
         private const val EXTRA_COURSE_DETAIL = "course_detail"
         private const val EXTRA_NOTIFICATION_ID = "notification_id"
+
+        /**
+         * 挂每日 7:30 的课表摘要闹钟（自续链的起点）。幂等：requestCode 固定，
+         * 重复调用只会覆盖同一 PendingIntent。BootReceiver 开机重挂与
+         * MainViewModel 登录态重挂（登出会拆链，重新登录后必须重挂）都走这里。
+         */
+        fun ensureScheduled(context: Context) {
+            try {
+                val intent = Intent(context, CourseReminderReceiver::class.java)
+                val pending = PendingIntent.getBroadcast(
+                    context, 0, intent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val cal = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
+                    // 开机补挂场景下（7:30 前重启）今天的摘要还没发，不能直接跳到明天
+                    if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
+                }
+                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                am.setAlarmClock(AlarmManager.AlarmClockInfo(cal.timeInMillis, null), pending)
+            } catch (e: SecurityException) {
+                val pending = PendingIntent.getBroadcast(
+                    context, 0, Intent(context, CourseReminderReceiver::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val triggerAt = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 7)
+                    set(Calendar.MINUTE, 30)
+                    set(Calendar.SECOND, 0)
+                    if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
+                }.timeInMillis
+                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pending)
+                android.util.Log.w("CourseReminderReceiver", "无精确闹钟权限，降级为非精确闹钟", e)
+            }
+        }
+
+        /** 登出时取消每日摘要闹钟（requestCode 与 ensureScheduled 一致），拆断自续链。 */
+        fun cancel(context: Context) {
+            try {
+                val pending = PendingIntent.getBroadcast(
+                    context, 0, Intent(context, CourseReminderReceiver::class.java),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                am.cancel(pending)
+                pending.cancel()
+            } catch (e: Exception) {
+                android.util.Log.w("CourseReminderReceiver", "取消课程提醒闹钟失败", e)
+            }
+        }
         private val COURSE_START_TIMES = mapOf(
             1 to (8 to 0),
             2 to (8 to 50),

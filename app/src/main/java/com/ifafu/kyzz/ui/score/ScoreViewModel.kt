@@ -91,11 +91,20 @@ class ScoreViewModel @Inject constructor(
                         userRepository.host, freshUser.token, freshUser.account, freshUser.name
                     )
                 }
-                if (scores != null) {
-                    allScores = scores
-                    cacheManager.saveScores(freshUser.account, scores)
-                    // 记录首次见到时间，标记本次新增成绩，用于排序与 NEW 角标
-                    cacheManager.mergeAndAssignFirstSeen(freshUser.account, allScores)
+                // 教务页面改版/异常时可能"正常返回"却解析出空成绩列表。已有成绩时
+                // 按拉取失败处理（走缓存回退），避免空列表覆盖缓存、成绩页被清空，
+                // 以及下次成功拉取时全量误报"新成绩"。真实无成绩的新生
+                // （内存与缓存均为空）不受影响。
+                val cachedList = cacheManager.loadScores(freshUser.account)
+                val hasExistingScores = allScores.isNotEmpty() || !cachedList.isNullOrEmpty()
+                val usableScores = when {
+                    scores != null && scores.isEmpty() && hasExistingScores -> null
+                    // 合并+落盘+firstSeen 原子提交：与后台成绩检查 Worker 互斥，
+                    // 避免读改写交错导致时间戳丢失或旧快照回写
+                    else -> scores?.let { cacheManager.commitFreshScores(freshUser.account, it) }
+                }
+                if (usableScores != null) {
+                    allScores = usableScores
                     _state.value = UiState.Success(filterScores())
                 } else {
                     val cached = cacheManager.loadScores(freshUser.account)
@@ -170,6 +179,9 @@ class ScoreViewModel @Inject constructor(
     fun getAvailableYears(): List<String> {
         return allScores.map { it.year }.distinct().sortedDescending()
     }
+
+    /** 全量（未筛选）成绩，供 GPA 趋势等跨学期视图使用。 */
+    fun getAllScores(): List<Score> = allScores
 
     fun getLatestTerm(): Pair<String, String>? {
         if (allScores.isEmpty()) return null

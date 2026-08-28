@@ -79,7 +79,7 @@ class SimpleElectiveActivity : BaseActivity<ActivitySimpleElectiveBinding>() {
                 setPadding(20, 10, 20, 10)
                 setTextAppearance(R.style.ClaudeCaption)
                 setTextColor(resources.getColor(R.color.claude_text_secondary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 gravity = Gravity.CENTER
             }
             card.addView(tv)
@@ -108,7 +108,7 @@ class SimpleElectiveActivity : BaseActivity<ActivitySimpleElectiveBinding>() {
                 setPadding(20, 10, 20, 10)
                 setTextAppearance(R.style.ClaudeCaption)
                 setTextColor(resources.getColor(R.color.claude_text_secondary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 gravity = Gravity.CENTER
             }
             card.addView(tv)
@@ -225,7 +225,7 @@ class SimpleElectiveActivity : BaseActivity<ActivitySimpleElectiveBinding>() {
                         bottomMargin = 8
                     }
                     setTextAppearance(R.style.ClaudeOverline)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
                 }
                 HeaderViewHolder(tv)

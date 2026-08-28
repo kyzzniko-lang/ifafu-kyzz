@@ -65,7 +65,11 @@ class ExamParser @Inject constructor(
         val tableStart = html.indexOf("校区")
         if (tableStart < 0) return
 
-        val tableContent = html.substring(tableStart)
+        // 必须限定在本表格内：直接搜到文档末尾的话，页脚/其它含 ≥8 个连续 td 的
+        // 表格会被无差别匹配成"幽灵考试"（时间教室全是错位拼接的脏数据）。
+        val tableEnd = html.indexOf("</table>", tableStart)
+            .let { if (it < 0) html.length else it + "</table>".length }
+        val tableContent = html.substring(tableStart, tableEnd)
         val pattern = Regex(
             "<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>" +
             "<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>"

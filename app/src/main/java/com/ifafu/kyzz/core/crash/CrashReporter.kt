@@ -76,8 +76,10 @@ object CrashReporter {
         type: String = "crash"
     ): Boolean {
         val now = System.currentTimeMillis()
-        val trace = throwable.stackTraceToString()
-        val message = throwable.message ?: throwable.javaClass.name
+        // 上报/落盘前脱敏：异常消息可能内嵌含会话 token 的 URL 或学号，
+        // 而崩溃反馈最终会公开发布（GitHub Issue），必须在源头净化。
+        val trace = TraceSanitizer.sanitize(throwable.stackTraceToString())
+        val message = TraceSanitizer.sanitize(throwable.message ?: throwable.javaClass.name)
         val info = CrashInfo(
             type = type,
             threadName = threadName,
@@ -91,12 +93,15 @@ object CrashReporter {
         // 1. 落盘
         val file = writeToFile(info)
 
-        // 2. 更新 pending 标记（供 MainActivity 启动时检测）
+        // 2. 更新 pending 标记（供 MainActivity 启动时检测）。
+        // 必须 commit() 同步落盘：reportCrash 返回后调用方随即委托默认 handler
+        // 终止进程，apply() 的异步写盘大概率来不及执行，pending 标记丢失后
+        // 下次启动不再弹恢复对话框，崩溃样本永远无法上报。
         try {
             prefs.edit()
                 .putBoolean(KEY_PENDING, true)
                 .putString(KEY_PENDING_FILE, file?.absolutePath ?: "")
-                .apply()
+                .commit()
         } catch (e: Exception) {
             Logger.e("CrashReporter", "update pending pref failed", e)
         }
@@ -122,12 +127,18 @@ object CrashReporter {
             deviceInfo = collectDeviceInfo()
         )
         val file = writeToFile(info)
-        // ANR 也标记为 pending，让用户在下次启动有机会反馈
+        // ANR 也标记为 pending，让用户在下次启动有机会反馈。
+        // 但不能覆盖已 pending 的崩溃报告：pending 是单槽位，崩溃后用户还没看到
+        // 弹窗，随后一次 ANR 把指针改成 anr 文件，真正的 crash 样本就石沉大海了
+        // （文件还在磁盘上，却永远不会被提示）。崩溃优先于 ANR。
         try {
-            prefs.edit()
-                .putBoolean(KEY_PENDING, true)
-                .putString(KEY_PENDING_FILE, file?.absolutePath ?: "")
-                .apply()
+            if (!prefs.getBoolean(KEY_PENDING, false)) {
+                // commit() 而非 apply()：ANR 后进程随时可能被系统回收
+                prefs.edit()
+                    .putBoolean(KEY_PENDING, true)
+                    .putString(KEY_PENDING_FILE, file?.absolutePath ?: "")
+                    .commit()
+            }
         } catch (e: Exception) {
             Logger.e("CrashReporter", "mark pending(anr) failed", e)
         }
@@ -183,10 +194,12 @@ object CrashReporter {
         val prevCount = prefs.getInt(KEY_CRASH_COUNT, 0)
         val recentCount = if (now - lastTime < CRASH_LOOP_WINDOW_MS) prevCount + 1 else 1
         try {
+            // 崩溃路径必须同步落盘：进程马上会被终止，异步 apply 丢失计数会让
+            // "10s 内 >=3 次"的防崩溃循环判定失效。
             prefs.edit()
                 .putLong(KEY_LAST_CRASH_TIME, now)
                 .putInt(KEY_CRASH_COUNT, recentCount)
-                .apply()
+                .commit()
         } catch (e: Exception) {
             Logger.e("CrashReporter", "update crash count failed", e)
         }

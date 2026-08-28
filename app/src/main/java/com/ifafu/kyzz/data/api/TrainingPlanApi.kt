@@ -30,7 +30,10 @@ class TrainingPlanApi @Inject constructor(
                 val response = reloginHelper.relogin()
                 if (!response.success) return null
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/pyjh.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121607"
+                // 重登期间账号可能已切换：新 token + 旧姓名参数会把 A 的培养计划
+                // 挂进 B 的会话，账号不一致直接放弃。
+                if (user.account != number) return null
+                val retryUrl = "${host}/(${user.token})/pyjh.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121607"
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return null
@@ -56,7 +59,9 @@ class TrainingPlanApi @Inject constructor(
                 val response = reloginHelper.relogin()
                 if (!response.success) return emptyList()
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xsdjkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121606"
+                // 同 getTrainingPlan：账号已切换时放弃，避免跨账号数据串台。
+                if (user.account != number) return emptyList()
+                val retryUrl = "${host}/(${user.token})/xsdjkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121606"
                 val retryDoc = htmlClient.get(retryUrl)
                 val retryHtml = retryDoc.html()
                 if (userApi.isSessionExpired(retryHtml)) return emptyList()

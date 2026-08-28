@@ -54,12 +54,22 @@ class WeatherApi @Inject constructor() {
                 for (i in 0 until times.length()) {
                     val timeStr = times.getString(i)
                     if (!timeStr.startsWith(today)) continue
+                    // ISO 补零格式最短 "yyyy-MM-ddTHH:mm";长度不足的脏数据直接
+                    // 跳过该小时,不让 substring 越界炸掉整天天气
+                    if (timeStr.length < 13) continue
                     val hour = timeStr.substring(11, 13).toIntOrNull() ?: continue
+                    // Open-Meteo 对缺测时段会输出 JSON null：getDouble/getInt 抛
+                    // JSONException 被外层捕获后整个白天数据全丢，天气卡片"随机
+                    // 消失"。单小时缺测跳过即可，其余小时照常展示。
+                    val temp = temps.optDouble(i, Double.NaN)
+                    if (temp.isNaN()) continue
+                    val code = if (codes.isNull(i)) 0 else codes.getInt(i)
+                    val precipProb = if (precip.isNull(i)) 0 else precip.getInt(i)
                     list.add(HourlyWeather(
                         hour = hour,
-                        temp = temps.getDouble(i).toInt(),
-                        weatherCode = codes.getInt(i),
-                        precipProb = precip.getInt(i)
+                        temp = temp.toInt(),
+                        weatherCode = code,
+                        precipProb = precipProb
                     ))
                 }
 

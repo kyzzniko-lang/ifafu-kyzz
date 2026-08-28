@@ -37,6 +37,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
         setupShowPet()
         setupPetType()
         setupPetName()
+        setupPetAcademicContext()
+        setupPetSeeNotes()
         setupAccountInfo()
         setupSwitchAccount()
         setupTermFirstDay()
@@ -109,17 +111,23 @@ class SettingsFragment : PreferenceFragmentCompat() {
             else -> "猫咪"
         }
         pref.setOnPreferenceChangeListener { _, newValue ->
-            val pet2 = petRepository.loadPet()
             val newType = newValue as String
-            pet2.petType = newType
-            if (newType == "crab" && pet2.name in listOf("小农", "")) {
-                pet2.name = "Claude"
-                findPreference<EditTextPreference>("pet_name")?.apply {
-                    text = "Claude"
-                    summary = "Claude"
+            // 互斥 read-modify-write：与首页宠物 tick/喂食的全量写交错时,
+            // 各自 load→改→save 会互相覆盖(改的类型被回退)
+            var renamedTo: String? = null
+            petRepository.update { pet2 ->
+                pet2.petType = newType
+                if (newType == "crab" && pet2.name in listOf("小农", "")) {
+                    pet2.name = "Claude"
+                    renamedTo = "Claude"
                 }
             }
-            petRepository.savePet(pet2)
+            renamedTo?.let {
+                findPreference<EditTextPreference>("pet_name")?.apply {
+                    text = it
+                    summary = it
+                }
+            }
             pref.summary = when (newType) {
                 "dog" -> "小狗"
                 "dragon" -> "小龙"
@@ -139,10 +147,33 @@ class SettingsFragment : PreferenceFragmentCompat() {
         pref.summary = pet.name
         pref.setOnPreferenceChangeListener { _, newValue ->
             val newName = (newValue as String).ifBlank { "小农" }
-            val pet2 = petRepository.loadPet()
-            pet2.name = newName
-            petRepository.savePet(pet2)
+            petRepository.update { it.name = newName }
             pref.summary = newName
+            true
+        }
+    }
+
+    /**
+     * 宠物聊天学业上下文总开关。PreferenceFragment 默认写入
+     * `<package>_preferences`，而 HomeFragment 从 `ifafu_user` 读取，
+     * 必须手工桥接，否则开关形同虚设（pet_see_notes 旧版即此断链）。
+     */
+    private fun setupPetAcademicContext() {
+        val pref = findPreference<SwitchPreferenceCompat>("pet_use_academic_context") ?: return
+        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+        pref.isChecked = prefs.getBoolean("pet_use_academic_context", true)
+        pref.setOnPreferenceChangeListener { _, newValue ->
+            prefs.edit().putBoolean("pet_use_academic_context", newValue == true).apply()
+            true
+        }
+    }
+
+    private fun setupPetSeeNotes() {
+        val pref = findPreference<SwitchPreferenceCompat>("pet_see_notes") ?: return
+        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+        pref.isChecked = prefs.getBoolean("pet_see_notes", false)
+        pref.setOnPreferenceChangeListener { _, newValue ->
+            prefs.edit().putBoolean("pet_see_notes", newValue == true).apply()
             true
         }
     }
@@ -279,7 +310,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         try {
             val pm = requireContext().packageManager
             val info = pm.getPackageInfo(requireContext().packageName, 0)
-            pref.summary = "${info.versionName} (${info.longVersionCode})"
+            pref.summary = "${info.versionName} (${androidx.core.content.pm.PackageInfoCompat.getLongVersionCode(info)})"
         } catch (_: Exception) {
             pref.summary = "1.0.0"
         }
@@ -300,7 +331,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
                         is UpdateChecker.CheckResult.UpToDate -> {
                             UpdateChecker.markChecked(ctx)
                             UpdateChecker.clearCachedResult(ctx)
-                            Toast.makeText(ctx, "已是最新版本 v${result.latestVersion}", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(ctx, "已是最新版本 v${result.currentVersion}", Toast.LENGTH_SHORT).show()
                         }
                         is UpdateChecker.CheckResult.Failed -> {
                             Toast.makeText(ctx, "检查更新失败，请稍后重试", Toast.LENGTH_SHORT).show()

@@ -153,21 +153,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
             am.set(android.app.AlarmManager.RTC_WAKEUP, courseCal.timeInMillis, coursePending)
         }
 
-        val scoreIntent = android.content.Intent(this, com.ifafu.kyzz.service.ScoreCheckReceiver::class.java)
-        val scorePending = android.app.PendingIntent.getBroadcast(
-            this, 1, scoreIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-        )
-        val scoreCal = java.util.Calendar.getInstance().apply {
-            set(java.util.Calendar.HOUR_OF_DAY, 12); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis()) add(java.util.Calendar.DAY_OF_YEAR, 1)
-        }
-        try {
-            am.setRepeating(android.app.AlarmManager.RTC_WAKEUP, scoreCal.timeInMillis, android.app.AlarmManager.INTERVAL_DAY, scorePending)
-        } catch (_: SecurityException) {
-            // 部分厂商 ROM 禁止应用调度闹钟时 setRepeating 也可能抛 SecurityException
-            am.setWindow(android.app.AlarmManager.RTC_WAKEUP, scoreCal.timeInMillis, android.app.AlarmManager.INTERVAL_HOUR, scorePending)
-        } catch (_: Exception) {
-        }
+        // 成绩检查闹钟统一走 ScoreCheckReceiver.ensureScheduled 的 setAlarmClock
+        // 自续链:此处若用 setRepeating 注册同一 PendingIntent 会把它覆盖成非精确
+        // 闹钟,Doze 下延迟数小时,直到下次 receiver 触发才升回精确。
+        com.ifafu.kyzz.service.ScoreCheckReceiver.ensureScheduled(this)
     }
 
     override fun onResume() {
@@ -185,6 +174,10 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
 
     override fun onKeyDown(keyCode: Int, event: android.view.KeyEvent): Boolean {
         if (keyCode == android.view.KeyEvent.KEYCODE_BACK && event.action == android.view.KeyEvent.ACTION_DOWN) {
+            // 长按返回键会以 ~50ms 间隔连续派发 ACTION_DOWN（repeatCount>0），
+            // 不拦的话第二次重复事件距首次不足 2000ms，直接命中 finishAffinity，
+            // "双击确认"对长按用户形同虚设。
+            if (event.repeatCount > 0) return true
             if (navController.currentDestination?.id != R.id.homeFragment) {
                 navController.popBackStack(R.id.homeFragment, false)
                 binding.bottomNav.selectedItemId = R.id.homeFragment

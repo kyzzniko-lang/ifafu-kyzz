@@ -156,10 +156,12 @@ class CommentViewModel @Inject constructor(
 
                 val links = parseCourseLinksFromJson(resp.message)
                 coursePaths = links
-                _savedIndices.clear()
+                // 保留 _savedIndices/manualCoursesDone：中途保存失败（网络抖动）后
+                // 重新点"开始评教"应从失败那门续着来，清零会强迫用户把已保存的
+                // 前几门重新评一遍。列表规模变化时索引由 bounds 检查兜底。
+                if (manualCoursesDone > links.size) manualCoursesDone = links.size
                 refreshCourseLabels()
                 _totalCourses.value = links.size
-                manualCoursesDone = 0
                 isSubmitting = false
 
                 // 加载第一个课程
@@ -296,6 +298,9 @@ class CommentViewModel @Inject constructor(
     private fun submitFinalAndFinish() {
         viewModelScope.launch {
             _state.value = CommentState.Loading("正在提交总表…")
+            // 实际已保存门数：coursePaths.size 是"总共要评的门数"，断网保存了
+            // 2/8 门时提示"已保存 8 门"会让用户以为评教完成离开，学期末发现没评完
+            val savedCount = _savedIndices.size
             try {
                 val freshUser = userRepository.getUser()
                 val resp = commentTeacherApi.submitFinalTable(
@@ -304,12 +309,12 @@ class CommentViewModel @Inject constructor(
                 _state.value = if (resp.success) {
                     CommentState.Success("全部评教完成，共 ${coursePaths.size} 门课程")
                 } else {
-                    CommentState.Success("已保存 ${coursePaths.size} 门课程（总表提交：${resp.message}）")
+                    CommentState.Error("总表提交未成功：${resp.message}（已保存 $savedCount/${coursePaths.size} 门，可重试提交）")
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                _state.value = CommentState.Success("已保存 ${coursePaths.size} 门课程")
+                _state.value = CommentState.Error("提交失败：${e.message}（已保存 $savedCount/${coursePaths.size} 门，可重试提交）")
             }
         }
     }

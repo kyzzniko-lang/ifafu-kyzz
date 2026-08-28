@@ -55,7 +55,12 @@ class LoginViewModel @Inject constructor(
             try {
                 val challenge = userApi.prepareLogin(userRepository.host)
                 if (challenge == null) {
-                    _loginState.value = LoginState.Error("无法连接教务系统")
+                    // 优先显示刚才登录失败的真实原因（如"密码错误"）：
+                    // 直接覆盖成"无法连接教务系统"会把真实错误吞掉，且
+                    // pendingErrorMessage 残留到下次验证码加载成功后才弹（过期错误）。
+                    val msg = pendingErrorMessage ?: "无法连接教务系统"
+                    pendingErrorMessage = null
+                    _loginState.value = LoginState.Error(msg)
                     return@launch
                 }
                 loginChallenge = challenge

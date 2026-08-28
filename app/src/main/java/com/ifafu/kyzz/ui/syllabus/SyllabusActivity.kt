@@ -82,7 +82,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                 text = getString(R.string.no_data)
                 setTextAppearance(R.style.ClaudeBody)
                 setPadding(0, 48, 0, 0)
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             }
             binding.contentLayout.addView(empty)
         }
@@ -103,7 +103,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                 setTextAppearance(R.style.ClaudeSubtitle)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
                 setPadding(0, 24, 0, 8)
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             }
             binding.contentLayout.addView(dayLabel)
 
@@ -129,19 +129,19 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                     text = course.name
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
 
                 val teacher = TextView(this).apply {
                     text = "教师: ${course.teacher}"
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
 
                 val address = TextView(this).apply {
                     text = "地点: ${course.address}"
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
 
                 val time = TextView(this).apply {
@@ -152,7 +152,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                     }
                     text = "第${course.weekBegin}-${course.weekEnd}周${oddText} 第${course.begin}-${course.end}节"
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
 
                 content.addView(name)
@@ -173,7 +173,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                         text = "考试: ${course.examDate} ${course.examTime}"
                         setTextAppearance(R.style.ClaudeCaption)
                         setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     }
                     content.addView(exam)
 
@@ -182,7 +182,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                             text = "考场: ${course.examAddress}"
                             setTextAppearance(R.style.ClaudeCaption)
                             setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                            typeface = resources.getFont(R.font.claude_serif)
+                            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                         }
                         content.addView(examAddr)
                     }
@@ -229,14 +229,14 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                 setTextColor(resources.getColor(R.color.white, null))
                 setPadding(8, 2, 8, 2)
                 setBackgroundResource(R.drawable.bg_icon_circle)
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             }
 
             val name = TextView(this).apply {
                 text = "  ${item.name}"
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             }
 
             header.addView(idTag)
@@ -247,7 +247,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                 val adjusted = TextView(this).apply {
                     text = "调整为: ${item.adjusted}"
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 content.addView(adjusted)
             }
@@ -256,7 +256,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                 val applyTime = TextView(this).apply {
                     text = "申请时间: ${item.applyTime}"
                     setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 content.addView(applyTime)
             }
@@ -361,7 +361,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
             setTextAppearance(R.style.ClaudeSubtitle)
             setTextColor(resources.getColor(R.color.claude_terracotta, null))
             setPadding(0, 24, 0, 8)
-            typeface = resources.getFont(R.font.claude_serif)
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
         }
     }
 
@@ -377,7 +377,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
             val labelView = TextView(context).apply {
                 text = label
                 setTextAppearance(R.style.ClaudeCaption)
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 2f)
             }
 
@@ -385,7 +385,7 @@ class SyllabusActivity : BaseActivity<ActivitySyllabusBinding>() {
                 text = value
                 setTextAppearance(R.style.ClaudeCaption)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 3f)
                 gravity = Gravity.END
             }

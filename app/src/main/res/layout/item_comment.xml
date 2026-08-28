@@ -47,8 +47,8 @@
                 android:layout_marginStart="8dp"
                 android:contentDescription="删除"
                 android:padding="2dp"
-                android:src="@android:drawable/ic_menu_delete"
-                android:tint="@color/claude_text_tertiary"
+                android:src="@drawable/ic_delete"
+                app:tint="@color/claude_text_tertiary"
                 android:visibility="gone" />
 
         </LinearLayout>

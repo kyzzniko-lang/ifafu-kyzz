@@ -61,6 +61,14 @@ class ScoreCheckWorker(
                 )
             } ?: return retryOnce()
 
+            // 拉取期间用户可能已退出或切换账号。旧任务继续写缓存并弹通知会把
+            // 上一个学生的成绩显示给当前用户；账号世代变化时静默丢弃本次结果。
+            val activeUser = userRepository.getUser()
+            if (!activeUser.isLogin || activeUser.account != user.account) {
+                Log.i(TAG, "账号在成绩检查期间发生变化，丢弃旧账号结果")
+                return Result.success()
+            }
+
             processScores(user.account, cachedScores, freshScores, cacheManager)
             Result.success()
         } catch (e: CancellationException) {
@@ -82,18 +90,33 @@ class ScoreCheckWorker(
 
         // No score list means there is no trustworthy new/old comparison baseline.
         if (cachedScores == null) {
-            cacheManager.mergeAndAssignFirstSeen(account, freshScores)
-            cacheManager.saveScores(account, freshScores)
+            cacheManager.commitFreshScores(account, freshScores)
             monitorPrefs.edit().putBoolean(initializedKey, true).apply()
             return
         }
 
-        fun scoreKey(score: Score): Triple<String, String, String> =
-            Triple(score.courseCode, score.year, score.term)
+        // 教务系统改版或返回错误页时，页面"正常"但解析出 0 门成绩。已有成绩的老用户
+        // 突然一条不剩几乎必然是解析失败而非真实数据：此时若把缓存覆盖为空，下次
+        // 成功拉取会把全部历史成绩（四年可达 50+ 门）误判为新出分并弹出巨型通知。
+        if (freshScores.isEmpty()) {
+            if (cachedScores.isNotEmpty()) {
+                Log.w(TAG, "本次拉取到 0 门成绩但缓存已有 ${cachedScores.size} 门，疑似教务页面异常，保留缓存")
+            } else {
+                cacheManager.saveScores(account, freshScores)
+            }
+            return
+        }
+
+        // 与 CacheManager.scoreMergeKey 同一实现:空课程代码的记录不得互相碰撞
+        fun scoreKey(score: Score): Triple<String, String, String> = CacheManager.scoreMergeKey(score)
+
+        // POST 超时会降级返回默认视图(仅本学期)，比缓存少时按学期合并，
+        // 防止子集覆盖缓存导致次日全量误报"新成绩"。
+        val effectiveScores = cacheManager.mergeScoresIfShrunk(account, freshScores)
 
         val cachedByKey = cachedScores.associateBy(::scoreKey)
-        val newScores = freshScores.filter { it.score > 0f && scoreKey(it) !in cachedByKey }
-        val changedScores = freshScores.mapNotNull { fresh ->
+        val newScores = effectiveScores.filter { it.score > 0f && scoreKey(it) !in cachedByKey }
+        val changedScores = effectiveScores.mapNotNull { fresh ->
             val old = cachedByKey[scoreKey(fresh)] ?: return@mapNotNull null
             val changed = old.score != fresh.score ||
                 old.makeupScore != fresh.makeupScore ||
@@ -103,14 +126,18 @@ class ScoreCheckWorker(
             if (changed) old to fresh else null
         }
 
-        cacheManager.mergeAndAssignFirstSeen(account, freshScores)
-        cacheManager.saveScores(account, freshScores)
+        cacheManager.commitFreshScores(account, effectiveScores)
 
         if (newScores.isNotEmpty() || changedScores.isNotEmpty()) {
             val lines = buildList {
                 newScores.forEach { add("${it.courseName}：${formatScore(it.score)}") }
                 changedScores.forEach { (old, fresh) ->
-                    add("${fresh.courseName}：${formatScore(old.score)} → ${formatScore(fresh.score)}")
+                    // 总评没变仅补考分变化时，显示"40 → 40"毫无信息量，改报补考分
+                    if (old.score == fresh.score && old.makeupScore != fresh.makeupScore) {
+                        add("${fresh.courseName}：补考 ${formatScore(old.makeupScore)} → ${formatScore(fresh.makeupScore)}")
+                    } else {
+                        add("${fresh.courseName}：${formatScore(old.score)} → ${formatScore(fresh.score)}")
+                    }
                 }
             }
             val title = when {

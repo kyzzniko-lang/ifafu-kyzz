@@ -61,10 +61,13 @@ class MainApplication : Application() {
 
         override fun uncaughtException(thread: Thread, throwable: Throwable) {
             Logger.e("iFAFU", "Uncaught exception on ${thread.name}", throwable)
-            // 1. 落盘 + 防崩溃循环判定
+            // 1. 落盘 + 防崩溃循环判定。catch Throwable 而非 Exception：
+            // OOM/StackOverflowError 一族的 Error 若在此逃逸，会跳过循环保护与
+            // 恢复拉起直接交给系统默认 handler。reportCrash 自身再抛的任何
+            // Throwable 都被吞掉，不会递归进入 uncaughtException。
             val inCrashLoop = try {
                 CrashReporter.reportCrash(thread.name, throwable)
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 false
             }
             // 2. 崩溃循环保护：停掉模拟定位服务，重置计数
@@ -78,6 +81,11 @@ class MainApplication : Application() {
                 try {
                     CrashReporter.resetCrashLoopCount()
                 } catch (_: Exception) {}
+                // 循环保护触发时不再拉起 MainActivity：若崩溃点就在 MainActivity
+                // 启动路径上（恢复的 Fragment/损坏状态），"拉起→崩溃→再拉起"
+                // 会无限循环，且计数每次被重置，保护形同虚设。只落日志交给系统。
+                defaultHandler?.uncaughtException(thread, throwable)
+                return
             }
             // 3. 拉起 MainActivity 恢复
             try {

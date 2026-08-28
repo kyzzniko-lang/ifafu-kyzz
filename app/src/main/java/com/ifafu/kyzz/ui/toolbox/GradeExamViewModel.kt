@@ -37,17 +37,29 @@ class GradeExamViewModel @Inject constructor(
         }
 
         if (!forceRefresh) {
-            val isStale = cacheManager.isCacheStale(user.account, "grade_exams", 10 * 60 * 1000L)
-            run {
-                val cached = cacheManager.loadGradeExams(user.account)
+            viewModelScope.launch {
+                // SharedPreferences 首读 + Gson 反序列化挪到 IO：主线程直调在
+                // 冷启动后首次进入该页时有可感知卡顿（与 MainViewModel 同口径）。
+                val pair = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    val isStale = cacheManager.isCacheStale(user.account, "grade_exams", 10 * 60 * 1000L)
+                    val cached = cacheManager.loadGradeExams(user.account)
+                    isStale to cached
+                }
+                val (isStale, cached) = pair
                 if (cached != null && cached.isNotEmpty()) {
                     _state.value = UiState.Success(cached)
-                    if (!isStale) return
+                    if (!isStale) return@launch
                 }
+                loadRemote()
             }
+            return
         }
 
-        viewModelScope.launch {
+        viewModelScope.launch { loadRemote() }
+    }
+
+    private suspend fun loadRemote() {
+        run {
             if (_state.value !is UiState.Success && _state.value !is UiState.Cached) {
                 _state.value = UiState.Loading
             }
@@ -61,7 +73,9 @@ class GradeExamViewModel @Inject constructor(
                     _state.value = UiState.Success(exams)
                 } else {
                     // API returned empty (likely error fallback) — try cache
-                    val cached = cacheManager.loadGradeExams(freshUser.account)
+                    val cached = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                        cacheManager.loadGradeExams(freshUser.account)
+                    }
                     if (cached != null && cached.isNotEmpty()) {
                         _state.value = UiState.Cached(cached, "离线模式 · 显示缓存数据")
                     } else {
@@ -74,7 +88,9 @@ class GradeExamViewModel @Inject constructor(
                 val msg = if (e.isSessionExpired) "会话已过期，请重新登录" else (e.message ?: "获取等级考试失败")
                 _state.value = UiState.Error(msg)
             } catch (e: Exception) {
-                val cached = cacheManager.loadGradeExams(userRepository.getUser().account)
+                val cached = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    cacheManager.loadGradeExams(userRepository.getUser().account)
+                }
                 if (cached != null && cached.isNotEmpty()) {
                     _state.value = UiState.Cached(cached, "离线模式 · 显示缓存数据")
                 } else {

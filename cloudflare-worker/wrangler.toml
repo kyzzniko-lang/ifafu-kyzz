@@ -1,0 +1,7 @@
+name = "ifafu-feedback"
+main = "worker.js"
+compatibility_date = "2024-11-01"
+workers_dev = true
+
+# GITHUB_TOKEN 以 secret 形式绑定（wrangler secret put GITHUB_TOKEN），
+# 不入库。部署：npx wrangler deploy

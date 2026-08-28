@@ -25,6 +25,7 @@ import com.ifafu.kyzz.data.repository.PetRepository
 import com.ifafu.kyzz.ui.pet.PetLottieManager
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import com.ifafu.kyzz.data.util.ExamDates
 
 @AndroidEntryPoint
 class ExamFragment : Fragment() {
@@ -36,6 +37,8 @@ class ExamFragment : Fragment() {
     private val binding get() = _binding!!
     private val viewModel: ExamViewModel by viewModels()
     private var layoutManagerSet = false
+    // 当前列表的冲突分组，点击卡片打开详情时据此展示"同场冲突"提示
+    private var currentConflicts: List<List<Exam>> = emptyList()
 
     @Inject
     lateinit var cacheManager: CacheManager
@@ -115,6 +118,7 @@ class ExamFragment : Fragment() {
         binding.errorLayout.visibility = View.GONE
 
         val conflicts = findConflicts(exams)
+        currentConflicts = conflicts
         val allItems = mutableListOf<Any>()
         if (conflicts.isNotEmpty()) {
             allItems.add(ConflictWarning(conflicts))
@@ -135,21 +139,10 @@ class ExamFragment : Fragment() {
     }
 
     private fun findConflicts(exams: List<Exam>): List<List<Exam>> {
-        val datePatterns = listOf(
-            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy/M/d", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy.MM.dd", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.getDefault())
-        )
+        // 日期统一归一化到 yyyy-MM-dd（"2026-06-29"与"2026/6/29"才会分到同组），
+        // 时段统一取 HH:mm-HH:mm（剥离"周一)"等前缀），同日同时段才判冲突
         val grouped = exams.filter { it.datetime.isNotEmpty() }.groupBy { exam ->
-            val raw = exam.datetime.replace("（", "(").replace("）", ")").split("(", "~", " ").first().trim()
-            var dateStr = ""
-            for (fmt in datePatterns) {
-                try { dateStr = fmt.format(fmt.parse(raw)!!); break } catch (_: Exception) {}
-            }
-            val timePart = exam.datetime.replace("（", "(").replace("）", ")")
-                .split("(", " ").drop(1).firstOrNull()?.trim() ?: ""
-            "${dateStr}|$timePart"
+            "${ExamDates.canonicalDateKey(exam.datetime)}|${ExamDates.timeKey(exam.datetime)}"
         }.filter { it.key.isNotBlank() && it.key != "|" && it.value.size > 1 }
         return grouped.values.toList()
     }
@@ -158,37 +151,22 @@ class ExamFragment : Fragment() {
 
     private fun isExamFinished(datetime: String): Boolean {
         if (datetime.isEmpty()) return false
-        val datePatterns = listOf(
-            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy/M/d", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy.MM.dd", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy年MM月dd日", java.util.Locale.getDefault())
-        )
-        return try {
-            val raw = datetime.replace("（", "(").replace("）", ")")
-                .replace("～", "~").replace("至", "~")
-            val datePart = raw.split("(", "~", " ").first().trim()
-            var parsed: java.util.Date? = null
-            for (fmt in datePatterns) {
-                try { parsed = fmt.parse(datePart); break } catch (_: Exception) {}
-            }
-            if (parsed == null) return false
-            val examCal = java.util.Calendar.getInstance().apply { time = parsed }
-            val todayCal = java.util.Calendar.getInstance()
-            val examYear = examCal.get(java.util.Calendar.YEAR)
-            val todayYear = todayCal.get(java.util.Calendar.YEAR)
-            val examDay = examCal.get(java.util.Calendar.DAY_OF_YEAR)
-            val todayDay = todayCal.get(java.util.Calendar.DAY_OF_YEAR)
-            when {
-                examYear < todayYear || (examYear == todayYear && examDay < todayDay) -> true
-                // 考试当天：进一步看是否已过该场考试的最晚结束时刻。
-                // datetime 形如 "2026-06-29(周一)09:00-11:00~13:00-15:00"，
-                // 括号内用 ~ 分割多个时段，每段 "起-止"，取所有"止"时刻的最大值作为结束。
-                examYear == todayYear && examDay == todayDay -> isLatestTimePassed(raw)
-                else -> false
-            }
-        } catch (_: Exception) { false }
+        val dates = ExamDates.allDates(datetime)
+        if (dates.isEmpty()) return false
+        val today = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0); set(java.util.Calendar.MILLISECOND, 0)
+        }
+        // 跨天考试("6-29~6-30")必须全部日期过去才算结束：只看首日会把
+        // 第二天还没考的考试提前标"已完成"
+        if (dates.any { it.after(today) }) return false
+        if (ExamDates.hasDayOn(datetime, today)) {
+            // 考试当天：进一步看是否已过该场考试的最晚结束时刻。
+            // datetime 形如 "2026-06-29(周一)09:00-11:00~13:00-15:00"，
+            // 括号内用 ~ 分割多个时段，每段 "起-止"，取所有"止"时刻的最大值作为结束。
+            return isLatestTimePassed(datetime.replace("（", "(").replace("）", ")"))
+        }
+        return true
     }
 
     private fun isLatestTimePassed(raw: String): Boolean {
@@ -269,7 +247,7 @@ class ExamFragment : Fragment() {
                     text = "⚠ 考试冲突提醒"
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(0xFFFF6D00.toInt())
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     textSize = 15f
                 })
                 for (group in warning.groups) {
@@ -279,7 +257,7 @@ class ExamFragment : Fragment() {
                         text = "${dateStr}: $names"
                         setTextAppearance(R.style.ClaudeCaption)
                         setPadding(0, 6, 0, 0)
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     })
                 }
             } else if (holder is ExamVH) {
@@ -295,7 +273,7 @@ class ExamFragment : Fragment() {
                 titleRow.addView(TextView(ctx).apply {
                     text = exam.name; setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
                 // 考试完成状态标签
@@ -305,7 +283,7 @@ class ExamFragment : Fragment() {
                     titleRow.addView(TextView(ctx).apply {
                         text = "已完成"
                         textSize = 11f
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                         setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (4 * dp).toInt())
                         layoutParams = LinearLayout.LayoutParams(
                             LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -329,7 +307,7 @@ class ExamFragment : Fragment() {
                         else -> "未开始"
                     }
                     textSize = 11f
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     setPadding((12 * dp).toInt(), (4 * dp).toInt(), (12 * dp).toInt(), (4 * dp).toInt())
                     layoutParams = LinearLayout.LayoutParams(
                         LinearLayout.LayoutParams.WRAP_CONTENT,
@@ -390,20 +368,33 @@ class ExamFragment : Fragment() {
 
                 holder.content.addView(TextView(holder.itemView.context).apply {
                     text = "时间: ${exam.datetime}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
                 holder.content.addView(TextView(holder.itemView.context).apply {
                     text = "地点: ${exam.address}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
                 holder.content.addView(TextView(holder.itemView.context).apply {
                     text = "座位号: ${exam.seatNumber}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
                 holder.content.addView(TextView(holder.itemView.context).apply {
                     text = "校区: ${exam.campus}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
+
+                // 点击卡片打开考试详情弹层（复习状态标签自带点击，不会冒泡到这）
+                holder.content.setOnClickListener {
+                    val conflictWith = currentConflicts
+                        .firstOrNull { group ->
+                            group.any { it.id == exam.id && it.name == exam.name }
+                        }
+                        ?.filterNot { it.id == exam.id && it.name == exam.name }
+                        ?.joinToString("、") { it.name }
+                        .orEmpty()
+                    ExamDetailBottomSheet.newInstance(exam, conflictWith)
+                        .show(childFragmentManager, "exam_detail")
+                }
             }
         }
 

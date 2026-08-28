@@ -17,6 +17,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import javax.inject.Inject
+import com.ifafu.kyzz.data.util.ExamDates
 
 @HiltViewModel
 class ExamViewModel @Inject constructor(
@@ -117,40 +118,22 @@ class ExamViewModel @Inject constructor(
 
     /**
      * 检测考试列表中的所有考试是否都已过期（考试日期都在3天前或更早）。
-     * 用于判断缓存是否属于旧学期。
+     * 用于判断缓存是否属于旧学期。跨天考试按全部日期算——只看首日会把
+     * "昨天开考、今天还有一场"的考试误判过期。
+     * 日期解析失败的条目（daysUntilNearest 返回 Int.MAX_VALUE）不作为
+     * "已过期"的证据：一条脏数据就让判定为真，每次进考试页都会强制网络刷新。
      */
     private fun isAllExamsExpired(exams: List<com.ifafu.kyzz.data.model.Exam>): Boolean {
         if (exams.isEmpty()) return true
-        val datePatterns = listOf(
-            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy/M/d", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy.MM.dd", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy年MM月dd日", java.util.Locale.getDefault())
-        )
-        val now = java.util.Calendar.getInstance()
+        var parsedCount = 0
         for (exam in exams) {
-            if (exam.datetime.isEmpty()) continue
-            try {
-                val raw = exam.datetime
-                    .replace("（", "(").replace("）", ")")
-                    .replace("～", "~").replace("至", "~")
-                val datePart = raw.split("(", "~", " ").first().trim()
-                for (fmt in datePatterns) {
-                    try {
-                        val parsed = fmt.parse(datePart) ?: continue
-                        val examCal = java.util.Calendar.getInstance().apply { time = parsed }
-                        val diffMs = now.timeInMillis - examCal.timeInMillis
-                        val diffDays = diffMs / (24 * 60 * 60 * 1000L)
-                        // 只要有一场考试在3天内或未来，就不算全部过期
-                        if (diffDays < 3) return false
-                        break
-                    } catch (_: Exception) { continue }
-                }
-            } catch (_: Exception) { continue }
+            val days = ExamDates.daysUntilNearest(exam.datetime)
+            if (days == Int.MAX_VALUE) continue
+            parsedCount++
+            if (days < 3) return false
         }
-        return true
+        // 一条都解析不出来时无法判断，宁可信任缓存（时间戳限频仍在）
+        return parsedCount > 0
     }
 
     private fun belongsToDifferentTerm(table: ExamTable): Boolean {

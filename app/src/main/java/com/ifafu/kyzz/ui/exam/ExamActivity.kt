@@ -15,12 +15,15 @@ import com.ifafu.kyzz.ui.base.BaseActivity
 import com.ifafu.kyzz.ui.base.UiState
 import android.widget.FrameLayout
 import dagger.hilt.android.AndroidEntryPoint
+import com.ifafu.kyzz.data.util.ExamDates
 
 @AndroidEntryPoint
 class ExamActivity : BaseActivity<ActivityExamBinding>() {
 
     private val viewModel: ExamViewModel by viewModels()
     private var layoutManagerSet = false
+    // 当前列表的冲突分组，点击卡片打开详情时据此展示"同场冲突"提示
+    private var currentConflicts: List<List<Exam>> = emptyList()
 
     override fun createBinding(): ActivityExamBinding = ActivityExamBinding.inflate(layoutInflater)
 
@@ -68,6 +71,7 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
         binding.errorLayout.visibility = View.GONE
 
         val conflicts = findConflicts(exams)
+        currentConflicts = conflicts
         val allItems = mutableListOf<Any>()
         if (conflicts.isNotEmpty()) {
             allItems.add(ConflictWarning(conflicts))
@@ -82,22 +86,11 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
     }
 
     private fun findConflicts(exams: List<Exam>): List<List<Exam>> {
-        val datePatterns = listOf(
-            java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy/M/d", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy.MM.dd", java.util.Locale.getDefault()),
-            java.text.SimpleDateFormat("yyyy年M月d日", java.util.Locale.getDefault())
-        )
+        // 日期统一归一化到 yyyy-MM-dd、时段统一取 HH:mm-HH:mm：
+        // 否则"2026-06-29"与"2026/6/29"分不到同组、timePart 带着残缺的"周一)"
+        // 前缀，同日同时段的考试检测不到冲突
         val grouped = exams.filter { it.datetime.isNotEmpty() }.groupBy { exam ->
-            val raw = exam.datetime.replace("（", "(").replace("）", ")").split("(", "~", " ").first().trim()
-            var dateStr = ""
-            for (fmt in datePatterns) {
-                try { val parsed = fmt.parse(raw); if (parsed != null) { dateStr = fmt.format(parsed); break } } catch (_: Exception) {}
-            }
-            // Include time period in key to only group same-day same-period exams
-            val timePart = exam.datetime.replace("（", "(").replace("）", ")")
-                .split("(", " ").drop(1).firstOrNull()?.trim() ?: ""
-            "${dateStr}|$timePart"
+            "${ExamDates.canonicalDateKey(exam.datetime)}|${ExamDates.timeKey(exam.datetime)}"
         }.filter { it.key.isNotBlank() && it.key != "|" && it.value.size > 1 }
         return grouped.values.toList()
     }
@@ -155,7 +148,7 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
                     text = "⚠ 考试冲突提醒"
                     setTextAppearance(R.style.ClaudeBody)
                     setTextColor(0xFFFF6D00.toInt())
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     textSize = 15f
                 }
                 holder.content.addView(title)
@@ -166,7 +159,7 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
                         text = "${dateStr}: $names"
                         setTextAppearance(R.style.ClaudeCaption)
                         setPadding(0, 6, 0, 0)
-                        typeface = resources.getFont(R.font.claude_serif)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     }
                     holder.content.addView(msg)
                 }
@@ -176,26 +169,39 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
                 val name = TextView(this@ExamActivity).apply {
                     text = exam.name; setTextAppearance(R.style.ClaudeBody)
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 val time = TextView(this@ExamActivity).apply {
                     text = "时间: ${exam.datetime}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 val location = TextView(this@ExamActivity).apply {
                     text = "地点: ${exam.address}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 val seat = TextView(this@ExamActivity).apply {
                     text = "座位号: ${exam.seatNumber}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 val campus = TextView(this@ExamActivity).apply {
                     text = "校区: ${exam.campus}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 }
                 holder.content.addView(name); holder.content.addView(time)
                 holder.content.addView(location); holder.content.addView(seat); holder.content.addView(campus)
+
+                // 点击卡片打开考试详情弹层
+                holder.content.setOnClickListener {
+                    val conflictWith = currentConflicts
+                        .firstOrNull { group ->
+                            group.any { it.id == exam.id && it.name == exam.name }
+                        }
+                        ?.filterNot { it.id == exam.id && it.name == exam.name }
+                        ?.joinToString("、") { it.name }
+                        .orEmpty()
+                    ExamDetailBottomSheet.newInstance(exam, conflictWith)
+                        .show(supportFragmentManager, "exam_detail")
+                }
             }
         }
 

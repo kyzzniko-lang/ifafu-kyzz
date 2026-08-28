@@ -50,7 +50,7 @@
             android:layout_margin="20dp"
             android:backgroundTint="@color/claude_terracotta"
             android:contentDescription="添加倒计时"
-            android:src="@android:drawable/ic_menu_add"
+            android:src="@drawable/ic_add"
             app:tint="@android:color/white" />
 
     </FrameLayout>

@@ -45,10 +45,17 @@
             android:defaultValue="小农" />
 
         <SwitchPreferenceCompat
+            android:key="pet_use_academic_context"
+            android:title="宠物聊天使用学业数据"
+            android:summary="聊天请求可携带课表、考试、成绩概况等学业信息；关闭后仅普通对话"
+            android:defaultValue="true" />
+
+        <SwitchPreferenceCompat
             android:key="pet_see_notes"
             android:title="宠物可看笔记"
-            android:summary="允许宠物在聊天中参考你的笔记内容给出建议"
-            android:defaultValue="true" />
+            android:summary="允许宠物在聊天中参考你的笔记内容给出建议（默认关闭）"
+            android:defaultValue="false"
+            android:dependency="pet_use_academic_context" />
 
     </PreferenceCategory>
 

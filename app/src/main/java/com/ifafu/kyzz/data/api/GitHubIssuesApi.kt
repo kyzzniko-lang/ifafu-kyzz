@@ -30,10 +30,13 @@ class GitHubIssuesApi @Inject constructor(
             try {
                 // 优先走 Worker（服务端 Token 不受客户端匿名额度限制）；Worker 尚未
                 // 部署或暂时不可用时回退 GitHub 公共接口，避免新版本直接显示空列表。
+                // 注意：data 为 null/非数组（如 Worker 返回 {"ok":true,"data":null} 表示
+                // 空库）时 getAsJsonArray 会抛 ClassCastException，被外层 catch 吞成
+                // 空列表就绕过了 GitHub 兜底，必须先判形态。
                 val workerResponse = feedbackWorkerApi.get("/comments?per_page=$perPage&page=$page")
-                val workerItems = workerResponse?.getAsJsonArray("data")
-                if (workerItems != null) {
-                    return@withContext parsePublicComments(workerItems)
+                val dataElement = workerResponse?.get("data")
+                if (dataElement != null && dataElement.isJsonArray) {
+                    return@withContext parsePublicComments(dataElement.asJsonArray)
                 }
 
                 val url = "$BASE/issues/$COMMENTS_ISSUE/comments?per_page=$perPage&page=$page&sort=created&direction=desc"
@@ -108,7 +111,10 @@ class GitHubIssuesApi @Inject constructor(
                 content = content,
                 nickname = nickname,
                 authorId = authorId,
-                createdAt = data.get("created_at")?.asString.orEmpty(),
+                // Worker 返回的字段是 createdAt（见 worker.js 的响应映射），
+                // 读 created_at 永远为空，自己刚发的评论时间显示空白。
+                createdAt = data.get("createdAt")?.asString
+                    ?: data.get("created_at")?.asString.orEmpty(),
                 tag = tag
             )
         } catch (e: CancellationException) {
@@ -127,10 +133,16 @@ class GitHubIssuesApi @Inject constructor(
             )
         }
 
+    // 昵称查询进程内缓存（含"查无此人"= null）：匿名 GitHub 接口限额 60 次/小时/IP，
+    // 每次进讨论区都翻页查询的话，校园 NAT 后整个宿舍楼的配额会被打光，
+    // 连带评论区/课程评价的 GitHub 兜底通道一起 403。
+    private val nicknameCache = java.util.concurrent.ConcurrentHashMap<String, String?>()
+
     suspend fun getNickname(userId: String): String? = withContext(Dispatchers.IO) {
+        if (nicknameCache.containsKey(userId)) return@withContext nicknameCache[userId]
         try {
             var page = 1
-            while (page <= 20) {
+            while (page <= 5) {
                 val url = "$BASE/issues/$NICKNAMES_ISSUE/comments?per_page=100&page=$page"
                 val response = client.newCall(publicGet(url)).execute()
                 val shouldContinue = response.use {
@@ -142,7 +154,9 @@ class GitHubIssuesApi @Inject constructor(
                             JsonParser.parseString(element.asJsonObject.get("body").asString).asJsonObject
                         }.getOrNull() ?: continue
                         if (data.get("userId")?.asString == userId) {
-                            return@withContext data.get("nickname")?.asString
+                            val nickname = data.get("nickname")?.asString
+                            nicknameCache[userId] = nickname
+                            return@withContext nickname
                         }
                     }
                     items.size() >= 100
@@ -150,6 +164,7 @@ class GitHubIssuesApi @Inject constructor(
                 if (!shouldContinue) break
                 page++
             }
+            nicknameCache[userId] = null
             null
         } catch (e: CancellationException) {
             throw e
@@ -161,10 +176,13 @@ class GitHubIssuesApi @Inject constructor(
 
     suspend fun saveNickname(userId: String, nickname: String): Boolean =
         withContext(Dispatchers.IO) {
-            feedbackWorkerApi.put(
+            val ok = feedbackWorkerApi.put(
                 "/nicknames",
                 mapOf("userId" to userId, "nickname" to nickname)
             )?.get("ok")?.asBoolean == true
+            // 保存成功后同步缓存，避免同会话内 checkNickname 读到过期的"未设置"
+            if (ok) nicknameCache[userId] = nickname
+            ok
         }
 
     suspend fun likeComment(commentId: String, userId: String): Comment? =

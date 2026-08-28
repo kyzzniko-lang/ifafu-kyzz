@@ -92,6 +92,7 @@ class NoteListActivity : BaseActivity<ActivityNoteListBinding>() {
         binding.chipGroup.addView(favChip)
 
         // 动态分类
+        var matchedChip: Chip = allChip
         for (cat in repo.getCategories()) {
             val chip = Chip(this).apply {
                 text = cat
@@ -105,8 +106,19 @@ class NoteListActivity : BaseActivity<ActivityNoteListBinding>() {
                 highlightChip(chip)
             }
             binding.chipGroup.addView(chip)
+            if (cat == selectedCategory) matchedChip = chip
         }
-        highlightChip(allChip)
+        if (selectedCategory == "__favorite__") matchedChip = favChip
+        // 高亮必须与 selectedCategory 一致：从编辑页返回/删除刷新会重建 chips，
+        // 无条件高亮"全部"会让 UI 显示"全部"而列表仍按旧筛选过滤，新笔记还会"消失"。
+        if (selectedCategory.isNotEmpty() &&
+            selectedCategory != "__favorite__" &&
+            repo.getCategories().none { it == selectedCategory }
+        ) {
+            selectedCategory = ""
+            matchedChip = allChip
+        }
+        highlightChip(matchedChip)
     }
 
     private fun highlightChip(active: Chip) {
@@ -184,7 +196,7 @@ class NoteListActivity : BaseActivity<ActivityNoteListBinding>() {
                 text = note.title.ifEmpty { "无标题" }
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 maxLines = 1
             })
@@ -209,7 +221,7 @@ class NoteListActivity : BaseActivity<ActivityNoteListBinding>() {
                     text = note.content.take(80)
                     textSize = 13f
                     setTextColor(resources.getColor(R.color.claude_text_secondary, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     maxLines = 2
                     setPadding(0, 4, 0, 0)
                 })
@@ -225,7 +237,7 @@ class NoteListActivity : BaseActivity<ActivityNoteListBinding>() {
                     text = note.category
                     textSize = 11f
                     setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                    typeface = resources.getFont(R.font.claude_serif)
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     setPadding(8, 2, 8, 2)
                     setBackgroundResource(R.drawable.bg_chip_outline)
                 })
@@ -234,7 +246,7 @@ class NoteListActivity : BaseActivity<ActivityNoteListBinding>() {
                 text = sdf.format(Date(note.updatedAt))
                 textSize = 11f
                 setTextColor(resources.getColor(R.color.claude_text_hint, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply { gravity = Gravity.END }

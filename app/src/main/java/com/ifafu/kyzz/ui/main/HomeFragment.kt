@@ -426,14 +426,14 @@ class HomeFragment : Fragment() {
             text = comment.content.take(80) + if (comment.content.length > 80) "..." else ""
             setTextAppearance(R.style.ClaudeBody)
             setTextColor(resources.getColor(R.color.claude_text_primary, null))
-            typeface = resources.getFont(R.font.claude_serif)
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             maxLines = 2
         })
         container.addView(TextView(requireContext()).apply {
             text = "${comment.nickname} · ♥${comment.likes.size}"
             textSize = 11f
             setTextColor(resources.getColor(R.color.claude_text_hint, null))
-            typeface = resources.getFont(R.font.claude_serif)
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             setPadding(0, dp(6), 0, 0)
         })
         card.setOnClickListener {
@@ -461,10 +461,17 @@ class HomeFragment : Fragment() {
                             cacheManager.saveWeather(campusKey, gson.toJson(fresh))
                             fresh
                         } else {
-                            // 网络失败时降级到过期缓存
+                            // 网络失败时降级到过期缓存——但只接受仍属于"今天"的：
+                            // 把昨天甚至一周前的逐小时预报当今日天气展示会误导出行
                             val fallback = cacheManager.loadWeatherFallback(campusKey)
                             if (fallback != null) {
-                                gson.fromJson(fallback, com.ifafu.kyzz.data.model.DailyWeather::class.java)
+                                val parsed = gson.fromJson(
+                                    fallback, com.ifafu.kyzz.data.model.DailyWeather::class.java
+                                )
+                                val today = java.time.LocalDate.now(
+                                    java.time.ZoneId.of("Asia/Shanghai")
+                                ).toString()
+                                if (parsed?.date == today) parsed else null
                             } else null
                         }
                     }
@@ -512,7 +519,7 @@ class HomeFragment : Fragment() {
                 }
                 setTextAppearance(com.ifafu.kyzz.R.style.ClaudeCaption)
                 setTextColor(ctx.resources.getColor(com.ifafu.kyzz.R.color.claude_text_secondary, null))
-                typeface = ctx.resources.getFont(com.ifafu.kyzz.R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(ctx, com.ifafu.kyzz.R.font.claude_serif)
                 background = ctx.resources.getDrawable(com.ifafu.kyzz.R.drawable.bg_info_chip, null)
                 gravity = android.view.Gravity.CENTER
                 setPadding(dp(12), dp(6), dp(12), dp(6))
@@ -592,7 +599,7 @@ class HomeFragment : Fragment() {
                 text = event.name
                 setTextAppearance(R.style.ClaudeBody)
                 setTextColor(resources.getColor(R.color.claude_text_primary, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
             })
             val daysText = when {
@@ -606,7 +613,7 @@ class HomeFragment : Fragment() {
                 setTextColor(resources.getColor(
                     if (days in 0..7) R.color.claude_terracotta else R.color.claude_text_hint, null
                 ))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             })
             container.addView(row)
             // A1: staggered slide-in for each row
@@ -1072,7 +1079,10 @@ class HomeFragment : Fragment() {
     }
 
     private fun savePetPosition(x: Float, y: Float) {
-        requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+        // 调用点在气泡消失动画的 withEndAction/parent.post 里,Fragment 可能已
+        // 销毁;requireContext() 会抛 IllegalStateException。丢一次位置持久化无害。
+        val context = context ?: return
+        context.getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
             .edit()
             .putFloat("pet_pos_x", x)
             .putFloat("pet_pos_y", y)
@@ -1146,7 +1156,8 @@ class HomeFragment : Fragment() {
         // 加载历史聊天记录
         val account = user?.account ?: ""
         val chatApi = com.ifafu.kyzz.data.api.PetChatApi(
-            com.ifafu.kyzz.data.api.PetChatApi.deviceIdOf(account)
+            com.ifafu.kyzz.data.api.PetChatApi.deviceIdOf(account, requireContext().applicationContext),
+            requireContext().applicationContext
         )
         val chipGroupModel = dialogView.findViewById<com.google.android.material.chip.ChipGroup>(R.id.chipGroupModel)
         val messages = mutableListOf<com.ifafu.kyzz.data.api.PetChatApi.ChatMessage>()
@@ -1256,7 +1267,12 @@ class HomeFragment : Fragment() {
             .map { (name, days) -> "距离${name}还有${days}天" }
 
         val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
-        val petSeeNotes = prefs.getBoolean("pet_see_notes", true)
+        // 学业上下文总开关：关闭后请求不携带任何个人学业信息
+        if (!prefs.getBoolean("pet_use_academic_context", true)) {
+            return com.ifafu.kyzz.data.api.PetChatApi.UserContext()
+        }
+        // 笔记预览默认不外发，需在设置中显式开启
+        val petSeeNotes = prefs.getBoolean("pet_see_notes", false)
         val noteDescs = if (petSeeNotes) {
             val noteRepo = com.ifafu.kyzz.data.repository.NoteRepository(requireContext())
             noteRepo.getPetVisibleNotes()
@@ -1269,11 +1285,8 @@ class HomeFragment : Fragment() {
         } else emptyList()
 
         return com.ifafu.kyzz.data.api.PetChatApi.UserContext(
-            userName = user?.name ?: "",
-            studentId = user?.account ?: "",
             institute = user?.institute ?: "",
             major = "",
-            className = user?.clas ?: "",
             todayCourses = courseDescs,
             nextExam = examDesc,
             recentScores = recentScores,
@@ -1373,8 +1386,7 @@ class HomeFragment : Fragment() {
             .setView(dialogView)
             .create()
 
-        fun refreshStats() {
-            val updated = petViewModel.pet.value ?: return
+        fun refreshWith(updated: com.ifafu.kyzz.data.model.Pet) {
             progressMood.progress = updated.mood
             tvMood.text = "${updated.mood}%"
             progressHunger.progress = updated.hunger
@@ -1391,22 +1403,26 @@ class HomeFragment : Fragment() {
             )
         }
 
-        btnFeed.setOnClickListener {
-            petViewModel.feed()
-            refreshStats()
-        }
+        btnFeed.setOnClickListener { petViewModel.feed() }
+        btnPlay.setOnClickListener { petViewModel.play() }
 
-        btnPlay.setOnClickListener {
-            petViewModel.play()
-            refreshStats()
+        // feed()/play() 是异步"读盘-改-写盘"，点击后同步读 LiveData 拿到的必然是
+        // 旧值（喂食计数慢一拍、次数耗尽后按钮仍显示可点）。改为观察 LiveData
+        // 由落盘结果驱动刷新，对话框关闭时注销观察者。
+        val petObserver = androidx.lifecycle.Observer<com.ifafu.kyzz.data.model.Pet> { updated ->
+            if (dialog.isShowing) refreshWith(updated)
         }
+        petViewModel.pet.observe(viewLifecycleOwner, petObserver)
+        dialog.setOnDismissListener { petViewModel.pet.removeObserver(petObserver) }
+        // 打开对话框时先按当前数据刷新一次按钮计数（LiveData 观察只在值变化时回调）
+        refreshWith(petData)
 
         // Add chat button
         val chatButton = com.google.android.material.button.MaterialButton(requireContext()).apply {
             text = "聊天"
             textSize = 13f
             setTextColor(resources.getColor(R.color.claude_terracotta, null))
-            typeface = resources.getFont(R.font.claude_serif)
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             strokeWidth = 1
             strokeColor = android.content.res.ColorStateList.valueOf(resources.getColor(R.color.claude_border, null))
             backgroundTintList = android.content.res.ColorStateList.valueOf(resources.getColor(R.color.claude_bg_elevated, null))
@@ -1635,7 +1651,7 @@ class HomeFragment : Fragment() {
             text = exam.name
             setTextAppearance(R.style.ClaudeBody)
             setTextColor(resources.getColor(R.color.claude_text_primary, null))
-            typeface = resources.getFont(R.font.claude_serif)
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             layoutParams = android.widget.LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
         }
         
@@ -1657,7 +1673,7 @@ class HomeFragment : Fragment() {
                 text = numberStr
                 textSize = 20f // Larger number for premium feel
                 setTextColor(resources.getColor(R.color.claude_terracotta, null))
-                typeface = resources.getFont(R.font.claude_serif)
+                typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 setPadding(0, 0, 2, 0)
             })
         }
@@ -1665,7 +1681,7 @@ class HomeFragment : Fragment() {
             text = textStr
             textSize = 13f
             setTextColor(resources.getColor(R.color.claude_terracotta, null))
-            typeface = resources.getFont(R.font.claude_serif)
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             setPadding(0, 0, 0, 2) // Slight tweak to perfectly match baseline optically
         })
 
@@ -1676,7 +1692,7 @@ class HomeFragment : Fragment() {
         val detail = TextView(requireContext()).apply {
             text = "${exam.datetime}  ${exam.address}"
             setTextAppearance(R.style.ClaudeCaption)
-            typeface = resources.getFont(R.font.claude_serif)
+            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
             setPadding(0, 4, 0, 0)
         }
         container.addView(detail)
