@@ -138,14 +138,9 @@ class ExamFragment : Fragment() {
         binding.recyclerView.adapter = ExamAdapter(allItems, progressMap.toMutableMap())
     }
 
-    private fun findConflicts(exams: List<Exam>): List<List<Exam>> {
-        // 日期统一归一化到 yyyy-MM-dd（"2026-06-29"与"2026/6/29"才会分到同组），
-        // 时段统一取 HH:mm-HH:mm（剥离"周一)"等前缀），同日同时段才判冲突
-        val grouped = exams.filter { it.datetime.isNotEmpty() }.groupBy { exam ->
-            "${ExamDates.canonicalDateKey(exam.datetime)}|${ExamDates.timeKey(exam.datetime)}"
-        }.filter { it.key.isNotBlank() && it.key != "|" && it.value.size > 1 }
-        return grouped.values.toList()
-    }
+    private fun findConflicts(exams: List<Exam>): List<List<Exam>> =
+        // 两两重叠判定 + 连通分量合并：跨天考试第二天、多时段第二场也能检出
+        ExamDates.findConflictGroups(exams)
 
     data class ConflictWarning(val groups: List<List<Exam>>)
 

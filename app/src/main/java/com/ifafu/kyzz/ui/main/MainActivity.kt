@@ -53,6 +53,18 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
             .setPopEnterAnim(R.anim.fade_in)
             .setPopExitAnim(R.anim.fade_out)
             .build()
+        // 切换标签时弹回首页之上的所有条目并 singleTop：否则每次点标签都会往
+        // 回退栈压入新 Fragment 实例，反复切换后栈无限增长（内存占用与返回
+        // 语义都变差）。弹回但不 saveState——页面数据各自有缓存，重建后由
+        // ViewModel/LiveData 秒显，不依赖栈内实例存活。
+        val tabOptions = NavOptions.Builder()
+            .setEnterAnim(R.anim.fade_in)
+            .setExitAnim(R.anim.fade_out)
+            .setPopEnterAnim(R.anim.fade_in)
+            .setPopExitAnim(R.anim.fade_out)
+            .setLaunchSingleTop(true)
+            .setPopUpTo(R.id.homeFragment, inclusive = false)
+            .build()
 
         binding.bottomNav.setOnItemSelectedListener { item ->
             if (item.itemId == R.id.syllabusFragment) {
@@ -60,7 +72,7 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
                 return@setOnItemSelectedListener true
             }
             if (navController.currentDestination?.id != item.itemId) {
-                navController.navigate(item.itemId, null, fadeOptions)
+                navController.navigate(item.itemId, null, tabOptions)
             }
             // Animate the selected icon
             animateNavIcon(item.itemId)

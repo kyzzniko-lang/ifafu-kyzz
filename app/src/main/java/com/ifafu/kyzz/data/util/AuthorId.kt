@@ -33,7 +33,9 @@ object AuthorId {
         prefs.getString(KEY_SALT, null)?.let { return it }
         val salt = ByteArray(16).also { SecureRandom().nextBytes(it) }
             .joinToString("") { "%02x".format(it.toInt() and 0xFF) }
-        prefs.edit().putString(KEY_SALT, salt).apply()
+        // commit() 同步落盘：apply() 的异步写在"首次生成后立刻进程死亡"的
+        // 极端窗口会丢盐，导致 authorId 轮换一次
+        prefs.edit().putString(KEY_SALT, salt).commit()
         return salt
     }
 

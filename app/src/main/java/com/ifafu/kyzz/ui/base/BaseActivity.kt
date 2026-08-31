@@ -52,7 +52,6 @@ abstract class BaseActivity<VB : ViewBinding> : AppCompatActivity() {
             when (event) {
                 is GlobalEvent.SessionExpired -> onSessionExpired()
                 is GlobalEvent.Toast -> onGlobalToast(event.message)
-                is GlobalEvent.CrashFeedbackPending -> { /* 可选：留给子类处理 */ }
             }
         }
     }

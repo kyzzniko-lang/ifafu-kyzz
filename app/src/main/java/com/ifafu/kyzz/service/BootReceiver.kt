@@ -14,6 +14,16 @@ class BootReceiver : BroadcastReceiver() {
         if (action != Intent.ACTION_BOOT_COMPLETED &&
             action != Intent.ACTION_MY_PACKAGE_REPLACED) return
 
+        try {
+            // Widget 的 30 分钟更新闹钟同样被系统清空：补发一次更新广播，
+            // 有小部件时它会自续后续闹钟，没有则链条自然终止。
+            // 未登录也要补——否则 widget 冻结显示重启前(可能属于上一个账号)
+            // 的课表；未登录态 widget 自会刷新为"未登录"。
+            com.ifafu.kyzz.widget.iFAFUWidget.pokeAfterBoot(context)
+        } catch (e: Exception) {
+            Log.w("BootReceiver", "补挂小部件更新失败", e)
+        }
+
         val prefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("isLogin", false)) return
 
@@ -41,14 +51,6 @@ class BootReceiver : BroadcastReceiver() {
             context.sendBroadcast(reschedule)
         } catch (e: Exception) {
             Log.w("BootReceiver", "补挂课程提醒失败", e)
-        }
-
-        try {
-            // Widget 的 30 分钟更新闹钟同样被系统清空：补发一次更新广播，
-            // 有小部件时它会自续后续闹钟，没有则链条自然终止
-            com.ifafu.kyzz.widget.iFAFUWidget.pokeAfterBoot(context)
-        } catch (e: Exception) {
-            Log.w("BootReceiver", "补挂小部件更新失败", e)
         }
     }
 }

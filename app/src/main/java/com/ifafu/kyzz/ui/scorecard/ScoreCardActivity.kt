@@ -121,6 +121,10 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
      */
     private fun fetchScoresThenRender() {
         lifecycleScope.launch {
+            // 拉取前快照账号：链路含重登自愈最长可达 120s，期间用户登出/切号的话，
+            // 拉回的 A 账号成绩不能写进（甚至覆盖）B 账号的缓存键。与
+            // ScoreCheckWorker 的账号守卫同口径。
+            val accountAtStart = userRepository.getUser().account
             val fetched = try {
                 withTimeoutOrNull(SCORE_FETCH_TIMEOUT_MS) {
                     val user = userRepository.getUser()
@@ -135,9 +139,13 @@ class ScoreCardActivity : BaseActivity<ActivityScoreCardBinding>() {
             }
             if (isFinishing || isDestroyed) return@launch
 
+            val account = userRepository.getUser().account
+            if (account != accountAtStart) {
+                android.util.Log.i("ScoreCardActivity", "账号在拉取期间变更，丢弃本次结果")
+                return@launch
+            }
             // 空列表不落盘(与成绩页/后台检查同口径),避免把异常页解析的空集
             // 写成"真实无成绩"基线;提交后重读,拿到合并与 firstSeen 归一的数据
-            val account = userRepository.getUser().account
             if (!fetched.isNullOrEmpty()) {
                 cacheManager.commitFreshScores(account, fetched)
             }

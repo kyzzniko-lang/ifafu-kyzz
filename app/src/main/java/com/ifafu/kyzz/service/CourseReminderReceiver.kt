@@ -41,16 +41,25 @@ class CourseReminderReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
         val preferences = PreferenceManager.getDefaultSharedPreferences(context)
+        val userPrefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
+        val loggedIn = userPrefs.getBoolean("isLogin", false)
         if (!preferences.getBoolean("notify_course", true)) {
             // 开关关闭时只跳过通知,不能提前 return:每日摘要闹钟是自续链,
             // 这里不重排的话当天之后链条永久断裂,重新打开开关也无法恢复。
             // 登录态仍优先——未登出干净时链应由 cancel 拆除,不能借续链复活。
-            val userPrefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
-            if (!userPrefs.getBoolean("isLogin", false)) {
+            if (!loggedIn) {
                 cancel(context)
             } else {
                 ensureScheduled(context)
             }
+            return
+        }
+
+        // 未登录（登出/切号后）：不仅每日摘要不自续，已挂的当日单次课前提醒
+        // 也不再触发——否则登出当天剩余的"即将上课"仍会通知已登出的账号。
+        if (!loggedIn) {
+            android.util.Log.i("CourseReminderReceiver", "用户未登录，停止课程提醒闹钟链")
+            cancel(context)
             return
         }
 
@@ -62,16 +71,6 @@ class CourseReminderReceiver : BroadcastReceiver() {
                 intent.getStringExtra(EXTRA_COURSE_DETAIL).orEmpty(),
                 intent.getIntExtra(EXTRA_NOTIFICATION_ID, 1100)
             )
-            return
-        }
-
-        // 未登录（登出/切号后）不再自续每日摘要闹钟：scheduleNext 是无条件链式
-        // 重排，setAlarmClock 会在状态栏常驻图标并每天 7:30 唤醒设备。BootReceiver
-        // 只在开机时检查登录态，链路一旦建立，登出本身拆不掉它。
-        val userPrefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
-        if (!userPrefs.getBoolean("isLogin", false)) {
-            android.util.Log.i("CourseReminderReceiver", "用户未登录，停止课程提醒闹钟链")
-            cancel(context)
             return
         }
 
@@ -255,6 +254,14 @@ class CourseReminderReceiver : BroadcastReceiver() {
 
     private fun showNotification(context: Context, title: String, text: String, notificationId: Int) {
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // Android 13+ 通知权限被拒时 notify() 是静默 no-op：提前跳过，省掉无谓的
+        // 通知构建开销，也避免每次提醒都往 logcat 刷警告
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
+            !androidx.core.app.NotificationManagerCompat.from(context).areNotificationsEnabled()
+        ) {
+            android.util.Log.i("CourseReminderReceiver", "通知权限未授予，跳过提醒通知")
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             nm.createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "课程提醒", NotificationManager.IMPORTANCE_DEFAULT)
@@ -328,8 +335,32 @@ class CourseReminderReceiver : BroadcastReceiver() {
                 val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
                 am.cancel(pending)
                 pending.cancel()
+                cancelTodayCourseAlarms(context, am)
             } catch (e: Exception) {
                 android.util.Log.w("CourseReminderReceiver", "取消课程提醒闹钟失败", e)
+            }
+        }
+
+        /**
+         * 清掉当天已挂的单次课前提醒。requestCode = 年*100000+天*100+序号+10，
+         * 序号上限 30 覆盖一天内全部课程；Intent 匹配不含 extras，同 component
+         * 即可命中。不清理的话登出后当天剩余提醒仍会照常触发。
+         */
+        private fun cancelTodayCourseAlarms(context: Context, am: AlarmManager) {
+            try {
+                val cal = Calendar.getInstance()
+                val base = cal.get(Calendar.YEAR) * 100000 +
+                    cal.get(Calendar.DAY_OF_YEAR) * 100 + 10
+                for (i in 0 until 30) {
+                    val pending = PendingIntent.getBroadcast(
+                        context, base + i, Intent(context, CourseReminderReceiver::class.java),
+                        PendingIntent.FLAG_NO_CREATE or PendingIntent.FLAG_IMMUTABLE
+                    ) ?: continue
+                    am.cancel(pending)
+                    pending.cancel()
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("CourseReminderReceiver", "清理当日课前提醒失败", e)
             }
         }
         private val COURSE_START_TIMES = mapOf(

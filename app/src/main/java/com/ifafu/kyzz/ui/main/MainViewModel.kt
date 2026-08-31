@@ -47,7 +47,7 @@ class MainViewModel @Inject constructor(
 
     val isLoggedIn: Boolean get() = _user.value?.isLogin == true
 
-    fun refreshUser(force: Boolean = false) {
+    fun refreshUser(manualRefresh: Boolean = false) {
         _user.value = userRepository.getUser()
         _currentWeek.value = calculateCurrentWeek()
         if (isLoggedIn) {
@@ -57,14 +57,13 @@ class MainViewModel @Inject constructor(
             com.ifafu.kyzz.service.CourseReminderReceiver.ensureScheduled(appContext)
             com.ifafu.kyzz.service.ScoreCheckReceiver.ensureScheduled(appContext)
         }
-        if (!force && _todayCourses.value != null && _nextExam.value != null) {
-            return
-        }
-        // 立即从缓存加载今日课程和考试（不等待网络）
-        loadTodayCourses()
-        loadNextExam()
-        // 并行后台同步学期日期（force时重新检查）
-        if (force) hasFetchedTermFirstDay = false
+        // 立即从缓存加载今日课程和考试（不等待网络）。同一天已加载过时直接复用
+        // 内存数据，首页切页返回瞬时显示；仅用户下拉刷新（manualRefresh）或跨天
+        // 时重新计算。
+        loadTodayCourses(force = manualRefresh)
+        loadNextExam(force = manualRefresh)
+        // 并行后台同步学期日期；每个进程只同步一次，下拉刷新时强制重新检查
+        if (manualRefresh) hasFetchedTermFirstDay = false
         if (!hasFetchedTermFirstDay) {
             hasFetchedTermFirstDay = true
             fetchTermFirstDayFromGitHub()
@@ -103,26 +102,30 @@ class MainViewModel @Inject constructor(
         } catch (_: Exception) { 0 }
     }
 
-    fun logout() {
-        // 登出时清掉本账号的缓存与聊天记录：成绩/课表/学籍信息（含身份证号、
-        // 电话、住址等明文）不应在设备上残留给下一个登录者，也避免多账号数据无界累积。
-        val account = userRepository.getUser().account
-        if (account.isNotEmpty()) {
-            cacheManager.clearCache(account)
-            cacheManager.clearChatHistory(account)
-        }
-        // 拆断每日提醒的自续闹钟链：scheduleNext 只受通知开关控制、不查登录态，
-        // 不主动取消的话登出后设备仍每天被唤醒且状态栏常驻闹钟图标。
-        com.ifafu.kyzz.service.CourseReminderReceiver.cancel(appContext)
-        com.ifafu.kyzz.service.ScoreCheckReceiver.cancel(appContext)
-        userRepository.clearUser()
-        _user.value = User()
+    // 今日课程/最近考试按"天"缓存：记录数据属于哪一天，同一天内首页切页返回
+    // 直接复用内存结果，只在下拉刷新、跨天或学期切换时重新计算。
+    private var todayCoursesDayKey = 0
+    private var nextExamDayKey = 0
+
+    private fun currentDayKey(): Int {
+        val cal = Calendar.getInstance()
+        return cal.get(Calendar.YEAR) * 10000 + (cal.get(Calendar.MONTH) + 1) * 100 + cal.get(Calendar.DAY_OF_MONTH)
     }
 
-    private fun loadTodayCourses() {
+    private fun loadTodayCourses(force: Boolean = false) {
         viewModelScope.launch {
             val user = userRepository.getUser()
             if (!user.isLogin) { _todayCourses.postValue(emptyList()); return@launch }
+
+            // 同一天已计算过、且课表缓存未被选课/退课标记失效：直接沿用内存结果，
+            // 不再读盘或爬取。loadSyllabusTimestamp==0 表示 invalidateSyllabus 刚
+            // 清过时间戳，需要重走缓存+后台拉取流程让首页吃到新课表。
+            val todayKey = currentDayKey()
+            if (!force && _todayCourses.value != null && todayCoursesDayKey == todayKey &&
+                cacheManager.loadSyllabusTimestamp(user.account) > 0L
+            ) {
+                return@launch
+            }
 
             val syllabus = withContext(kotlinx.coroutines.Dispatchers.IO) {
                 // schema 迁移（清掉旧版本写入的坏格式课表缓存）。课表页已调用，
@@ -136,6 +139,7 @@ class MainViewModel @Inject constructor(
             }
             if (isPublishedUpcomingBreakSyllabus(syllabus)) {
                 // 新课表已发布但尚未开学：首页不把它按旧学期周数计算成“今日课程”。
+                todayCoursesDayKey = todayKey
                 _todayCourses.postValue(emptyList())
                 return@launch
             }
@@ -156,19 +160,24 @@ class MainViewModel @Inject constructor(
                         cacheManager.markSyllabusUpcomingProbe(user.account)
                         fetchSyllabusAndShow()
                     }
-                    else -> _todayCourses.postValue(emptyList())
+                    else -> {
+                        todayCoursesDayKey = todayKey
+                        _todayCourses.postValue(emptyList())
+                    }
                 }
                 return@launch
             }
             // 学期开始前（termFirstDay在未来），同样不显示课程
             if (currentWeek <= 0) {
+                todayCoursesDayKey = todayKey
                 _todayCourses.postValue(emptyList())
                 return@launch
             }
             computeTodayCourses(syllabus)
-            // 学期中的调课/退改选不会反映到"缓存存在即直接用"的旧逻辑里：
-            // 缓存超过 7 天时后台刷新一次，页面先用旧缓存渲染。
-            if (cacheManager.isCacheStale(user.account, "syllabus", 7L * 24 * 60 * 60 * 1000)) {
+            // 学期中的调课/退改选不会反映到"缓存存在即直接用"的逻辑里：缓存超过
+            // 7 天时后台刷新一次，页面先用旧缓存渲染；用户下拉刷新（force）时
+            // 总是后台拉取最新课表。
+            if (force || cacheManager.isCacheStale(user.account, "syllabus", 7L * 24 * 60 * 60 * 1000)) {
                 fetchSyllabusAndShow()
             }
         }
@@ -227,6 +236,8 @@ class MainViewModel @Inject constructor(
     }
 
     private fun computeTodayCourses(syllabus: com.ifafu.kyzz.data.model.Syllabus) {
+        // 成功算出（或合法地算空）今日课程：标记当天已完成，后续切页不再重算
+        todayCoursesDayKey = currentDayKey()
         val firstDay = userRepository.termFirstDay
         if (firstDay.isEmpty()) { _todayCourses.postValue(emptyList()); return }
 
@@ -255,10 +266,15 @@ class MainViewModel @Inject constructor(
         }
     }
 
-    private fun loadNextExam() {
+    private fun loadNextExam(force: Boolean = false) {
         viewModelScope.launch {
             val user = userRepository.getUser()
             if (!user.isLogin) { _nextExam.postValue(null); return@launch }
+
+            // 同一天已计算过：直接沿用内存结果（下拉刷新/跨天除外）
+            if (!force && _nextExam.value != null && nextExamDayKey == currentDayKey()) {
+                return@launch
+            }
 
             val examTable = withContext(kotlinx.coroutines.Dispatchers.IO) {
                 cacheManager.loadExamTable(user.account)
@@ -269,9 +285,10 @@ class MainViewModel @Inject constructor(
             }
             findNextExam(examTable.exams)
             // 缓存里的考试全部过期后，补考/新学期考试永远不会出现在首页
-            // （旧逻辑缓存存在就只用缓存）。全部过期且缓存超 1 天时刷新一次。
+            // （旧逻辑缓存存在就只用缓存）。全部过期且缓存超 1 天时刷新一次；
+            // 用户下拉刷新（force）时总是拉取最新考试安排。
             val hasUpcoming = examTable.exams.any { com.ifafu.kyzz.data.util.ExamDates.hasUpcomingDay(it.datetime) }
-            if (!hasUpcoming && cacheManager.isCacheStale(user.account, "exams", 24 * 60 * 60 * 1000L)) {
+            if (force || (!hasUpcoming && cacheManager.isCacheStale(user.account, "exams", 24 * 60 * 60 * 1000L))) {
                 fetchExamsAndShow()
             }
         }
@@ -299,6 +316,7 @@ class MainViewModel @Inject constructor(
     private fun findNextExam(exams: List<com.ifafu.kyzz.data.model.Exam>) {
         // 统一走 ExamDates：支持跨天考试（旧逻辑只取首个日期，第二天倒计时显示
         // -1、第三天被过滤；与考试页/冲突检测的口径也不一致）。
+        nextExamDayKey = currentDayKey()
         val next = exams.asSequence()
             .filter { it.datetime.isNotEmpty() }
             .mapNotNull { exam ->
@@ -360,13 +378,20 @@ class MainViewModel @Inject constructor(
                             userRepository.termFirstDayManual = false
                             _currentWeek.postValue(calculateCurrentWeek())
 
-                            if (semesterChanged) {
-                                val user = userRepository.getUser()
-                                if (user.isLogin) {
-                                    cacheManager.clearCache(user.account)
-                                    android.util.Log.i("MainViewModel", "Semester changed ($oldTermFirstDay -> $newTermFirstDay), cache cleared")
+                            // 首次确定学期起始日（全新安装/切换账号后为空）也必须重算：
+                            // 同步完成前 computeTodayCourses 可能已因 firstDay 为空
+                            // 记过一次"今日无课"，不强制重算当天首页会一直空着。
+                            val termFirstDayEstablished = oldTermFirstDay.isEmpty()
+                            if (semesterChanged || termFirstDayEstablished) {
+                                if (semesterChanged) {
+                                    val user = userRepository.getUser()
+                                    if (user.isLogin) {
+                                        cacheManager.clearCache(user.account)
+                                        android.util.Log.i("MainViewModel", "Semester changed ($oldTermFirstDay -> $newTermFirstDay), cache cleared")
+                                    }
                                 }
-                                loadTodayCourses()
+                                // 绕过"当天已计算"守卫强制重算
+                                loadTodayCourses(force = true)
                             }
                             android.util.Log.i("MainViewModel", "Term first day synced from GitHub: $dateStr")
                             return@launch
@@ -392,7 +417,8 @@ class MainViewModel @Inject constructor(
                 cacheManager.clearCache(user.account)
             }
         }
-        loadTodayCourses()
+        // 缓存可能刚被清理，绕过"当天已计算"守卫强制重算
+        loadTodayCourses(force = true)
     }
 
     private fun isTermFirstDayStale(dateStr: String): Boolean {

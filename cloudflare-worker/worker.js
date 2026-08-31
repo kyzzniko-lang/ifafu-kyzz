@@ -23,10 +23,16 @@ function text(value, max) {
 // 位学号形态数字。客户端已净化，这里是防御纵深（覆盖旧版本客户端）。
 function sanitizeCrashText(value) {
   return String(value ?? "")
-    .replace(/\(([a-z0-9]{20,40})\)/g, "(TOKEN)")
+    .replace(/\(([a-zA-Z0-9]{20,64})\)/g, "(TOKEN)")
     .replace(/sessionToken=\S+/gi, "sessionToken=<redacted>")
     .replace(/\bxm=[^&\s]+/g, "xm=<NAME>")
     .replace(/\b\d{8,12}\b/g, "[ID]");
+}
+
+// 先脱敏再截断：若截断点落在 "(token" 中间，闭合括号被切掉后正则失配，
+// 半截 token 会原样发布。脱敏后的文本不再含敏感串，再截断是安全的。
+function clean(value, max) {
+  return text(sanitizeCrashText(value), max);
 }
 
 async function readJson(request) {
@@ -135,8 +141,8 @@ export default {
 
     try {
       if (request.method === "POST" && url.pathname === "/issue") {
-        const title = text(input.title, 120);
-        const description = text(input.description, 10_000);
+        const title = clean(input.title, 120);
+        const description = clean(input.description, 10_000);
         if (title.length < 4 || description.length < 10) return json({ ok: false, message: "标题或描述过短" }, 400);
         const body = [
           "## 问题描述", "", description, "", "## 环境信息", "",
@@ -154,9 +160,11 @@ export default {
         const body = JSON.stringify({
           type: text(input.type, 30), time: text(input.time, 40), appVersion: text(input.appVersion, 30),
           device: text(input.device, 300), thread: text(input.thread, 100),
-          message: sanitizeCrashText(text(input.message, 2_000)),
-          trace: sanitizeCrashText(text(input.trace, 8_000)),
-          description: text(input.description, 2_000),
+          message: clean(input.message, 2_000),
+          trace: clean(input.trace, 8_000),
+          // 用户自由文本同样脱敏：用户常把报错原文粘进描述框，其中的
+          // token/学号不应跟着进入公开 Issue
+          description: clean(input.description, 2_000),
         });
         const result = await github(env, COMMENT_REPO, "issues/3/comments", "POST", { body });
         return result.response.ok ? json({ ok: true }) : json({ ok: false, message: "提交失败" }, 502);

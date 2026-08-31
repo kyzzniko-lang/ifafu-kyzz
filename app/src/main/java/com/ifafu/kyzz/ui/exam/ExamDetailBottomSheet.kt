@@ -11,7 +11,6 @@ import com.ifafu.kyzz.data.model.Exam
 import com.ifafu.kyzz.data.util.ExamDates
 import com.ifafu.kyzz.databinding.DialogExamDetailSheetBinding
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Locale
 
 /**
@@ -62,37 +61,40 @@ class ExamDetailBottomSheet : BottomSheetDialogFragment() {
         binding.btnDismiss.setOnClickListener { dismiss() }
     }
 
-    /** 倒计时状态：未来=赤陶橙、当天=警示橙、已结束=灰。 */
+    /** 倒计时状态：未来=赤陶橙、当天/进行中=警示橙、已结束=灰。 */
     private fun setupCountdown() {
         val dates = ExamDates.allDates(exam.datetime)
         if (dates.isEmpty()) {
             binding.countdownSection.visibility = View.GONE
             return
         }
-        val firstDate = dates.minOf { it.timeInMillis }
-        val today = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+        val state = ExamDates.countdownState(exam.datetime)
+        // 星期几按对应日期的真实星期显示：未开始取首场，当天取今天
+        val weekdaySource = if (state is ExamDates.CountdownState.Today) {
+            java.util.Date()
+        } else {
+            java.util.Date(dates.minOf { it.timeInMillis })
         }
-        val first = Calendar.getInstance().apply {
-            timeInMillis = firstDate
-            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-        }
-        val daysLeft =
-            Math.floorDiv(first.timeInMillis - today.timeInMillis, 24L * 60 * 60 * 1000).toInt()
-        // 星期几按考试当天的真实日期计算，而不是取设备今天
-        val weekday = SimpleDateFormat("EEEE", Locale.CHINA).format(first.time)
+        val weekday = SimpleDateFormat("EEEE", Locale.CHINA).format(weekdaySource)
 
-        binding.tvCountdown.text = when {
-            daysLeft < 0 -> "已结束 ${-daysLeft} 天"
-            daysLeft == 0 -> "就是今天 · $weekday"
-            else -> "距开考还有 $daysLeft 天 · $weekday"
+        binding.tvCountdown.text = when (state) {
+            is ExamDates.CountdownState.Finished -> "已结束 ${state.daysAgo} 天"
+            is ExamDates.CountdownState.Today -> "就是今天 · $weekday"
+            is ExamDates.CountdownState.Upcoming -> "距开考还有 ${state.daysLeft} 天 · $weekday"
+            is ExamDates.CountdownState.InProgress -> "已开考 · 距结束还有 ${state.daysToEnd} 天"
+            ExamDates.CountdownState.Unknown -> ""
         }
-        val (bg, fg) = when {
-            daysLeft < 0 -> 0x1A9C958E to R.color.claude_text_tertiary
-            daysLeft == 0 -> 0x1AB7791F to R.color.claude_warning
-            else -> R.color.claude_terracotta_100 to R.color.claude_terracotta
+        // setBackgroundColor 需要 ARGB 色值而非资源 ID——未来态的浅色底必须
+        // 先 resolve，直接传 R.color 会被当成裸色值渲染成任意颜色
+        val bg = when (state) {
+            is ExamDates.CountdownState.Finished -> 0x1A9C958E
+            is ExamDates.CountdownState.Today, is ExamDates.CountdownState.InProgress -> 0x1AB7791F
+            else -> resources.getColor(R.color.claude_terracotta_100, null)
+        }
+        val fg = when (state) {
+            is ExamDates.CountdownState.Finished -> R.color.claude_text_tertiary
+            is ExamDates.CountdownState.Today, is ExamDates.CountdownState.InProgress -> R.color.claude_warning
+            else -> R.color.claude_terracotta
         }
         binding.tvCountdown.setBackgroundColor(bg)
         binding.tvCountdown.setTextColor(resources.getColor(fg, null))

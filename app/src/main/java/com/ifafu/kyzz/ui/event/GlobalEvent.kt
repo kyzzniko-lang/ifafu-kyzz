@@ -31,12 +31,10 @@ class Event<out T>(private val content: T) {
  * 全局事件类型。
  * - [SessionExpired]：教务系统会话过期，订阅方应统一跳转登录页
  * - [Toast]：全局轻量提示
- * - [CrashFeedbackPending]：检测到上次崩溃未反馈
  */
 sealed class GlobalEvent {
     object SessionExpired : GlobalEvent()
     data class Toast(val message: String) : GlobalEvent()
-    object CrashFeedbackPending : GlobalEvent()
 }
 
 /**

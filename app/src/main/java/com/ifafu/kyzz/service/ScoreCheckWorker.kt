@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.ifafu.kyzz.R
@@ -159,6 +160,12 @@ class ScoreCheckWorker(
     private fun showNotification(title: String, content: String) {
         val notificationManager =
             applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        // Android 13+ 通知权限被拒时 notify() 是静默 no-op，提前跳过
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+            !NotificationManagerCompat.from(applicationContext).areNotificationsEnabled()
+        ) {
+            return
+        }
         val openApp = PendingIntent.getActivity(
             applicationContext,
             1002,

@@ -14,6 +14,8 @@ import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.repository.PetRepository
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.service.CourseReminderReceiver
+import com.ifafu.kyzz.service.ScoreCheckReceiver
 import com.ifafu.kyzz.ui.about.AboutActivity
 import com.ifafu.kyzz.ui.comment.DiscussionActivity
 import dagger.hilt.android.AndroidEntryPoint
@@ -386,14 +388,32 @@ class SettingsFragment : PreferenceFragmentCompat() {
             androidx.appcompat.app.AlertDialog.Builder(requireContext())
                 .setMessage(R.string.confirm_logout)
                 .setPositiveButton(R.string.nav_logout) { _, _ ->
-                    userRepository.clearUser()
-                    com.ifafu.kyzz.widget.iFAFUWidget.clearWidgetData(requireContext())
-                    startActivity(android.content.Intent(requireContext(), com.ifafu.kyzz.ui.login.LoginActivity::class.java))
-                    requireActivity().finish()
+                    performLogout()
                 }
                 .setNegativeButton(android.R.string.cancel, null)
                 .show()
             true
         }
+    }
+
+    /**
+     * 完整登出：清本账号缓存与聊天记录（成绩/课表/学籍信息含身份证号、
+     * 电话、住址等明文，不应残留给下一个登录者）→ 拆断每日提醒的自续
+     * 闹钟链（scheduleNext 只受通知开关控制，不主动取消会持续唤醒设备）
+     * → 清用户凭据 → 跳登录页。
+     */
+    private fun performLogout() {
+        val ctx = requireContext()
+        val account = userRepository.getUser().account
+        if (account.isNotEmpty()) {
+            cacheManager.clearCache(account)
+            cacheManager.clearChatHistory(account)
+        }
+        CourseReminderReceiver.cancel(ctx)
+        ScoreCheckReceiver.cancel(ctx)
+        userRepository.clearUser()
+        com.ifafu.kyzz.widget.iFAFUWidget.clearWidgetData(ctx)
+        startActivity(android.content.Intent(ctx, com.ifafu.kyzz.ui.login.LoginActivity::class.java))
+        requireActivity().finish()
     }
 }

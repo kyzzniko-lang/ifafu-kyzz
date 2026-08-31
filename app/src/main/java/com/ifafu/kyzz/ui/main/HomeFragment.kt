@@ -137,16 +137,10 @@ class HomeFragment : Fragment() {
     private var cachedCountdownEvents: List<CountdownEvent> = emptyList()
     private var lastDataRefreshDayKey: Int = -1
 
-    companion object {
-        private const val AUTO_REFRESH_INTERVAL_MS = 30 * 60 * 1000L
-        private const val HOME_REFRESH_TS_PREFIX = "home_refresh_ts_"
-    }
-
     private fun loadData() {
         if (hasLoadedData) return
         hasLoadedData = true
-        lastDataRefreshDayKey = currentDayKey()
-        refreshHomeContent(markRefreshTime = true)
+        refreshHomeContent()
     }
 
     override fun onResume() {
@@ -154,7 +148,7 @@ class HomeFragment : Fragment() {
         updateGreeting()
         if (lastDataRefreshDayKey != currentDayKey()) {
             lastDataRefreshDayKey = currentDayKey()
-            refreshHomeContent(markRefreshTime = true)
+            refreshHomeContent()
         }
         if (!simpleMode) {
             petViewModel.reloadPet()
@@ -178,40 +172,35 @@ class HomeFragment : Fragment() {
         }
     }
 
+    /**
+     * 凌晨跨天自动刷新：只在系统日期翻篇时刷新首页（换新一天的今日课程），
+     * 平时不做定时刷新——同一天内数据走缓存，由用户下拉刷新或下次跨天更新。
+     */
     private fun startAutoRefreshMonitor() {
         if (autoRefreshMonitorStarted) return
         autoRefreshMonitorStarted = true
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (isActive) {
-                    maybeAutoRefreshHome()
-                    delay(nextAutoRefreshDelayMs())
-                    maybeAutoRefreshHome()
+                    maybeRefreshAcrossMidnight()
+                    delay(delayUntilNextMidnightMs())
                 }
             }
         }
     }
 
-    private fun maybeAutoRefreshHome() {
+    private fun maybeRefreshAcrossMidnight() {
         if (!isAdded || _binding == null || simpleMode) return
         val todayKey = currentDayKey()
         if (lastDataRefreshDayKey != todayKey) {
             lastDataRefreshDayKey = todayKey
-            refreshHomeContent(markRefreshTime = true)
-            return
-        }
-        val lastRefreshAt = getHomeRefreshTimestamp()
-        if (System.currentTimeMillis() - lastRefreshAt >= AUTO_REFRESH_INTERVAL_MS) {
-            refreshHomeContent(markRefreshTime = true)
+            refreshHomeContent()
         }
     }
 
-    private fun refreshHomeContent(markRefreshTime: Boolean, forceUpdateCheck: Boolean = false) {
-        if (markRefreshTime) {
-            lastDataRefreshDayKey = currentDayKey()
-            setHomeRefreshTimestamp(System.currentTimeMillis())
-        }
-        viewModel.refreshUser(force = true)
+    private fun refreshHomeContent(forceUpdateCheck: Boolean = false, manualRefresh: Boolean = false) {
+        lastDataRefreshDayKey = currentDayKey()
+        viewModel.refreshUser(manualRefresh = manualRefresh)
         if (!simpleMode) {
             loadHotDiscussion()
             loadCountdownEvents()
@@ -219,34 +208,13 @@ class HomeFragment : Fragment() {
         }
         checkForUpdate(force = forceUpdateCheck)
         // 注意：不要在这里调用 petViewModel.onPetClicked()。refreshHomeContent 会被
-        // 30 分钟自动刷新、跨天刷新、下拉刷新反复调用，若复用"点击"逻辑会导致宠物
+        // 跨天自动刷新、下拉刷新反复调用，若复用"点击"逻辑会导致宠物
         // 被动获得经验并频繁弹气泡，与用户主动交互互相干扰。
     }
 
-    private fun getHomeRefreshTimestamp(): Long {
-        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
-        val account = prefs.getString("account", "") ?: ""
-        return prefs.getLong(homeRefreshKey(account), 0L)
-    }
-
-    private fun setHomeRefreshTimestamp(timestamp: Long) {
-        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
-        val account = prefs.getString("account", "") ?: ""
-        prefs.edit().putLong(homeRefreshKey(account), timestamp).apply()
-    }
-
-    private fun homeRefreshKey(account: String): String = HOME_REFRESH_TS_PREFIX + account
-
-    private fun nextAutoRefreshDelayMs(): Long {
+    private fun delayUntilNextMidnightMs(): Long {
         val now = System.currentTimeMillis()
-        val lastRefreshAt = getHomeRefreshTimestamp()
-        val nextAutoRefreshAt = if (lastRefreshAt > 0L) {
-            lastRefreshAt + AUTO_REFRESH_INTERVAL_MS
-        } else {
-            now + AUTO_REFRESH_INTERVAL_MS
-        }
-        val nextMidnightAt = nextMidnightMillis(now)
-        return minOf(nextAutoRefreshAt - now, nextMidnightAt - now).coerceAtLeast(1L)
+        return (nextMidnightMillis(now) - now).coerceAtLeast(1L)
     }
 
     private fun nextMidnightMillis(now: Long): Long {
@@ -350,7 +318,7 @@ class HomeFragment : Fragment() {
             requireContext().getColor(R.color.claude_bg_elevated)
         )
         binding.swipeRefresh.setOnRefreshListener {
-            refreshHomeContent(markRefreshTime = true, forceUpdateCheck = true)
+            refreshHomeContent(forceUpdateCheck = true, manualRefresh = true)
             viewLifecycleOwner.lifecycleScope.launch {
                 delay(800)
                 if (isAdded) binding.swipeRefresh.isRefreshing = false
@@ -1147,17 +1115,18 @@ class HomeFragment : Fragment() {
         tvPetName.text = "${petData.name}  Lv.${petData.level}"
         tvPetStatus.text = petData.state.label
 
-        // 构建用户上下文
+        // 构建用户上下文的输入快照：上下文本体在 sendMessage 的 IO 协程里构建
+        // （涉及 prefs 读与全量笔记 JSON 解析，主线程做会卡顿并触发 StrictMode）
         val user = viewModel.user.value
         val todayCourses = viewModel.todayCourses.value ?: emptyList()
         val nextExam = viewModel.nextExam.value
-        val userContext = buildUserContext(user, todayCourses, nextExam)
 
         // 加载历史聊天记录
         val account = user?.account ?: ""
+        val appContext = requireContext().applicationContext
         val chatApi = com.ifafu.kyzz.data.api.PetChatApi(
-            com.ifafu.kyzz.data.api.PetChatApi.deviceIdOf(account, requireContext().applicationContext),
-            requireContext().applicationContext
+            com.ifafu.kyzz.data.api.PetChatApi.deviceIdOf(account, appContext),
+            appContext
         )
         val chipGroupModel = dialogView.findViewById<com.google.android.material.chip.ChipGroup>(R.id.chipGroupModel)
         val messages = mutableListOf<com.ifafu.kyzz.data.api.PetChatApi.ChatMessage>()
@@ -1208,6 +1177,7 @@ class HomeFragment : Fragment() {
             viewLifecycleOwner.lifecycleScope.launch {
                 try {
                     val reply = withContext(Dispatchers.IO) {
+                        val userContext = buildUserContext(appContext, user, todayCourses, nextExam)
                         chatApi.chat(text, currentPet, messages, userContext, selectedModel)
                     }
                     tvTyping.visibility = View.GONE
@@ -1235,6 +1205,7 @@ class HomeFragment : Fragment() {
     }
 
     private fun buildUserContext(
+        context: android.content.Context,
         user: com.ifafu.kyzz.data.model.User?,
         todayCourses: List<MainViewModel.TodayCourse>,
         nextExam: MainViewModel.ExamCountdown?
@@ -1266,7 +1237,7 @@ class HomeFragment : Fragment() {
             .sortedBy { it.second }
             .map { (name, days) -> "距离${name}还有${days}天" }
 
-        val prefs = requireContext().getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
+        val prefs = context.getSharedPreferences("ifafu_user", android.content.Context.MODE_PRIVATE)
         // 学业上下文总开关：关闭后请求不携带任何个人学业信息
         if (!prefs.getBoolean("pet_use_academic_context", true)) {
             return com.ifafu.kyzz.data.api.PetChatApi.UserContext()
@@ -1274,7 +1245,7 @@ class HomeFragment : Fragment() {
         // 笔记预览默认不外发，需在设置中显式开启
         val petSeeNotes = prefs.getBoolean("pet_see_notes", false)
         val noteDescs = if (petSeeNotes) {
-            val noteRepo = com.ifafu.kyzz.data.repository.NoteRepository(requireContext())
+            val noteRepo = com.ifafu.kyzz.data.repository.NoteRepository(context)
             noteRepo.getPetVisibleNotes()
                 .sortedByDescending { it.updatedAt }
                 .take(5)

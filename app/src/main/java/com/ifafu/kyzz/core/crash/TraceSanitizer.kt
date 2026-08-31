@@ -12,8 +12,13 @@ package com.ifafu.kyzz.core.crash
  */
 object TraceSanitizer {
 
-    /** 正方 URL 路径中的会话 token：括号内 20-40 位小写字母数字 */
-    private val TOKEN_IN_URL = Regex("""\(([a-z0-9]{20,40})\)""")
+    /**
+     * 正方 URL 路径中的会话 token：括号内 20-64 位字母数字（兼容大写与更长
+     * 的变体）。堆栈帧里的 `(SourceFile)`/`(Foo.kt:12)` 含标点或长度不足，
+     * 不会误伤；个别纯字母异常类名（如 `(StreamResetException)`）会被过度
+     * 掩码为 (TOKEN)——按"宁可多掩码"原则接受。
+     */
+    private val TOKEN_IN_URL = Regex("""\(([a-zA-Z0-9]{20,64})\)""")
 
     /** 日志式 token 打印（大小写兼容） */
     private val TOKEN_LOGGED = Regex("""sessionToken=\S+""", RegexOption.IGNORE_CASE)

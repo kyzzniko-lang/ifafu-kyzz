@@ -18,6 +18,16 @@ class TraceSanitizerTest {
     }
 
     @Test
+    fun `大写与超长 token 变体也被掩码`() {
+        val upper = "(M3XK21ABQ0JP4R45ISVA0Q55)"
+        val overlong = "(" + "a1b2c3d4e5".repeat(6) + ")" // 60 位
+        val out = TraceSanitizer.sanitize("$upper $overlong")
+        assertFalse(out.contains("M3XK21ABQ0JP4R45ISVA0Q55"))
+        assertFalse(out.contains("a1b2c3d4e5"))
+        assertEquals("(TOKEN) (TOKEN)", out)
+    }
+
+    @Test
     fun `日志式 sessionToken 被掩码`() {
         val out = TraceSanitizer.sanitize("prepareLogin failed: sessionToken=abcdef1234567890abcdef1234567890")
         assertFalse(out.contains("abcdef1234567890"))

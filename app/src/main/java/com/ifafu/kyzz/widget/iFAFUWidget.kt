@@ -4,7 +4,6 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.util.Log
@@ -29,13 +28,6 @@ class iFAFUWidget : AppWidgetProvider() {
             val content = getTodayCoursesText(context)
             views.setTextViewText(R.id.tvWidgetContent, content)
             appWidgetManager.updateAppWidget(appWidgetId, views)
-        }
-
-        fun updateAllWidgets(context: Context) {
-            val intent = Intent(context, iFAFUWidget::class.java).apply {
-                action = ACTION_UPDATE
-            }
-            context.sendBroadcast(intent)
         }
 
         fun clearWidgetData(context: Context) {
@@ -195,11 +187,5 @@ class iFAFUWidget : AppWidgetProvider() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to cancel alarm", e)
         }
-    }
-}
-
-class WidgetClearReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent?) {
-        iFAFUWidget.clearWidgetData(context)
     }
 }
