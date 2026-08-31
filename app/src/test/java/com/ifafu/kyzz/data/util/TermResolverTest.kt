@@ -6,16 +6,19 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Calendar
-import java.util.TimeZone
 
 /**
  * 学年边界回归测试：新学年第一学期从"9月1日所在周的周一"开始，
  * 与 termFirstDay/estimatedFirstDay 的归一口径一致。
  * 2026年9月1日是周二 → 该周周一为8月31日（开学首日踩中的实际场景）。
+ *
+ * 日期用默认时区构造：TermResolver 内部(estimatedFirstDay/边界比较)按
+ * 默认时区计算，测试若强制 Asia/Shanghai 会在 UTC 的 CI 上产生 8 小时
+ * 偏移导致边界用例失败。断言均为"日期粒度"语义，任意单一时区内自洽。
  */
 class TermResolverTest {
     private fun date(year: Int, month: Int, day: Int = 1): Calendar =
-        Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai")).apply {
+        Calendar.getInstance().apply {
             clear()
             set(year, month - 1, day)
         }
