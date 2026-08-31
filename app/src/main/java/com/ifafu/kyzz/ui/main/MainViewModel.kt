@@ -173,6 +173,18 @@ class MainViewModel @Inject constructor(
                 _todayCourses.postValue(emptyList())
                 return@launch
             }
+            // termFirstDay 已按新学期计周（如 8月31日开学），但缓存课表仍属于上一
+            // 学期（教务尚未发布新课表）：把旧学期第1周的课冒充"今日课程"会张冠
+            // 李戴，宁可显示无课并限频探测，等新课表发布后自动恢复。
+            if (belongsToDifferentTerm(syllabus)) {
+                if (cacheManager.isSyllabusUpcomingProbeStale(user.account, 6L * 60 * 60 * 1000)) {
+                    cacheManager.markSyllabusUpcomingProbe(user.account)
+                    fetchSyllabusAndShow()
+                } else {
+                    _todayCourses.postValue(emptyList())
+                }
+                return@launch
+            }
             computeTodayCourses(syllabus)
             // 学期中的调课/退改选不会反映到"缓存存在即直接用"的逻辑里：缓存超过
             // 7 天时后台刷新一次，页面先用旧缓存渲染；用户下拉刷新（force）时
@@ -213,7 +225,13 @@ class MainViewModel @Inject constructor(
                 val syllabus = syllabusApi.getSyllabus(userRepository.host, freshUser.token, freshUser.account, freshUser.name)
                 if (syllabus != null) {
                     cacheManager.saveSyllabus(freshUser.account, syllabus)
-                    computeTodayCourses(syllabus)
+                    if (belongsToDifferentTerm(syllabus)) {
+                        // 教务默认视图仍返回上一学期（新课表未发布）：不能按新学期
+                        // 周次展示旧学期课程，显示"今日无课"等待发布。
+                        _todayCourses.value = emptyList()
+                    } else {
+                        computeTodayCourses(syllabus)
+                    }
                 } else {
                     // 拉取失败但旧缓存仍在：保留缓存渲染，不把首页今日课程清空
                     // （刷新失败清空会让用户以为今天的课全没了）。

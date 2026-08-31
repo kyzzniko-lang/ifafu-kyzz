@@ -77,6 +77,7 @@ class HomeFragment : Fragment() {
     private var bubbleAnimator: ValueAnimator? = null
     private var pulseAnimator: AnimatorSet? = null
     private var hasRenderedCourses = false
+    private var lastRenderedCourses: List<MainViewModel.TodayCourse>? = null
     private var petPositionBeforeBubble: Pair<Float, Float>? = null
     private var autoRefreshMonitorStarted = false
     private val resumeRunnable = Runnable {
@@ -1672,6 +1673,7 @@ class HomeFragment : Fragment() {
     private fun showTodayCourses(courses: List<MainViewModel.TodayCourse>) {
         if (courses.isEmpty()) {
             hasRenderedCourses = false
+            lastRenderedCourses = null
             binding.timelineContainer.visibility = View.GONE
             binding.tvTodaySection.visibility = View.GONE
             binding.courseProgressContainer.visibility = View.GONE
@@ -1709,14 +1711,18 @@ class HomeFragment : Fragment() {
         val progressPercent = if (totalCourses > 0) finishedCount * 100 / totalCourses else 0
         binding.courseProgressContainer.visibility = View.VISIBLE
         binding.courseProgressBar.max = 100
-        // Animate progress bar
+        binding.courseProgressText.text = "已完成 $finishedCount/$totalCourses 节课"
+        // 首次渲染或课程列表变化（跨天/新课表）才从 0 播放整段动画；天气刷新、
+        // 网络结果回填等重复渲染从当前值平滑过渡。旧逻辑每次渲染都从 0 重播，
+        // 一次下拉刷新（缓存渲染+网络回填+天气刷新三次渲染）进度条会连播三遍。
         val progressBar = binding.courseProgressBar
-        val anim = ValueAnimator.ofInt(0, progressPercent)
-        anim.duration = 600
+        val coursesChanged = courses != lastRenderedCourses
+        val startValue = if (coursesChanged || !hasRenderedCourses) 0 else progressBar.progress
+        val anim = ValueAnimator.ofInt(startValue, progressPercent)
+        anim.duration = if (startValue == 0) 600 else 300
         anim.interpolator = AccelerateDecelerateInterpolator()
         anim.addUpdateListener { progressBar.progress = it.animatedValue as Int }
         anim.start()
-        binding.courseProgressText.text = "已完成 $finishedCount/$totalCourses 节课"
 
         val container = binding.timelineContainer
         val animateEntrance = !hasRenderedCourses
@@ -1847,6 +1853,7 @@ class HomeFragment : Fragment() {
             container.addView(itemView)
         }
         hasRenderedCourses = true
+        lastRenderedCourses = courses
     }
 
     private fun showCourseDetail(course: MainViewModel.TodayCourse, startTime: String, endTime: String) {

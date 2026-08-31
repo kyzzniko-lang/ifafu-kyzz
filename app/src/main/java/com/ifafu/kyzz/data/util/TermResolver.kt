@@ -15,13 +15,26 @@ object TermResolver {
 
     fun inferCurrentTerm(now: Calendar = Calendar.getInstance()): Term {
         val y = now.get(Calendar.YEAR)
-        val month = now.get(Calendar.MONTH) + 1
-        return when (month) {
-            1 -> Term("${y - 1}-$y", "1")
-            // 8 月仍处于上一学年暑假，9 月再切换到新学年。
-            in 2..8 -> Term("${y - 1}-$y", "2")
-            else -> Term("$y-${y + 1}", "1")
+        return when {
+            now.get(Calendar.MONTH) == Calendar.JANUARY ->
+                Term("${y - 1}-$y", "1")
+            // 新学年第一学期从"9月1日所在周的周一"开始，与 termFirstDay /
+            // estimatedFirstDay 的归一口径一致（教务按整周排课）。2026年9月1日
+            // 是周二，该周周一为8月31日：若按自然月等到9月才切换，开学首日仍
+            // 被判成上一学年第二学期，旧学期课表会错误套用新学期开学日。
+            now.timeInMillis >= academicYearFirstMonday(y) ->
+                Term("$y-${y + 1}", "1")
+            else ->
+                Term("${y - 1}-$y", "2")
         }
+    }
+
+    /** 学年第一学期的开学周一（9月1日所在周的周一 00:00）。 */
+    private fun academicYearFirstMonday(academicYear: Int): Long {
+        return estimatedFirstDay(Term("$academicYear-${academicYear + 1}", "1"))
+            ?.timeInMillis
+            // 年份非法时按"尚未进入新学年"处理
+            ?: Long.MAX_VALUE
     }
 
     fun pickTerm(
@@ -38,18 +51,22 @@ object TermResolver {
     /**
      * 寒暑假不只依赖日期切学期：先探测下一学期是否真的发布了课表。
      * 1-2 月为寒假过渡期，7-8 月为暑假过渡期。
+     * 8 月末开学周一（9月1日所在周的周一）之后不再是过渡期：新课表已经是
+     * 当前学期，继续按"未开学"处理会把开学第一周的今日课程藏掉。
      */
     fun breakTransition(now: Calendar = Calendar.getInstance()): BreakTransition? {
         val year = now.get(Calendar.YEAR)
-        return when (now.get(Calendar.MONTH) + 1) {
-            1, 2 -> BreakTransition(
+        return when (now.get(Calendar.MONTH)) {
+            Calendar.JANUARY, Calendar.FEBRUARY -> BreakTransition(
                 previous = Term("${year - 1}-$year", "1"),
                 upcoming = Term("${year - 1}-$year", "2")
             )
-            7, 8 -> BreakTransition(
-                previous = Term("${year - 1}-$year", "2"),
-                upcoming = Term("$year-${year + 1}", "1")
-            )
+            Calendar.JULY, Calendar.AUGUST ->
+                if (now.timeInMillis >= academicYearFirstMonday(year)) null
+                else BreakTransition(
+                    previous = Term("${year - 1}-$year", "2"),
+                    upcoming = Term("$year-${year + 1}", "1")
+                )
             else -> null
         }
     }

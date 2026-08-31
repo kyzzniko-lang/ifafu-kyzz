@@ -178,28 +178,13 @@ class SyllabusViewModel @Inject constructor(
 
     /**
      * 通过当前日期推断 year/term 是否为当前学期。
-     * 第一学期：9月~次年1月 → 学年以秋季年份开头
-     * 第二学期：2月~7月 → 学年以去年秋季年份开头
+     * 学期归属统一由 TermResolver 判定（新学年从"9月1日所在周的周一"开始）。
+     * 这里曾按自然月另维护一套口径，与 TermResolver 在 8 月末开学周漂移，
+     * 造成新学期被当成历史学期、旧学期错用新学期开学日。
      */
     private fun isInferredCurrentTerm(year: String, term: String): Boolean {
-        val parts = year.split("-")
-        if (parts.size != 2) return false
-        val startYear = parts[0].toIntOrNull() ?: return false
-        val now = java.util.Calendar.getInstance()
-        val month = now.get(java.util.Calendar.MONTH)
-        val currentYear = now.get(java.util.Calendar.YEAR)
-        return when (term) {
-            "1" -> {
-                // 第一学期：9-12月属于 startYear 年秋季，1月属于 startYear+1 年冬季
-                (month >= java.util.Calendar.SEPTEMBER && currentYear == startYear) ||
-                (month == java.util.Calendar.JANUARY && currentYear == startYear + 1)
-            }
-            "2" -> {
-                // 第二学期及暑假：2-8月；9月再切换到下一学年第一学期。
-                month in java.util.Calendar.FEBRUARY..java.util.Calendar.AUGUST && currentYear == startYear + 1
-            }
-            else -> false
-        }
+        val inferred = TermResolver.inferCurrentTerm()
+        return year == inferred.year && term == inferred.term
     }
 
     private fun updateAvailableOptions(syllabus: Syllabus) {

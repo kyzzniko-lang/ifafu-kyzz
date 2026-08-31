@@ -129,12 +129,10 @@ class CourseReminderReceiver : BroadcastReceiver() {
                 // 新学期课表已发布但尚未开学：不提醒。
                 return emptyList()
             }
-            // 寒暑假期间，缓存的课表可能还是上一学期（termFirstDay 已被同步到新学期、
-            // 但课表缓存未更新）。若缓存学期既不是推断当前学期、也不是已发布新学期，
-            // 周数可能恰好落在旧课范围内而误推一条旧学期课程。与首页 belongsToDifferentTerm 对齐。
-            if (upcoming != null && !cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty() &&
-                (cachedYear != upcoming.year || cachedTerm != upcoming.term)
-            ) {
+            // 缓存学期与日历推断学期不一致（termFirstDay 已翻到新学期、课表缓存还是
+            // 旧学期，如 8月末开学周新课表尚未发布）时，旧学期课程不能按新学期周次
+            // 推送。与首页 belongsToDifferentTerm 同口径；无论是否处于假期过渡期都生效。
+            if (!cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty()) {
                 val inferred = TermResolver.inferCurrentTerm()
                 if (cachedYear != inferred.year || cachedTerm != inferred.term) {
                     return emptyList()

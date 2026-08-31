@@ -107,7 +107,7 @@ class SyllabusApi @Inject constructor(
                     }
                     if (upcomingSyllabus?.hasPublishedContent() == true) {
                         Log.i("SyllabusApi", "检测到${upcoming.display()}课表已发布，提升为默认课表")
-                        syncTermFirstDayForUpcoming(upcoming)
+                        alignTermFirstDayToEstimated(upcoming)
                         return upcomingSyllabus
                     }
 
@@ -142,6 +142,12 @@ class SyllabusApi @Inject constructor(
                 Log.i("SyllabusApi", "当前学期（${inferred.display()}）暂无课表数据，返回空课表")
             }
 
+            if (usedInferred) {
+                // 新学期直接命中（8月末开学周起不再经过假期提升路径）时，
+                // termFirstDay 可能还停留在上一学期，先按校历惯例对齐，
+                // 随后 saveTermFirstDayIfNeeded 再用服务器周次精确校正。
+                alignTermFirstDayToEstimated(inferred)
+            }
             saveTermFirstDayIfNeeded(syllabus)
             syllabus
         } catch (e: CancellationException) { throw e }
@@ -208,6 +214,7 @@ class SyllabusApi @Inject constructor(
             Log.d("SyllabusApi", "Parsed: courses=${syllabus.courses.size}")
             val inferred = TermResolver.inferCurrentTerm()
             if (year == inferred.year && term == inferred.term) {
+                alignTermFirstDayToEstimated(inferred)
                 saveTermFirstDayIfNeeded(syllabus)
             }
             syllabus
@@ -246,16 +253,17 @@ class SyllabusApi @Inject constructor(
     }
 
     /**
-     * 假期把新学期课表提升为默认后，termFirstDay 往往还停留在上一学期的开学日：
-     * 周次会按旧学期计算（课表页显示"第25周/课程已结束"），导出日历更是整学期
-     * 错位。服务器对未开学的学期通常不标注"第N教学周"，saveTermFirstDayIfNeeded
-     * 帮不上忙，这里按校历惯例（9月1日/3月2日对齐周一）估算新学期首日。仅在现有
-     * 值明显不属于新学期（误差超过 8 周，即还是旧学期日期）时才覆盖；之后 GitHub
-     * 配置或服务器周次标签仍可把它校正到真实日期。
+     * 把 termFirstDay 对齐到指定学期按校历惯例（9月1日/3月2日对齐周一）估算的首日。
+     * 使用场景：学期刚切换（假期提升新课表、或 8 月末开学周起直接命中新学期）时，
+     * termFirstDay 往往还停留在上一学期的开学日——周次会按旧学期计算（课表页显示
+     * "第25周/课程已结束"），导出日历更是整学期错位。服务器对未开学的学期通常不标注
+     * "第N教学周"，saveTermFirstDayIfNeeded 帮不上忙。仅在现有值明显不属于该学期
+     * （误差超过 8 周，即还是旧学期日期）时才覆盖；之后 GitHub 配置或服务器周次
+     * 标签仍可把它校正到真实日期。
      */
-    private fun syncTermFirstDayForUpcoming(upcoming: TermResolver.Term) {
+    private fun alignTermFirstDayToEstimated(term: TermResolver.Term) {
         if (userRepository.termFirstDayManual) return
-        val estimated = TermResolver.estimatedFirstDay(upcoming) ?: return
+        val estimated = TermResolver.estimatedFirstDay(term) ?: return
         val existing = userRepository.termFirstDay
         if (existing.isNotEmpty()) {
             try {
@@ -271,7 +279,7 @@ class SyllabusApi @Inject constructor(
         }
         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
         userRepository.termFirstDay = sdf.format(estimated.time)
-        Log.i("SyllabusApi", "假期提升新课表，termFirstDay 按惯例估算为 ${sdf.format(estimated.time)}")
+        Log.i("SyllabusApi", "termFirstDay 对齐到${term.display()}校历估算首日 ${sdf.format(estimated.time)}")
     }
 
     /**
