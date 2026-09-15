@@ -48,6 +48,9 @@ object AppModule {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)
             .writeTimeout(15, TimeUnit.SECONDS)
+            // 教务登录是多次 302 的重定向链，readTimeout 只约束单次读，
+            // 不设总时长上限时弱网下整条链可以无限拖住全局互斥锁
+            .callTimeout(60, TimeUnit.SECONDS)
             .followRedirects(true)
             .followSslRedirects(true)
             .build()

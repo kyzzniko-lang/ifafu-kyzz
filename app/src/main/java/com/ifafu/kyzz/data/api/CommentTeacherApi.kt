@@ -217,8 +217,7 @@ class CommentTeacherApi @Inject constructor(
 
             val vs = htmlClient.parseViewState(html)
             val fieldNames = parseEvalFieldNames(html)
-            val pjkcMatch = Regex("""<option[^>]*?selected[^>]*?value="([^"]*)""").find(html)
-            val pjkcValue = pjkcMatch?.groupValues?.get(1) ?: ""
+            val pjkcValue = selectedOptionValue(html) ?: ""
             android.util.Log.d("CommentApi", "Save: VS len=${vs.viewState.length}, pjkc='$pjkcValue', fields=${fieldNames.size}, commentLen=${commentText.length}")
 
             // 构建 POST body 字符串，字段名和值都 URL 编码以匹配浏览器
@@ -502,6 +501,25 @@ class CommentTeacherApi @Inject constructor(
         return pattern.findAll(html).map { it.groupValues[0] }.distinct().sorted().toList()
     }
 
+    /**
+     * 提取第一个带 selected 属性的 option 的 value（即当前选中的 pjkc 课程）。
+     * 旧正则要求 selected 出现在 value 之前，遇到 <option value="x" selected>
+     * 时整条丢失，pjkc 提取失败会导致评教提交落在错误课程；这里先匹配整个
+     * 标签再分别提取属性（同 HtmlParser.parseOptionTags），兼容任意属性顺序。
+     */
+    private fun selectedOptionValue(html: String): String? {
+        val tagRegex = Regex("""<option\b([^>]*)>""")
+        val valueRegex = Regex("""value\s*=\s*"([^"]*)"""")
+        val selectedRegex = Regex("""\bselected\b""", RegexOption.IGNORE_CASE)
+        for (match in tagRegex.findAll(html)) {
+            val attrs = match.groupValues[1]
+            if (!selectedRegex.containsMatchIn(attrs)) continue
+            val value = valueRegex.find(attrs)?.groupValues?.get(1) ?: continue
+            return value
+        }
+        return null
+    }
+
     /** 解析所有 ctl 索引及 DataGrid 名（向后兼容，仅用于旧代码路径） */
     private fun parseEvalCtlIndices(html: String): List<Pair<String, Int>> {
         val pattern = Regex("""(DataGrid\d+)[_:]+ctl(\d+)[_:]+JS1""")
@@ -593,8 +611,8 @@ class CommentTeacherApi @Inject constructor(
             formBuilder.add("__VIEWSTATE", vs.viewState)
             formBuilder.add("__VIEWSTATEGENERATOR", vs.viewStateGenerator)
             // 当前评价的课程 ID
-            val pjkcMatch = Regex("""<option[^>]*?selected[^>]*?value="([^"]*)""").find(html)
-            if (pjkcMatch != null) formBuilder.add("pjkc", pjkcMatch.groupValues[1])
+            val pjkcValue = selectedOptionValue(html)
+            if (pjkcValue != null) formBuilder.add("pjkc", pjkcValue)
             formBuilder.add("pjxx", commentText)
             formBuilder.add("Button1", "保  存")
 

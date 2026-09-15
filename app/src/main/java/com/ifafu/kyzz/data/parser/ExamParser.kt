@@ -70,9 +70,12 @@ class ExamParser @Inject constructor(
         val tableEnd = html.indexOf("</table>", tableStart)
             .let { if (it < 0) html.length else it + "</table>".length }
         val tableContent = html.substring(tableStart, tableEnd)
+        // DOT_MATCH_ALL：真实页面里 <td> 与内容之间常夹着换行/缩进，不带它时
+        // `.*?` 不跨行，整表静默丢匹配，考试列表整体为空
         val pattern = Regex(
             "<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>" +
-            "<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>"
+            "<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>",
+            RegexOption.DOT_MATCHES_ALL
         )
 
         pattern.findAll(tableContent).forEach { match ->

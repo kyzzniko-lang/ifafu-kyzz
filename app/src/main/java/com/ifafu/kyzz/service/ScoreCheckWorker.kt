@@ -86,24 +86,19 @@ class ScoreCheckWorker(
         freshScores: List<Score>,
         cacheManager: CacheManager
     ) {
-        val monitorPrefs = applicationContext.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
-        val initializedKey = "score_monitor_initialized_$account"
-
         // No score list means there is no trustworthy new/old comparison baseline.
         if (cachedScores == null) {
             cacheManager.commitFreshScores(account, freshScores)
-            monitorPrefs.edit().putBoolean(initializedKey, true).apply()
             return
         }
 
         // 教务系统改版或返回错误页时，页面"正常"但解析出 0 门成绩。已有成绩的老用户
         // 突然一条不剩几乎必然是解析失败而非真实数据：此时若把缓存覆盖为空，下次
         // 成功拉取会把全部历史成绩（四年可达 50+ 门）误判为新出分并弹出巨型通知。
+        // 无缓存时同样不落盘空基线——空列表会让下轮 diff 把全部课程误报为新出分。
         if (freshScores.isEmpty()) {
             if (cachedScores.isNotEmpty()) {
                 Log.w(TAG, "本次拉取到 0 门成绩但缓存已有 ${cachedScores.size} 门，疑似教务页面异常，保留缓存")
-            } else {
-                cacheManager.saveScores(account, freshScores)
             }
             return
         }
@@ -149,7 +144,6 @@ class ScoreCheckWorker(
             }
             showNotification(title, lines.joinToString("\n"))
         }
-        monitorPrefs.edit().putBoolean(initializedKey, true).apply()
     }
 
     private fun retryOnce(): Result {

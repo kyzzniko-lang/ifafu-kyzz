@@ -955,27 +955,4 @@ class PetViewModel @Inject constructor(
         val examInfo = if (nextExamName != null) "${nextExamName}快考了，" else ""
         return "${timeGreet}主人！${stateGreet} ${courseInfo}${examInfo}有什么想聊的吗？"
     }
-
-    fun onExamProgressUpdate(examName: String, newStatus: Int) {
-        launchSafe {
-            petMutex.withLock {
-                // 从磁盘读最新值：考试进度更新与番茄钟加经验并发时，
-                // 旧内存快照全量写回会回滚后者的修改
-                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
-                when (newStatus) {
-                    1 -> {
-                        pet.mood = (pet.mood + 3).coerceAtMost(100)
-                        showBubble("${examName}开始复习了，加油${if (pet.petType in listOf("crab", "cloudling")) "！" else "喵~"}", 3000L)
-                    }
-                    2 -> {
-                        pet.mood = (pet.mood + 10).coerceAtMost(100)
-                        pet.state = PetState.HAPPY
-                        showBubble("太棒了，${examName}搞定了！", 3000L)
-                    }
-                }
-                _pet.value = pet
-                withContext(Dispatchers.IO) { petRepository.savePet(pet) }
-            }
-        }
-    }
 }

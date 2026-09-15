@@ -139,5 +139,11 @@ class MainApplication : Application() {
     companion object {
         /** MainActivity intent extra：标记本次启动由崩溃恢复触发。 */
         const val EXTRA_CRASH_RECOVERY = "crash_recovery"
+
+        // 本进程内已有 Activity 完成过 onCreate。
+        // 区分"进程内配置变更重建"（可安全恢复状态）与"进程死亡后重建"
+        // （曾触发 Hilt 注入与 Fragment 恢复冲突崩溃，见 BaseActivity）。
+        @Volatile
+        var processWarmed = false
     }
 }

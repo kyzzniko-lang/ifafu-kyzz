@@ -74,6 +74,8 @@ class SyllabusApi @Inject constructor(
             val targetTerm = picked?.term ?: serverTerm
             val usedInferred = picked != null
 
+            // 记录最终解析所用的源页面：解析为空时的二次校验要对着它做
+            var sourceHtml = html
             val syllabus = if (targetYear == serverYear && targetTerm == serverTerm) {
                 Log.d("SyllabusApi", "Target matches server default ($serverYear-$serverTerm), using GET response directly")
                 syllabusParser.parseSyllabus(doc, number)
@@ -85,7 +87,16 @@ class SyllabusApi @Inject constructor(
                 val selectedDoc = selectTerm(
                     accessUrl, doc, targetYear, targetTerm, serverYear, serverTerm
                 )
+                sourceHtml = selectedDoc.html()
                 syllabusParser.parseSyllabus(selectedDoc, number)
+            }
+
+            // 解析为空时必须确认页面具备课表业务页特征（kbtable/xskb 等）：分类器
+            // 未识别的中间页/乱码页解析出的空课表若照常返回，会覆盖上游好缓存
+            // （对照 ScoreApi.fetchAllScores 的二次校验）。
+            if (syllabus.isEmpty() && !SessionResponseClassifier.looksLikeBusinessPage(sourceHtml)) {
+                Log.w("SyllabusApi", "课表解析结果为空且缺失课表页特征，疑似异常页面，按失败处理")
+                return null
             }
 
             val transition = TermResolver.breakTransition()
@@ -93,48 +104,56 @@ class SyllabusApi @Inject constructor(
                 // 主流程的当前学期课表已经解析成功。假期探测（upcoming/previous
                 // 学期的额外请求）只是优化项：探测请求超时/会话过期时不应把整次
                 // getSyllabus 判为失败——那会让首页把已经拿到的课表也丢掉。
-                try {
-                    val upcoming = transition.upcoming
-                    val upcomingAvailable = yearResult.options.contains(upcoming.year) &&
-                        termResult.options.contains(upcoming.term)
-                    val upcomingSyllabus = when {
-                        !upcomingAvailable -> null
-                        targetYear == upcoming.year && targetTerm == upcoming.term -> syllabus
-                        else -> getSyllabusWithTerm(
-                            host, userRepository.getUser().token, number, name,
-                            upcoming.year, upcoming.term
-                        )
-                    }
-                    if (upcomingSyllabus?.hasPublishedContent() == true) {
-                        Log.i("SyllabusApi", "检测到${upcoming.display()}课表已发布，提升为默认课表")
-                        alignTermFirstDayToEstimated(upcoming)
-                        return upcomingSyllabus
-                    }
-
-                    // 新课表尚未发布时继续使用上一学期，避免寒暑假进入空白课表。
-                    val previous = transition.previous
-                    val previousSyllabus = when {
-                        targetYear == previous.year && targetTerm == previous.term -> syllabus
-                        serverYear == previous.year && serverTerm == previous.term ->
-                            syllabusParser.parseSyllabus(doc, number)
-                        yearResult.options.contains(previous.year) &&
-                            termResult.options.contains(previous.term) ->
-                            getSyllabusWithTerm(
-                                host, userRepository.getUser().token, number, name,
-                                previous.year, previous.term
+                // 探测前重新快照 user 与 host：账号/host 切换瞬间若仍用外层旧
+                // host 去取新 token，旧 host + 新 token 的请求只会打到错误主机
+                // 并触发无意义的重登副作用；不一致时跳过探测。
+                val probeUser = userRepository.getUser()
+                if (probeUser.account == number && userRepository.host == host) {
+                    try {
+                        val upcoming = transition.upcoming
+                        val upcomingAvailable = yearResult.options.contains(upcoming.year) &&
+                            termResult.options.contains(upcoming.term)
+                        val upcomingSyllabus = when {
+                            !upcomingAvailable -> null
+                            targetYear == upcoming.year && targetTerm == upcoming.term -> syllabus
+                            else -> getSyllabusWithTerm(
+                                host, probeUser.token, number, name,
+                                upcoming.year, upcoming.term
                             )
-                        else -> null
-                    }
-                    if (previousSyllabus != null) {
-                        if (previous.year == inferred.year && previous.term == inferred.term) {
-                            saveTermFirstDayIfNeeded(previousSyllabus)
                         }
-                        return previousSyllabus
+                        if (upcomingSyllabus?.hasPublishedContent() == true) {
+                            Log.i("SyllabusApi", "检测到${upcoming.display()}课表已发布，提升为默认课表")
+                            alignTermFirstDayToEstimated(upcoming)
+                            return upcomingSyllabus
+                        }
+
+                        // 新课表尚未发布时继续使用上一学期，避免寒暑假进入空白课表。
+                        val previous = transition.previous
+                        val previousSyllabus = when {
+                            targetYear == previous.year && targetTerm == previous.term -> syllabus
+                            serverYear == previous.year && serverTerm == previous.term ->
+                                syllabusParser.parseSyllabus(doc, number)
+                            yearResult.options.contains(previous.year) &&
+                                termResult.options.contains(previous.term) ->
+                                getSyllabusWithTerm(
+                                    host, probeUser.token, number, name,
+                                    previous.year, previous.term
+                                )
+                            else -> null
+                        }
+                        if (previousSyllabus != null) {
+                            if (previous.year == inferred.year && previous.term == inferred.term) {
+                                saveTermFirstDayIfNeeded(previousSyllabus)
+                            }
+                            return previousSyllabus
+                        }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        Log.w("SyllabusApi", "假期课表探测失败，回退使用当前解析结果", e)
                     }
-                } catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    Log.w("SyllabusApi", "假期课表探测失败，回退使用当前解析结果", e)
+                } else {
+                    Log.w("SyllabusApi", "假期课表探测前账号或主机已切换，跳过探测")
                 }
             }
 

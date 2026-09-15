@@ -37,7 +37,12 @@ class StudentQueryApi @Inject constructor(
                 val reloginResp = reloginHelper.relogin()
                 if (!reloginResp.success) return QueryResult(false, reloginResp.message)
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xsxkqk.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121615"
+                // 重登等待期间账号/主机可能已切换（守卫同 StudentInfoApi/ExamApi）：
+                // 新 token 配旧查询参数会把 A 的选课数据挂进 B 的会话并缓存串台。
+                if (user.account != number || userRepository.host != host) {
+                    return QueryResult(false, "登录信息已变更，请刷新重试")
+                }
+                val retryUrl = "${host}/(${user.token})/xsxkqk.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121615"
                 val retryHtml = htmlClient.getString(retryUrl)
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return QueryResult(false, "会话已过期，请重新登录")
@@ -132,7 +137,12 @@ class StudentQueryApi @Inject constructor(
                 val reloginResp = reloginHelper.relogin()
                 if (!reloginResp.success) return QueryResult(false, reloginResp.message)
                 val user = userRepository.getUser()
-                val retryUrl = "${host}/(${user.token})/xsbkkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121617"
+                // 重登等待期间账号/主机可能已切换（守卫同 StudentInfoApi/ExamApi）：
+                // 新 token 配旧查询参数会把 A 的缓考数据挂进 B 的会话并缓存串台。
+                if (user.account != number || userRepository.host != host) {
+                    return QueryResult(false, "登录信息已变更，请刷新重试")
+                }
+                val retryUrl = "${host}/(${user.token})/xsbkkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121617"
                 val retryHtml = htmlClient.getString(retryUrl)
                 if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
                     return QueryResult(false, "会话已过期，请重新登录")

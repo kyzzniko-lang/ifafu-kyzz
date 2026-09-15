@@ -47,7 +47,10 @@ class DiscussionViewModel @Inject constructor(
     private var hasMore = true
     private var isLoading = false
     private var cacheHydrated = false
-    private var networkLoadStarted = false
+    // 本会话是否真实拉取过 page=1 网络：水合的是 30 分钟内的新鲜缓存时不会
+    // 立即发网络请求，若不补拉第一页，窗口内的新增评论会被滚动加载的
+    // page=2 永远跳过
+    private var fetchedFirstPageOnline = false
 
     val userId: String
         get() = AuthorId.discussionUserId(app, userRepository.getUser().account)
@@ -129,7 +132,6 @@ class DiscussionViewModel @Inject constructor(
             if (isLoading) return
             currentPage = 1
             hasMore = true
-            networkLoadStarted = false
             fetchComments(page = 1, refresh = true)
             return
         }
@@ -153,18 +155,26 @@ class DiscussionViewModel @Inject constructor(
         }
 
         if (!hasMore || isLoading) return
+        // 本会话还没真实拉过第一页（水合了新鲜缓存）：先补 page=1 同步窗口内
+        // 增量，再继续正常的 page=2 滚动加载
+        if (!fetchedFirstPageOnline) {
+            fetchComments(page = 1)
+            return
+        }
         fetchComments(page = currentPage)
     }
 
     private fun fetchComments(page: Int, refresh: Boolean = false) {
-        if (isLoading || networkLoadStarted && !refresh && page == 1) return
+        // 第一页非刷新请求只允许在"尚未成功拉过第一页"时发出，避免滚动路径反复重拉
+        if (isLoading || (page == 1 && !refresh && fetchedFirstPageOnline)) return
         isLoading = true
-        networkLoadStarted = true
         _state.value = if (comments.isEmpty()) DiscussionState.Loading else DiscussionState.LoadingMore
 
         viewModelScope.launch {
             try {
                 val newComments = commentRepository.getComments(page = page, perPage = 100)
+                // 网络请求成功返回即视为真实拉取过该页（空结果也算，服务端确认无数据）
+                if (page == 1) fetchedFirstPageOnline = true
                 // API 将网络异常与空页都降级为空列表；已有缓存时不能因为一次
                 // 网络失败就清空评论，否则用户会看到短暂的空页面。
                 if (newComments.isEmpty() && comments.isNotEmpty()) {

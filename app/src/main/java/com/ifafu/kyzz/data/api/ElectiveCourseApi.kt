@@ -220,6 +220,9 @@ class ElectiveCourseApi @Inject constructor(
         val errorPage = htmlClient.checkErrorPage(html)
         return when {
             errorPage != null -> Response(false, -1, errorPage.message)
+            // 提交成功（"选课成功"）与失败（"该课堂人数已满"）都以顶层 alert 返回，
+            // 消息含"成功"必须判成功：否则明明选上了却显示 Error，课表缓存也不失效。
+            alert != null && alert.message.contains("成功") -> Response(true, 0, alert.message)
             alert != null -> Response(false, 0, alert.message)
             else -> Response(true, 0, "选课成功")
         }

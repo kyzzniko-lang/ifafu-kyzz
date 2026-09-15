@@ -86,27 +86,29 @@ class ScoreParser @Inject constructor(
         if (tableBegin < 0 || tableEnd <= tableBegin) return
 
         val tableContent = html.substring(tableBegin, tableEnd)
+        // DOTALL：模板化页面 <td> 与内容间可能含换行，默认 . 不跨行会整表静默丢匹配
         val pattern = Regex(
             "<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>" +
             "<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>" +
-            "<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>"
+            "<td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td><td>(.*?)</td>",
+            RegexOption.DOT_MATCHES_ALL
         )
 
         pattern.findAll(tableContent).forEach { match ->
             val scoreText = match.groupValues[8].trim()
             scores.add(Score(
-                year = match.groupValues[1],
-                term = match.groupValues[2],
-                courseCode = match.groupValues[3],
-                courseName = match.groupValues[4],
-                courseType = match.groupValues[5],
+                year = htmlParser.cleanNbsp(match.groupValues[1]),
+                term = htmlParser.cleanNbsp(match.groupValues[2]),
+                courseCode = htmlParser.cleanNbsp(match.groupValues[3]),
+                courseName = htmlParser.cleanNbsp(match.groupValues[4]),
+                courseType = htmlParser.cleanNbsp(match.groupValues[5]),
                 courseOwner = htmlParser.cleanNbsp(match.groupValues[6]),
                 studyScore = htmlParser.cleanNbspFloat(match.groupValues[7]),
                 score = scoreText.toFloatOrNull() ?: textGradeToScore(scoreText),
                 makeupScore = htmlParser.cleanNbspFloat(match.groupValues[9]),
                 isRestudy = match.groupValues[10] == "是",
                 isDelayExam = match.groupValues[13].contains("缓考") || match.groupValues[14].contains("缓考"),
-                institute = match.groupValues[11],
+                institute = htmlParser.cleanNbsp(match.groupValues[11]),
                 scorePoint = htmlParser.cleanNbspFloat(match.groupValues[12]),
                 comment = htmlParser.cleanNbsp(match.groupValues[13]),
                 makeupComment = htmlParser.cleanNbsp(match.groupValues[14])
@@ -116,11 +118,14 @@ class ScoreParser @Inject constructor(
 
     private fun textGradeToScore(grade: String): Float {
         return when (grade) {
+            // 空白单元格=教务已建行但未出分（缓考录入中等），映射 0（"暂无"）而非 -2，
+            // 否则会被当成缺考哨兵并在 UI 上与作弊/违纪同类展示
+            "" -> 0f
             "优秀", "优" -> 95f
             "良好", "良" -> 85f
             "中等", "中" -> 75f
-            "及格", "合格" -> 65f
-            "不及格", "差", "不合格" -> 50f
+            "及格", "合格", "通过" -> 65f
+            "不及格", "差", "不合格", "不通过" -> 50f
             "免修", "免考" -> -1f
             "缺考", "作弊", "取消", "违纪" -> -2f  // 特殊标记，不影响GPA
             else -> {

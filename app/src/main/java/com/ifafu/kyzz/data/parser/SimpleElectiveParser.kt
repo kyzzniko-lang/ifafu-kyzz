@@ -15,19 +15,16 @@ class SimpleElectiveParser @Inject constructor() {
         val selected = mutableListOf<SimpleCourse>()
 
         val tables = doc.select("table")
-        val fullHtml = doc.html()
         var section = 0 // 0 = available, 1 = selected
 
-        // 计算"已选"标记在文档中的位置（常量，避免在每个表格内重复查找）。
-        val selectedPos1 = fullHtml.indexOf("已选课程")
-        val selectedPos2 = fullHtml.indexOf("已选列表")
-        val markerPos = when {
-            selectedPos1 >= 0 && selectedPos2 >= 0 -> minOf(selectedPos1, selectedPos2)
-            selectedPos1 >= 0 -> selectedPos1
-            selectedPos2 >= 0 -> selectedPos2
-            else -> -1
+        // 计算"已选"标记位置改用文档顺序索引（同 ElectiveParser）：旧实现拿
+        // table.outerHtml() 回 doc.html() 里 indexOf，Jsoup 序列化差异时返回 -1，
+        // 分段游标卡死，已选课程会全部混入可选列表。allElements 按文档序排列、
+        // 元素引用相等，索引天然单调推进。
+        val orderedElements = doc.allElements
+        val markerPos = orderedElements.indexOfFirst {
+            it.ownText().contains("已选课程") || it.ownText().contains("已选列表")
         }
-        var searchStart = 0
 
         for (table in tables) {
             val rows = table.select("tr")
@@ -40,16 +37,10 @@ class SimpleElectiveParser @Inject constructor() {
             if (headerTexts.none { it.contains("课程") || it.contains("项目") }) continue
 
             // Check if "已选" marker appears before this table in document order。
-            // 旧实现用 tableHtml.take(80) 定位，多个表格的前 80 字符相同会命中第一个表格，
-            // 导致"已选课程"分段判定错位；改为用完整 outerHtml + searchStart 追踪真实位置。
             if (section == 0 && markerPos >= 0) {
-                val tableHtml = table.outerHtml()
-                val tablePos = fullHtml.indexOf(tableHtml, searchStart)
-                if (tablePos >= 0) {
-                    searchStart = tablePos + 1
-                    if (markerPos < tablePos) {
-                        section = 1
-                    }
+                val tablePos = orderedElements.indexOfFirst { it === table }
+                if (markerPos < tablePos) {
+                    section = 1
                 }
             }
 

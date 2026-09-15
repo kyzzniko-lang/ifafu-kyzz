@@ -6,6 +6,7 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.observe
 import androidx.viewbinding.ViewBinding
+import com.ifafu.kyzz.MainApplication
 import com.ifafu.kyzz.ui.event.GlobalEvent
 import com.ifafu.kyzz.ui.event.GlobalEventBus
 import com.ifafu.kyzz.ui.login.LoginActivity
@@ -20,9 +21,12 @@ abstract class BaseActivity<VB : ViewBinding> : AppCompatActivity() {
         // On some devices (e.g. iQOO), restored fragments conflict with Hilt injection
         // and cause alternating crash patterns (1st OK, 2nd crash, 3rd OK...). Activity
         // initialization is not retryable: calling super.onCreate twice after a partial
-        // failure corrupts FragmentManager state and can crash again. Disable framework
-        // view/fragment restoration consistently and let each screen reload its cached data.
-        super.onCreate(null)
+        // failure corrupts FragmentManager state and can crash again.
+        // 故仅放行"进程内配置变更重建"（旋转屏幕等，注入状态完好）；进程死亡后的
+        // 恢复路径（冷启动）仍禁用恢复，让各页面重载缓存数据。
+        val restore = savedInstanceState != null && MainApplication.processWarmed
+        MainApplication.processWarmed = true
+        super.onCreate(if (restore) savedInstanceState else null)
         binding = createBinding()
         setContentView(binding.root)
 

@@ -8,6 +8,7 @@ import android.view.View
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.lifecycle.observe
+import com.ifafu.kyzz.core.crash.CrashReporter
 import com.ifafu.kyzz.databinding.ActivityCrashFeedbackBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import dagger.hilt.android.AndroidEntryPoint
@@ -80,6 +81,19 @@ class CrashFeedbackActivity : BaseActivity<ActivityCrashFeedbackBinding>() {
                     binding.btnSubmit.isEnabled = true
                 }
             }
+        }
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // 从恢复对话框进入本页后中途离开（返回/关闭）且未提交反馈：清掉 pending
+        // 单槽位，否则旧崩溃长期占位，下次启动恢复对话框仍展示旧样本。
+        // 上报成功路径 ViewModel 内已清理，这里跳过避免重复；isFinishing 为 false
+        // 是旋转等配置变更的重建，不是用户离开，不能清。
+        if (isFinishing &&
+            viewModel.submitState.value !is CrashFeedbackViewModel.SubmitState.Success
+        ) {
+            CrashReporter.clearPendingCrash()
         }
     }
 

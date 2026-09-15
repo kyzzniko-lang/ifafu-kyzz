@@ -23,9 +23,13 @@ internal object SessionResponseClassifier {
             Log.w(TAG, "会话过期判定命中:页面标题为登录页")
             return true
         }
-        // 兜底：任意包含密码输入框的页面不可能是已登录的业务数据页
-        if ("type=\"password\"" in norm || "type=password" in norm) {
-            Log.w(TAG, "会话过期判定命中:页面含密码输入框")
+        // 兜底：页面含密码输入框且不具备任何业务页特征才判过期。修改密码页
+        // (mmxg.aspx)等合法业务页同样内嵌密码输入框，只看密码框会把整页误判
+        // 为会话过期，触发清 cookie + 无限重登循环。
+        if (("type=\"password\"" in norm || "type=password" in norm) &&
+            !looksLikeBusinessPage(html)
+        ) {
+            Log.w(TAG, "会话过期判定命中:页面含密码输入框且无业务页特征")
             return true
         }
         return false

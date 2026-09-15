@@ -37,6 +37,8 @@ class ExamFragment : Fragment() {
     private val binding get() = _binding!!
     private val viewModel: ExamViewModel by viewModels()
     private var layoutManagerSet = false
+    // Adapter 跨状态发射复用：每次 new 会让后台刷新完成时列表跳回顶部
+    private var examAdapter: ExamAdapter? = null
     // 当前列表的冲突分组，点击卡片打开详情时据此展示"同场冲突"提示
     private var currentConflicts: List<List<Exam>> = emptyList()
 
@@ -135,7 +137,14 @@ class ExamFragment : Fragment() {
             binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
             layoutManagerSet = true
         }
-        binding.recyclerView.adapter = ExamAdapter(allItems, progressMap.toMutableMap())
+        // 复用同一 Adapter 实例（LayoutManager 已复用），数据更新走 updateData，
+        // notifyDataSetChanged 不重置 RecyclerView 的滚动位置
+        val adapter = examAdapter
+            ?: ExamAdapter(mutableListOf(), mutableMapOf()).also { examAdapter = it }
+        if (binding.recyclerView.adapter !== adapter) {
+            binding.recyclerView.adapter = adapter
+        }
+        adapter.updateData(allItems, progressMap.toMutableMap())
     }
 
     private fun findConflicts(exams: List<Exam>): List<List<Exam>> =
@@ -189,13 +198,26 @@ class ExamFragment : Fragment() {
     }
 
     inner class ExamAdapter(
-        private val items: List<Any>,
-        private val progressMap: MutableMap<String, ExamProgress>
+        items: List<Any>,
+        progressMap: MutableMap<String, ExamProgress>
     ) :
         androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
 
+        private val items: MutableList<Any> = items.toMutableList()
+        // 保持同一 Map 实例：状态标签的点击闭包捕获的就是它，原地更新即可生效
+        private val progressMap: MutableMap<String, ExamProgress> = progressMap
+
         private val TYPE_WARNING = 0
         private val TYPE_EXAM = 1
+
+        /** 原地替换数据：保持 Adapter 实例与 RecyclerView 滚动位置不变。 */
+        fun updateData(newItems: List<Any>, newProgress: MutableMap<String, ExamProgress>) {
+            items.clear()
+            items.addAll(newItems)
+            progressMap.clear()
+            progressMap.putAll(newProgress)
+            notifyDataSetChanged()
+        }
 
         override fun getItemViewType(position: Int) = if (items[position] is ConflictWarning) TYPE_WARNING else TYPE_EXAM
 

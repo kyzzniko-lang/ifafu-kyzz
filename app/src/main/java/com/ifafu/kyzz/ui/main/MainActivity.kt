@@ -25,18 +25,28 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
     private val viewModel: MainViewModel by viewModels()
     private lateinit var navController: NavController
     private var firstClickBack: Long = 0
+    // 通知权限被拒的 Toast 只提示一次，避免反复打扰
+    private var notificationDeniedNotified = false
+    // 每个生命周期只挂一次提醒闹钟链（见 onResume）
+    private var reminderScheduled = false
     private val notificationPermissionLauncher =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (!granted && !notificationDeniedNotified) {
+                notificationDeniedNotified = true
+                Toast.makeText(this, "通知权限未开启，成绩/课程提醒将无法推送", Toast.LENGTH_LONG).show()
+            }
+        }
 
     override fun createBinding(): ActivityMainBinding = ActivityMainBinding.inflate(layoutInflater)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // 崩溃恢复检测：若本次启动由崩溃触发且有待反馈的崩溃记录，弹恢复对话框
-        if (intent?.getBooleanExtra(com.ifafu.kyzz.MainApplication.EXTRA_CRASH_RECOVERY, false) == true) {
-            maybeShowCrashRecoveryDialog()
-        }
+        // 崩溃恢复检测：带 crash_recovery extra 的启动（主线程崩溃被拉起）会弹
+        // 恢复对话框；正常冷启动也检查一次 pending——后台线程（Widget/定时任务）
+        // 崩溃只落盘不拉起 Activity，若无此出口，pending 报告没有机会被展示。
+        // maybeShowCrashRecoveryDialog 内部对无 pending 报告直接返回，不消费。
+        maybeShowCrashRecoveryDialog()
 
         val simpleMode = getSharedPreferences("ifafu_user", MODE_PRIVATE).getBoolean("simple_mode", false)
         if (simpleMode) {
@@ -83,7 +93,6 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
             binding.bottomNav.menu.findItem(destination.id)?.isChecked = true
         }
 
-        scheduleCourseReminder()
         requestNotificationPermissionIfNeeded()
     }
 
@@ -177,6 +186,13 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()
             return
+        }
+        // 登录态确认后再挂每日提醒闹钟链：onCreate 无条件挂的话，登出后处于
+        // 未登录状态的启动也会把已取消的闹钟链复活。MainViewModel.refreshUser
+        // 里的 ensureScheduled 幂等，这里每个 Activity 生命周期只挂一次。
+        if (!reminderScheduled) {
+            reminderScheduled = true
+            scheduleCourseReminder()
         }
         // Restore bottom nav highlight to current nav destination
         navController.currentDestination?.id?.let { destId ->

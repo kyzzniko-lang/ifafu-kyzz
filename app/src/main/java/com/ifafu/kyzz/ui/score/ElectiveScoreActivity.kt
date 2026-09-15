@@ -20,6 +20,9 @@ import dagger.hilt.android.AndroidEntryPoint
 class ElectiveScoreActivity : BaseActivity<ActivityElectiveScoreBinding>() {
 
     private val viewModel: ElectiveScoreViewModel by viewModels()
+    // Adapter/LayoutManager 复用：状态每次发射都 new 会让下拉刷新后列表跳回顶部
+    private var layoutManagerSet = false
+    private var scoreAdapter: Adapter? = null
 
     override fun createBinding(): ActivityElectiveScoreBinding =
         ActivityElectiveScoreBinding.inflate(layoutInflater)
@@ -69,15 +72,32 @@ class ElectiveScoreActivity : BaseActivity<ActivityElectiveScoreBinding>() {
         }
         allItems.addAll(scores)
 
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = Adapter(allItems)
+        if (!layoutManagerSet) {
+            binding.recyclerView.layoutManager = LinearLayoutManager(this)
+            layoutManagerSet = true
+        }
+        // 复用同一 Adapter 实例，数据更新走 updateData，滚动位置不重置
+        val adapter = scoreAdapter ?: Adapter(emptyList()).also { scoreAdapter = it }
+        if (binding.recyclerView.adapter !== adapter) {
+            binding.recyclerView.adapter = adapter
+        }
+        adapter.updateData(allItems)
     }
 
-    inner class Adapter(private val items: List<Any>) :
+    inner class Adapter(items: List<Any>) :
         androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
+
+        private val items: MutableList<Any> = items.toMutableList()
 
         private val TYPE_HEADER = 0
         private val TYPE_ITEM = 1
+
+        /** 原地替换数据：保持 Adapter 实例与 RecyclerView 滚动位置不变。 */
+        fun updateData(newItems: List<Any>) {
+            items.clear()
+            items.addAll(newItems)
+            notifyDataSetChanged()
+        }
 
         override fun getItemViewType(position: Int) = if (items[position] is String) TYPE_HEADER else TYPE_ITEM
 

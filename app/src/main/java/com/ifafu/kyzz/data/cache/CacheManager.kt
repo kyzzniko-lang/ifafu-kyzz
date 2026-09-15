@@ -149,22 +149,29 @@ class CacheManager @Inject constructor(
     }
 
     fun saveScores(account: String, scores: List<Score>) {
-        prefs.edit()
-            .putString("scores_$account", gson.toJson(scores))
-            .putLong("scores_${account}_ts", System.currentTimeMillis())
-            .apply()
+        // 与 commitFreshScores/mergeScoresIfShrunkAndSave/clearCache 同锁：
+        // 后台 Worker 的空列表写入若与前台合并交错，apply 落盘顺序不定，
+        // 空列表可能覆盖刚合并的成绩。synchronized 可重入，嵌套调用安全。
+        synchronized(cacheLock) {
+            prefs.edit()
+                .putString("scores_$account", gson.toJson(scores))
+                .putLong("scores_${account}_ts", System.currentTimeMillis())
+                .apply()
+        }
     }
 
     fun saveScores(account: String, scores: List<Score>, yearTermKey: String) {
         val key = if (yearTermKey.isEmpty()) "scores_$account" else "scores_${account}_$yearTermKey"
-        prefs.edit()
-            .putString(key, gson.toJson(scores))
-            .putLong("${key}_ts", System.currentTimeMillis())
-            .apply()
+        synchronized(cacheLock) {
+            prefs.edit()
+                .putString(key, gson.toJson(scores))
+                .putLong("${key}_ts", System.currentTimeMillis())
+                .apply()
+        }
     }
 
     fun loadScores(account: String): List<Score>? {
-        val json = prefs.getString("scores_$account", null) ?: return null
+        val json = synchronized(cacheLock) { prefs.getString("scores_$account", null) } ?: return null
         return try {
             gson.fromJson(json, object : TypeToken<List<Score>>() {}.type)
         } catch (e: Exception) {
@@ -204,10 +211,14 @@ class CacheManager @Inject constructor(
      */
     fun mergeScoresIfShrunk(account: String, fresh: List<Score>): List<Score> {
         val cached = loadScores(account) ?: return fresh
-        if (fresh.size >= cached.size) return fresh
+        if (fresh.size > cached.size) return fresh
         val freshKeys = fresh.map { scoreMergeKey(it) }.toSet()
-        val merged = fresh + cached.filter { scoreMergeKey(it) !in freshKeys }
-        Log.w(TAG, "成绩拉取(${fresh.size}门)少于缓存(${cached.size}门)，按学期合并保留 ${merged.size} 门")
+        val cachedOnly = cached.filter { scoreMergeKey(it) !in freshKeys }
+        // 同尺寸但 fresh 缺缓存独有课程（教务撤课+补录）时同样按 key 合并，
+        // 否则缓存独有课程被静默丢弃，firstSeen 时间戳残留成孤儿。
+        if (fresh.size == cached.size && cachedOnly.isEmpty()) return fresh
+        val merged = fresh + cachedOnly
+        Log.w(TAG, "成绩拉取(${fresh.size}门)与缓存(${cached.size}门)存在差异，按学期合并保留 ${merged.size} 门")
         return merged
     }
 
@@ -274,8 +285,11 @@ class CacheManager @Inject constructor(
                     key == "training_plan_$account" || key == "training_plan_${account}_ts" -> keysToRemove.add(key)
                     key == "grade_exams_$account" || key == "grade_exams_${account}_ts" -> keysToRemove.add(key)
                     key == "exam_progress_$account" -> keysToRemove.add(key)
-                    // 成绩首次见到时间记录（用于成绩页按出分先后排序）
-                    key == "score_first_seen_$account" -> keysToRemove.add(key)
+                    // 注意：score_first_seen_$account（NEW 角标基线）不在此清理。
+                    // 该表与业务缓存同生共死曾导致"每次学期切换/兜底重置触发
+                    // clearCache 后整个学期的成绩被重打时间戳，48h NEW 窗口反复续期，
+                    // 角标永不消失"。业务缓存清空重建后基线仍能对账"见过的课"。
+                    // 登出/删除账号等隐私清理路径改用 [clearScoreFirstSeen]。
                 }
             }
             prefs.edit().apply {
@@ -284,6 +298,13 @@ class CacheManager @Inject constructor(
                 }
                 apply()
             }
+        }
+    }
+
+    /** 仅清某账号的成绩首见基线（登出/删除账号时调用，与 clearCache 解耦）。 */
+    fun clearScoreFirstSeen(account: String) {
+        synchronized(cacheLock) {
+            prefs.edit().remove("score_first_seen_$account").apply()
         }
     }
 
@@ -462,18 +483,27 @@ class CacheManager @Inject constructor(
     // ==================== 成绩首次见到时间（出分先后排序用） ====================
 
     /**
-     * 成绩唯一标识：courseCode + year + term（与 ScoreCheckReceiver 去重 key 同源）。
-     * 教务系统不提供成绩录入时间，这里记录 App 本地首次见到该成绩的时间戳，
-     * 用于成绩页按"出分先后"排序与标记最新成绩。
+     * 成绩唯一标识：与 [scoreMergeKey] 同源。课程代码为空的记录若只用
+     * courseCode 拼 key，同一学期多条空 code 记录会共用一个时间戳互相覆盖
+     * （新出的空 code 课继承旧时间戳永不 NEW，或反向被清零）。
      */
-    private fun scoreKey(s: com.ifafu.kyzz.data.model.Score): String =
-        "${s.courseCode}|${s.year}|${s.term}"
+    private fun scoreKey(s: com.ifafu.kyzz.data.model.Score): String {
+        val identity = if (s.courseCode.isBlank()) "${s.courseName}#${s.studyScore}" else s.courseCode
+        return "$identity|${s.year}|${s.term}"
+    }
 
     /**
      * 合并新拉取的成绩到本地首次见到时间表，并为每条成绩赋值 firstSeenTs。
      *
-     * NEW 标记规则：只有"用户当前在读学期"的成绩才会被记为当前时间（进入 48h NEW 窗口）；
-     * 其它所有学期的成绩一律记为 0（窗口外，永不显示 NEW）。
+     * NEW 标记规则：只有"用户当前在读学期"且已有有效分数（score>0，未出分/
+     * 缺考哨兵除外）的成绩才会被记为当前时间（进入 48h NEW 窗口）；其它一律记 0。
+     *
+     * 基线保护（修复 NEW 角标永不消失）：
+     * 1. 基线表为空（新装机/清库后首次拉取）时【静默建基线】——所有成绩记 0，
+     *    不打 NEW。否则基线一旦丢失，"当前学期"整页课程（含回退到的最近有分
+     *    学期）会被整体打上 now，表现为整页 NEW。
+     * 2. 基线表不再随业务缓存 clearCache 销毁（见 clearCache 注释），学期切换
+     *    清缓存后只有真正的新键会进入 NEW 窗口。
      *
      * 当前在读学期由 [com.ifafu.kyzz.data.util.TermResolver.inferCurrentTerm] 按手机当前
      * 日期推断（如 2026 年 2-7 月 → 2025-2026 学年第二学期），并与爬取到的成绩数据复核：
@@ -485,6 +515,8 @@ class CacheManager @Inject constructor(
         synchronized(cacheLock) {
             val existing = loadScoreFirstSeenInternal(account).toMutableMap()
             val now = System.currentTimeMillis()
+            // 基线整体缺失：静默建基线，本轮不产生任何 NEW 标记
+            val silentBootstrap = existing.isEmpty()
 
             // 1. 用手机日期推断当前在读学期
             val inferred = com.ifafu.kyzz.data.util.TermResolver.inferCurrentTerm()
@@ -503,17 +535,24 @@ class CacheManager @Inject constructor(
             for (s in scores) {
                 val key = scoreKey(s)
                 val isCurrentTerm = s.year == curYear && s.term == curTerm
+                // 与出分通知（ScoreCheckWorker）口径一致：未出分（0）与负数哨兵不进 NEW 窗口
+                val hasValidScore = s.score > 0f
                 if (key in existing) {
                     val old = existing.getValue(key)
-                    // 自愈：非当前学期的成绩不应有窗口内时间戳（旧版本误标残留），纠正为 0
-                    s.firstSeenTs = if (!isCurrentTerm && old > 0L) {
-                        existing[key] = 0L; 0L
-                    } else {
-                        old
+                    s.firstSeenTs = when {
+                        // 自愈：非当前学期的成绩不应有窗口内时间戳（旧版本误标残留），纠正为 0
+                        !isCurrentTerm && old > 0L -> {
+                            existing[key] = 0L; 0L
+                        }
+                        // 缓考/未出分行首次拿到有效分数：此时才进入 NEW 窗口
+                        isCurrentTerm && hasValidScore && old <= 0L && !silentBootstrap -> {
+                            existing[key] = now; now
+                        }
+                        else -> old
                     }
                 } else {
-                    // 仅当前学期的成绩记 now（进入 NEW 窗口），其它学期一律记 0（永不 NEW）
-                    val ts = if (isCurrentTerm) now else 0L
+                    // 仅当前学期且已有有效分数的成绩记 now，其余一律记 0（永不 NEW）
+                    val ts = if (!silentBootstrap && isCurrentTerm && hasValidScore) now else 0L
                     existing[key] = ts
                     s.firstSeenTs = ts
                 }
@@ -530,15 +569,6 @@ class CacheManager @Inject constructor(
             s.firstSeenTs = map[scoreKey(s)] ?: 0L
         }
     }
-
-    /**
-     * 是否已建立过"成绩首次见到"基线表。该表会被 clearCache() 清掉，
-     * 可作为比 score_monitor_initialized_* 更可靠的"是否已初始化"信号——
-     * 后者存放在 ifafu_user prefs，clearCache 清不到，学期切换清缓存后仍为 true，
-     * 会让 ScoreCheckReceiver 把所有历史成绩误报为"新出分"。
-     */
-    fun hasScoreFirstSeenBaseline(account: String): Boolean =
-        loadScoreFirstSeenInternal(account).isNotEmpty()
 
     private fun loadScoreFirstSeenInternal(account: String): Map<String, Long> {
         val json = prefs.getString("score_first_seen_$account", null) ?: return emptyMap()

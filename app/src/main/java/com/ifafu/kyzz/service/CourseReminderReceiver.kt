@@ -26,9 +26,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.text.SimpleDateFormat
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import java.util.Calendar
-import java.util.Locale
 
 class CourseReminderReceiver : BroadcastReceiver() {
 
@@ -50,6 +50,12 @@ class CourseReminderReceiver : BroadcastReceiver() {
             if (!loggedIn) {
                 cancel(context)
             } else {
+                // 当日单次课前提醒是每日 7:30 汇总时挂的 setExactAndAllowWhileIdle
+                // 单次闹钟,拆每日链不影响它们:开关关闭后任一已挂闹钟触发走到这里,
+                // 必须把当天剩余的单次闹钟一并清掉,否则剩余提醒照常弹出
+                // （cancelTodayCourseAlarms 是 companion 的 private 方法,本类可直接访问）。
+                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                cancelTodayCourseAlarms(context, am)
                 ensureScheduled(context)
             }
             return
@@ -139,23 +145,16 @@ class CourseReminderReceiver : BroadcastReceiver() {
                 }
             }
 
-            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
-            val parsed = sdf.parse(firstDay) ?: return emptyList()
-            // 双方归零到当日 00：00：termFirstDay 带保存时刻的时分秒，不归零时
-            // 周切换点会漂移到当天那个时刻（与首页/课表页的口径一致）。
-            val termStart = Calendar.getInstance().apply {
-                time = parsed
-                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-            }
-            val today = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-            }
-            val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
+            // 天数差用 LocalDate 计算：夏令时/非 UTC+8 时区下两个"本地零点"的
+            // 间隔是 23/25 小时，毫秒差整除 24h 会差一天、周次随之错一周
+            // （与 ExamDates 的口径一致）。substringBefore(' ') 剥掉 termFirstDay
+            // 尾随的保存时刻时分秒；解析失败由外层 catch 兜底返回空表。
+            val termStart = LocalDate.parse(firstDay.substringBefore(' '))
+            val today = LocalDate.now()
+            val diffDays = ChronoUnit.DAYS.between(termStart, today).toInt()
             val currentWeek = ((diffDays / 7) + 1).coerceAtLeast(1)
-            val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
-            val todayDay = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
+            // ISO 周序（周一=1…周日=7），与原来的 Calendar.SUNDAY 映射等价
+            val todayDay = today.dayOfWeek.value
 
             // 检测是否在假期中（当前周远超课表范围）
             val maxCourseWeek = if (syllabus.courses.isNotEmpty()) syllabus.courses.maxOf { it.weekEnd } else 20

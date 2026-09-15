@@ -11,9 +11,8 @@ import android.widget.RemoteViews
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.repository.UserRepository
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 
 class iFAFUWidget : AppWidgetProvider() {
 
@@ -31,14 +30,25 @@ class iFAFUWidget : AppWidgetProvider() {
         }
 
         fun clearWidgetData(context: Context) {
-            val prefs = context.getSharedPreferences("ifafu_widget", Context.MODE_PRIVATE)
-            prefs.edit().clear().apply()
+            // 登出后立即刷新所有 Widget，而不是清缓存：Widget 没有任何本地缓存，
+            // 旧实现清的是一个从未写入过的 prefs 文件（死代码），登出后 Widget 最长
+            // 30 分钟仍显示上一账号课表。改发已注册的 WIDGET_UPDATE 显式广播自触发
+            // 全量刷新，未登录态下 getTodayCoursesText 会渲染"未登录"占位。
+            // 方法名保留 clearWidgetData，SettingsFragment 登出路径依赖此签名。
+            val intent = Intent(context, iFAFUWidget::class.java).apply {
+                action = ACTION_UPDATE
+                // onReceive 会对自定义 action 校验来源包名，自发广播须显式声明
+                setPackage(context.packageName)
+            }
+            context.sendBroadcast(intent)
         }
 
         fun scheduleNextUpdate(context: Context) {
             try {
                 val intent = Intent(context, iFAFUWidget::class.java).apply {
                     action = ACTION_UPDATE
+                    // 闹钟回发的广播同样要过 onReceive 的来源包名校验
+                    setPackage(context.packageName)
                 }
                 val pending = PendingIntent.getBroadcast(
                     context, 0, intent,
@@ -62,6 +72,8 @@ class iFAFUWidget : AppWidgetProvider() {
         fun pokeAfterBoot(context: Context) {
             val intent = Intent(context, iFAFUWidget::class.java).apply {
                 action = ACTION_UPDATE
+                // onReceive 会对自定义 action 校验来源包名，自发广播须显式声明
+                setPackage(context.packageName)
             }
             context.sendBroadcast(intent)
         }
@@ -69,28 +81,26 @@ class iFAFUWidget : AppWidgetProvider() {
         private fun getTodayCoursesText(context: Context): String {
             try {
                 val app = context.applicationContext
-                val userRepo = UserRepository(app)
+                // Widget 进程内手动构造（非 Hilt）：UserRepository 删除账号时要
+                // 清理 CacheManager 中该账号的缓存，两者共用同一实例
+                val cacheManager = CacheManager(app)
+                val userRepo = UserRepository(app, cacheManager)
                 val user = userRepo.getUser()
                 val firstDay = userRepo.termFirstDay
                 if (!user.isLogin || firstDay.isEmpty()) return "未登录"
 
-                val cacheManager = CacheManager(app)
                 val syllabus = cacheManager.loadSyllabus(user.account) ?: return "暂无课表数据"
 
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                val parsed = sdf.parse(firstDay) ?: return "日期格式错误"
-                // 双方归零到当日 00:00：termFirstDay 带保存时刻的时分秒，不归零时
-                // 周切换点会漂移到当天那个时刻（与首页/课表页的口径一致）。
-                val termStart = Calendar.getInstance().apply {
-                    time = parsed
-                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-                    set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
+                // 天数差用 LocalDate 计算：毫秒差整除 24h 在夏令时/非 UTC+8 时区下
+                // 会差一天、周次随之错一周（与 ExamDates 的口径一致）。
+                // substringBefore(' ') 剥掉 termFirstDay 尾随的保存时刻时分秒。
+                val termStart = try {
+                    LocalDate.parse(firstDay.substringBefore(' '))
+                } catch (e: Exception) {
+                    return "日期格式错误"
                 }
-                val today = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-                    set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-                }
-                val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
+                val today = LocalDate.now()
+                val diffDays = ChronoUnit.DAYS.between(termStart, today).toInt()
                 val currentWeek = ((diffDays / 7) + 1).coerceAtLeast(1)
 
                 // 检测是否在假期中（当前周远超课表范围）
@@ -105,8 +115,8 @@ class iFAFUWidget : AppWidgetProvider() {
                     return "📅 新学期${daysToStart}天后开始"
                 }
 
-                val dayOfWeek = today.get(Calendar.DAY_OF_WEEK)
-                val todayDay = if (dayOfWeek == Calendar.SUNDAY) 7 else dayOfWeek - 1
+                // ISO 周序（周一=1…周日=7），与原来的 Calendar.SUNDAY 映射等价
+                val todayDay = today.dayOfWeek.value
 
                 val matched = syllabus.courses.filter { c ->
                     c.coversWeek(currentWeek) && c.weekDay == todayDay &&
@@ -131,7 +141,17 @@ class iFAFUWidget : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        when (intent.action) {
+        val action = intent.action
+        // WIDGET_UPDATE/WIDGET_CLEAR 是 exported=true 的自定义 action，第三方应用
+        // 可伪造广播触发刷新/清除：校验广播由本应用发出（本应用自发的广播均带
+        // package）。系统 APPWIDGET_UPDATE 不携带 package，不在此校验范围内。
+        if ((action == ACTION_UPDATE || action == ACTION_CLEAR) &&
+            intent.getPackage() != context.packageName
+        ) {
+            Log.w(TAG, "Rejected foreign widget broadcast: $action")
+            return
+        }
+        when (action) {
             ACTION_UPDATE -> {
                 val appWidgetManager = AppWidgetManager.getInstance(context)
                 val appWidgetIds = appWidgetManager.getAppWidgetIds(
@@ -177,6 +197,8 @@ class iFAFUWidget : AppWidgetProvider() {
         try {
             val intent = Intent(context, iFAFUWidget::class.java).apply {
                 action = ACTION_UPDATE
+                // 与 scheduleNextUpdate 的 Intent 保持完全一致，确保能匹配取消
+                setPackage(context.packageName)
             }
             val pending = PendingIntent.getBroadcast(
                 context, 0, intent,

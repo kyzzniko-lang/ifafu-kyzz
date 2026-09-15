@@ -9,6 +9,7 @@ import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -29,6 +30,11 @@ class SimpleElectiveViewModel @Inject constructor(
 
     private var currentType = SimpleElectiveApi.TYPE_PROFESSIONAL
 
+    // 快速切换标签的竞态防护（仿 SyllabusViewModel）：取消上一次请求 + 代次校验，
+    // 防止慢的旧请求晚到覆盖新标签的数据与状态
+    private var loadJob: Job? = null
+    private var loadGeneration = 0L
+
     fun loadCourses(type: String) {
         currentType = type
         val user = userRepository.getUser()
@@ -36,12 +42,15 @@ class SimpleElectiveViewModel @Inject constructor(
             _state.value = State.Error("未登录")
             return
         }
-        viewModelScope.launch {
+        loadJob?.cancel()
+        val generation = ++loadGeneration
+        loadJob = viewModelScope.launch {
             _state.value = State.Loading
             try {
                 val result = simpleElectiveApi.getCourses(
                     type, userRepository.host, user.token, user.account, user.name
                 )
+                if (generation != loadGeneration) return@launch
                 if (result.success) {
                     if (result.notOpen) {
                         _state.value = State.NotOpen(result.message)
@@ -56,6 +65,7 @@ class SimpleElectiveViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (generation != loadGeneration) return@launch
                 _state.value = State.Error(e.message ?: "加载失败")
             }
         }

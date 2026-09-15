@@ -26,6 +26,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.observe
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.navigation.fragment.findNavController
 import kotlinx.coroutines.delay
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.airbnb.lottie.LottieAnimationView
@@ -80,6 +81,10 @@ class HomeFragment : Fragment() {
     private var lastRenderedCourses: List<MainViewModel.TodayCourse>? = null
     private var petPositionBeforeBubble: Pair<Float, Float>? = null
     private var autoRefreshMonitorStarted = false
+    // 下拉刷新指示器等待数据到达的标记：todayCourses/nextExam 任一重新发射即收起
+    private var awaitingRefreshData = false
+    // 宠物拖尾节流：上次生成拖尾的时间戳（ACTION_MOVE 每秒可触发上百次）
+    private var lastDragTrailTimeMs = 0L
     private val resumeRunnable = Runnable {
         if (isAdded && _binding != null) {
             val courses = viewModel.todayCourses.value ?: emptyList()
@@ -159,10 +164,10 @@ class HomeFragment : Fragment() {
         showCachedUpdateIfNeeded()
         // Home 回到前台时重新加载热议，避免首页首次请求失败或从讨论页返回后仍显示旧的隐藏状态。
         if (!simpleMode) loadHotDiscussion()
-        // Revalidate when Home becomes visible again. A previous "up to date"
-        // result must not hide a release published during the 4-hour interval.
-        // The in-flight guard merges this with the initial onViewCreated check.
-        checkForUpdate(force = true)
+        // Revalidate when Home becomes visible again, but non-forced so the
+        // 4-hour interval in UpdateChecker.shouldCheck still throttles here;
+        // pull-to-refresh remains the forced entry point.
+        checkForUpdate()
         // Auto bubble on resume
         if (!simpleMode) {
             bubbleHandler.removeCallbacks(resumeRunnable)
@@ -311,6 +316,16 @@ class HomeFragment : Fragment() {
                     false
                 }
             }
+
+            // 最近考试卡片：跳转到考试安排页（nav_graph 中的 examFragment，
+            // 与底部导航"考试"标签同一 destination）。
+            binding.cardExamCountdown.setOnClickListener {
+                try {
+                    findNavController().navigate(R.id.examFragment)
+                } catch (_: IllegalStateException) {
+                    // 不在 NavController 层级内时静默放弃，避免崩溃
+                }
+            }
         }
 
         // Pull-to-refresh
@@ -320,9 +335,15 @@ class HomeFragment : Fragment() {
         )
         binding.swipeRefresh.setOnRefreshListener {
             refreshHomeContent(forceUpdateCheck = true, manualRefresh = true)
+            // 指示器等数据到达再收起（见 onRefreshDataArrived），固定 800ms 会让
+            // "还在转"的假象出现在慢网络下；10 秒超时兜底防止网络挂起时永不消失。
+            awaitingRefreshData = true
             viewLifecycleOwner.lifecycleScope.launch {
-                delay(800)
-                if (isAdded) binding.swipeRefresh.isRefreshing = false
+                delay(10_000)
+                if (isAdded && _binding != null && binding.swipeRefresh.isRefreshing) {
+                    awaitingRefreshData = false
+                    binding.swipeRefresh.isRefreshing = false
+                }
             }
         }
 
@@ -412,10 +433,13 @@ class HomeFragment : Fragment() {
 
     private fun loadWeather() {
         weatherJob?.cancel()
+        // 协程可能在 Fragment 视图销毁后才执行 IO 块，届时 requireContext() 会抛
+        // IllegalStateException；进入协程前先捕获 applicationContext。
+        val appCtx = context?.applicationContext ?: return
         weatherJob = viewLifecycleOwner.lifecycleScope.launch {
             try {
                 val weather = withContext(Dispatchers.IO) {
-                    val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(requireContext())
+                    val prefs = androidx.preference.PreferenceManager.getDefaultSharedPreferences(appCtx)
                     val campusKey = prefs.getString("campus_weather", "jinshan") ?: "jinshan"
                     val campus = com.ifafu.kyzz.data.model.CampusWeather.fromKey(campusKey)
 
@@ -732,7 +756,13 @@ class HomeFragment : Fragment() {
                         v.y = newY
                         lastX = localTouchX(event)
                         lastMoveTime = System.currentTimeMillis()
-                        spawnDragTrail(petView.root)
+                        // 拖尾按时间节流：逐个 MOVE 事件生成拖尾视图+动画会带来
+                        // 每秒数十次的 addView/removeView 抖动，两次至少间隔 80ms。
+                        val nowMs = System.currentTimeMillis()
+                        if (nowMs - lastDragTrailTimeMs >= 80) {
+                            lastDragTrailTimeMs = nowMs
+                            spawnDragTrail(petView.root)
+                        }
                     } else {
                         gestureDetector.onTouchEvent(event)
                     }
@@ -1451,6 +1481,7 @@ class HomeFragment : Fragment() {
             }
         }
         viewModel.todayCourses.observe(viewLifecycleOwner) { courses ->
+            onRefreshDataArrived()
             showTodayCourses(courses)
             val newText = if (courses.isNotEmpty()) {
                 getString(R.string.chip_courses_today, courses.size)
@@ -1461,6 +1492,7 @@ class HomeFragment : Fragment() {
             animateChipText(binding.chipCoursesCount, newText)
         }
         viewModel.nextExam.observe(viewLifecycleOwner) { countdown ->
+            onRefreshDataArrived()
             showExamCountdown(countdown)
             val newExamText = if (countdown != null && countdown.daysLeft >= 0) {
                 getString(R.string.chip_exam_days, countdown.daysLeft)
@@ -1484,6 +1516,14 @@ class HomeFragment : Fragment() {
             chip.animate().alpha(1f).setDuration(140)
                 .setInterpolator(AccelerateDecelerateInterpolator()).start()
         }.start()
+    }
+
+    /** 下拉刷新期间数据流重新发射：收起刷新指示器（配合 10 秒超时兜底）。 */
+    private fun onRefreshDataArrived() {
+        if (awaitingRefreshData && _binding != null) {
+            awaitingRefreshData = false
+            binding.swipeRefresh.isRefreshing = false
+        }
     }
 
     private fun updateGreeting() {
@@ -1707,9 +1747,14 @@ class HomeFragment : Fragment() {
         // Course progress bar
         val nowMin = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
         val totalCourses = courses.size
-        val finishedCount = courses.count { nowMin > (sectionEndMinutes[it.end] ?: 0) }
+        // 未知节次号拿不到下课分钟数：不能按 0 点误判为"已结束"，该课不计入已完成数
+        val finishedCount = courses.count { course ->
+            val endMin = sectionEndMinutes[course.end]
+            endMin != null && nowMin > endMin
+        }
         val progressPercent = if (totalCourses > 0) finishedCount * 100 / totalCourses else 0
-        binding.courseProgressContainer.visibility = View.VISIBLE
+        // 极简模式隐藏进度条（setupViews 已隐藏），数据回填时不能无条件重新显示
+        if (!simpleMode) binding.courseProgressContainer.visibility = View.VISIBLE
         binding.courseProgressBar.max = 100
         binding.courseProgressText.text = "已完成 $finishedCount/$totalCourses 节课"
         // 首次渲染或课程列表变化（跨天/新课表）才从 0 播放整段动画；天气刷新、
@@ -1768,11 +1813,13 @@ class HomeFragment : Fragment() {
                 tvWeather.visibility = View.GONE
             }
 
-            val courseStartMin = sectionStartMinutes[course.begin] ?: 0
-            val courseEndMin = sectionEndMinutes[course.end] ?: 0
+            // 未知节次号（超出 1-12 的特殊排课）拿不到分钟数：结束未知时不能按 0 点
+            // 判"已结束"，保持该课未完结的展示；上下课时间显示处已用 "--:--" 兜底。
+            val courseStartMin: Int? = sectionStartMinutes[course.begin]
+            val courseEndMin: Int? = sectionEndMinutes[course.end]
 
             when {
-                nowMinutes > courseEndMin -> {
+                nowMinutes > (courseEndMin ?: Int.MAX_VALUE) -> {
                     // Finished: dim it, grey dot, no stripe
                     tvCourseStatus.text = "已结束"
                     tvCourseStatus.setTextColor(resources.getColor(R.color.claude_text_hint, null))
@@ -1781,7 +1828,7 @@ class HomeFragment : Fragment() {
                     itemView.alpha = 0.65f
                     tvCourseName.alpha = 0.6f
                 }
-                nowMinutes in courseStartMin..courseEndMin -> {
+                nowMinutes >= (courseStartMin ?: Int.MAX_VALUE) -> {
                     // A3: In progress — show orange stripe + warm card stroke + pulse dot
                     tvCourseStatus.text = "进行中"
                     tvCourseStatus.setTextColor(resources.getColor(R.color.claude_success, null))
@@ -1802,14 +1849,14 @@ class HomeFragment : Fragment() {
                     pulseAnimator = AnimatorSet().apply { playTogether(pulseAnim, pulseAnimY); start() }
                 }
                 else -> {
-                    val minutesUntil = courseStartMin - nowMinutes
+                    val minutesUntil = courseStartMin?.minus(nowMinutes)
                     tvCourseStatus.text = when {
-                        minutesUntil <= 30 -> "还有${minutesUntil}分钟"
+                        minutesUntil == null -> "时间未定"
                         minutesUntil <= 60 -> "还有${minutesUntil}分钟"
                         else -> "还有${minutesUntil / 60}h${minutesUntil % 60}m"
                     }
                     // Upcoming soon: show subtle stripe
-                    if (minutesUntil <= 30) {
+                    if (minutesUntil != null && minutesUntil <= 30) {
                         courseStatusStripe.background = resources.getDrawable(
                             R.drawable.bg_section_accent, null)
                         courseStatusStripe.visibility = View.VISIBLE
@@ -1839,7 +1886,7 @@ class HomeFragment : Fragment() {
                 itemView.translationY = 24f
                 itemView.scaleX = 0.96f
                 itemView.animate()
-                    .alpha(if (nowMinutes > courseEndMin) 0.65f else 1f)
+                    .alpha(if (nowMinutes > (courseEndMin ?: Int.MAX_VALUE)) 0.65f else 1f)
                     .translationY(0f)
                     .scaleX(1f)
                     .setDuration(380)
@@ -1847,7 +1894,7 @@ class HomeFragment : Fragment() {
                     .setInterpolator(android.view.animation.DecelerateInterpolator(1.5f))
                     .start()
             } else {
-                itemView.alpha = if (nowMinutes > courseEndMin) 0.65f else 1f
+                itemView.alpha = if (nowMinutes > (courseEndMin ?: Int.MAX_VALUE)) 0.65f else 1f
             }
 
             container.addView(itemView)
@@ -1859,7 +1906,8 @@ class HomeFragment : Fragment() {
     private fun showCourseDetail(course: MainViewModel.TodayCourse, startTime: String, endTime: String) {
         val nowMin = Calendar.getInstance().let { it.get(Calendar.HOUR_OF_DAY) * 60 + it.get(Calendar.MINUTE) }
         val statusText = when {
-            nowMin > (sectionEndMinutes[course.end] ?: 0) -> "已结束"
+            // 结束节次未知时不能判"已结束"（与时间线列表口径一致）
+            nowMin > (sectionEndMinutes[course.end] ?: Int.MAX_VALUE) -> "已结束"
             nowMin >= (sectionStartMinutes[course.begin] ?: 0) -> "进行中"
             else -> "未开始"
         }

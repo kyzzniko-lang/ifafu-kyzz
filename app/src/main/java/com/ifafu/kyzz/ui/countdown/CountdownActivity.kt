@@ -140,6 +140,7 @@ class CountdownActivity : BaseActivity<ActivityCountdownBinding>() {
 
             val days = calcDays(event.date)
             val daysText = when {
+                days == INVALID_DAYS -> "日期无效"
                 days < 0 -> "已过 ${-days} 天"
                 days == 0L -> "就是今天！"
                 else -> "${days} 天后"
@@ -191,13 +192,19 @@ class CountdownActivity : BaseActivity<ActivityCountdownBinding>() {
     private fun calcDays(dateStr: String): Long {
         return try {
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val target = sdf.parse(dateStr) ?: return -1
+            // 解析失败用哨兵值而非 -1：-1 会与"昨天"无法区分，被渲染成"已过 1 天"
+            val target = sdf.parse(dateStr) ?: return INVALID_DAYS
             val today = Calendar.getInstance().apply {
                 set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
                 set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
             }
             val diff = (target.time - today.time.time) / (24 * 60 * 60 * 1000)
             diff
-        } catch (_: Exception) { -1 }
+        } catch (_: Exception) { INVALID_DAYS }
+    }
+
+    companion object {
+        /** calcDays 的"日期无效"哨兵：真实天数差不可能达到该值。 */
+        private const val INVALID_DAYS = Long.MIN_VALUE
     }
 }

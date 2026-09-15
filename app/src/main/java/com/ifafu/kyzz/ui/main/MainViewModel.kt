@@ -74,23 +74,14 @@ class MainViewModel @Inject constructor(
         val firstDay = userRepository.termFirstDay
         if (firstDay.isEmpty()) return 0
         return try {
-            val parsed = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(firstDay) ?: return 0
-            val termStart = Calendar.getInstance().apply {
-                time = parsed
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            val today = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }
-            val diffDays = ((today.timeInMillis - termStart.timeInMillis) / (24 * 60 * 60 * 1000L)).toInt()
-            // 开学前（termFirstDay 在未来 1-6 天内）：Kotlin 整数除法向零截断会把
-            // diffDays=-6..-1 算成 week=1，把"下周才开的第一周课"顶到首页当今日
+            // LocalDate 按本地日历日计算，避免"毫秒差整除 24h"在夏令时边界
+            // （23/25 小时天）下差一天导致整个冬令时季周次恒差 1（与 ExamDates
+            // 修复口径一致）。
+            val dateStr = firstDay.substringBefore(' ')
+            val termStart = java.time.LocalDate.parse(dateStr)
+            val today = java.time.LocalDate.now()
+            val diffDays = java.time.temporal.ChronoUnit.DAYS.between(termStart, today).toInt()
+            // 开学前（termFirstDay 在未来 1-6 天内）：把"下周才开的第一周课"顶到首页当今日
             // 课程。与小组件/课程提醒一致地按未开学处理，返回 0。
             if (diffDays < 0) return 0
             val week = (diffDays / 7) + 1
@@ -339,8 +330,10 @@ class MainViewModel @Inject constructor(
             .filter { it.datetime.isNotEmpty() }
             .mapNotNull { exam ->
                 val daysLeft = com.ifafu.kyzz.data.util.ExamDates.daysUntilNearest(exam.datetime)
-                // 只显示近期考试（-1 表示考试当天仍可显示），过滤掉远未来的旧学期考试
-                if (daysLeft in -1..60) exam to daysLeft else null
+                // 只显示还有未结束场次的近期考试。daysLeft=-1 表示"最近一场是
+                // 昨天"，该考试已全部结束——保留它会以最小排序值永远占据首位，
+                // 把真正即将到来的考试（以及跨天考试仍在进行的第二天）顶掉。
+                if (daysLeft in 0..60) exam to daysLeft else null
             }
             .sortedWith(compareBy({ it.second }, { com.ifafu.kyzz.data.util.ExamDates.timeKey(it.first.datetime) }))
             .firstOrNull()
@@ -364,6 +357,10 @@ class MainViewModel @Inject constructor(
     private fun fetchTermFirstDayFromGitHub() {
         viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                // 用户手动指定的开学日优先级最高，远端同步不得覆盖
+                // （SettingsFragment 设置 termFirstDayManual=true 后，此前这里的
+                // 无条件写入会在首次刷新时静默清掉手动配置）。
+                if (userRepository.termFirstDayManual) return@launch
                 val client = githubClient
                 val request = okhttp3.Request.Builder()
                     .url("https://gh-proxy.com/https://api.github.com/repos/kyzzniko-lang/ifafu-kyzz/issues/2")
@@ -385,15 +382,35 @@ class MainViewModel @Inject constructor(
                     val match = regex.find(issueBody)
                     if (match != null) {
                         val dateStr = match.groupValues[1]
-                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-                        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dateStr)
+                        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+                        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateStr)
                         if (parsed != null) {
                             val newTermFirstDay = normalizeToMonday(sdf.format(parsed))
                             val oldTermFirstDay = userRepository.termFirstDay
+
+                            // 投毒/误配置防护：日期经 gh-proxy.com 转发且无签名校验，
+                            // 与校历推断的开学日偏差超过 8 周的值一律不信。
+                            if (!isPlausibleTermFirstDay(parsed)) {
+                                android.util.Log.w("MainViewModel", "Remote term_first_day $dateStr deviates >8 weeks from estimate, ignored")
+                                fallbackTermFirstDay()
+                                return@launch
+                            }
+
+                            // 防振荡：issue 未及时更新时远端是上学期旧日期（stale）。
+                            // 若本地日期仍然新鲜，说明兜底逻辑已把本地推进到新学期，
+                            // 此时回写远端旧值会触发一次 semesterChanged → clearCache，
+                            // 下次同步失败兜底又写回新值……clearCache 天级反复执行。
+                            // 规则：远端 stale 时只有本地为空或同样 stale 才接受远端值。
+                            if (isTermFirstDayStale(newTermFirstDay) &&
+                                oldTermFirstDay.isNotEmpty() && !isTermFirstDayStale(oldTermFirstDay)
+                            ) {
+                                android.util.Log.i("MainViewModel", "Remote term_first_day $dateStr stale, keep local $oldTermFirstDay")
+                                return@launch
+                            }
+
                             val semesterChanged = oldTermFirstDay.isNotEmpty() && newTermFirstDay != oldTermFirstDay
 
                             userRepository.termFirstDay = newTermFirstDay
-                            userRepository.termFirstDayManual = false
                             _currentWeek.postValue(calculateCurrentWeek())
 
                             // 首次确定学期起始日（全新安装/切换账号后为空）也必须重算：
@@ -425,23 +442,37 @@ class MainViewModel @Inject constructor(
         }
     }
 
+    /** 远端开学日与校历推断值的偏差在 8 周内才可信（提前 1-2 个月发布新学期属正常）。 */
+    private fun isPlausibleTermFirstDay(parsed: java.util.Date): Boolean {
+        val estimated = TermResolver.estimatedFirstDay(TermResolver.inferCurrentTerm())
+            ?: return true
+        return kotlin.math.abs(parsed.time - estimated.timeInMillis) <= 8L * 7 * 24 * 60 * 60 * 1000
+    }
+
     private fun fallbackTermFirstDay() {
+        // 手动指定的开学日不被兜底逻辑覆盖
+        if (userRepository.termFirstDayManual) {
+            loadTodayCourses(force = true)
+            return
+        }
         val existing = userRepository.termFirstDay
         if (existing.isEmpty() || !isValidDateFormat(existing) || isTermFirstDayStale(existing)) {
             setDefaultTermFirstDay()
-            // Clear stale cache so old semester data isn't shown with new term dates
-            val user = userRepository.getUser()
-            if (user.isLogin) {
-                cacheManager.clearCache(user.account)
-            }
+            // 此前这里会对 stale 日期 clearCache，与远端同步成功路径互相反弹：
+            // 兜底写新学期日期 → 下次同步成功写回远端旧日期（触发 semesterChanged
+            // → clearCache）→ 再下次同步失败兜底又写新日期……clearCache 天级振荡。
+            // 兜底值非权威，不再清缓存；真正的学期切换清缓存只由"远端权威日期
+            // 变化"分支执行。NEW 基线也已与业务缓存解耦，清不清都不再影响角标。
         }
-        // 缓存可能刚被清理，绕过"当天已计算"守卫强制重算
+        // 日期兜底可能刚发生变化，绕过"当天已计算"守卫强制重算
         loadTodayCourses(force = true)
     }
 
     private fun isTermFirstDayStale(dateStr: String): Boolean {
         return try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            // 持久化格式固定 Locale.US：写侧若用 getDefault()，在数字字形非拉丁的
+            // 系统 Locale（ar/fa 等）下产出非 ASCII 数字，这里解析失败被判 stale。
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
             val parsed = sdf.parse(dateStr) ?: return true
             val termStart = Calendar.getInstance().apply { time = parsed }
             val now = Calendar.getInstance()
@@ -453,7 +484,7 @@ class MainViewModel @Inject constructor(
 
     private fun isValidDateFormat(date: String): Boolean {
         return try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
             sdf.isLenient = false
             sdf.parse(date)
             true
@@ -466,7 +497,7 @@ class MainViewModel @Inject constructor(
      */
     private fun normalizeToMonday(dateStr: String): String {
         return try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+            val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
             val cal = Calendar.getInstance()
             cal.time = sdf.parse(dateStr) ?: return dateStr
             val dayOfWeek = cal.get(Calendar.DAY_OF_WEEK)
@@ -482,19 +513,14 @@ class MainViewModel @Inject constructor(
         } catch (_: Exception) { dateStr }
     }
 
+    /**
+     * 兜底开学日改用 [TermResolver.estimatedFirstDay]：对同一推断学期是纯函数、
+     * 结果稳定（旧的"按当前月份猜 9/1 或 3/2"口径与 TermResolver 不一致，
+     * 且不同月份多次调用可能得到不同值，加剧日期振荡）。
+     */
     private fun setDefaultTermFirstDay() {
-        val cal = Calendar.getInstance()
-        val month = cal.get(Calendar.MONTH)
-        val year = cal.get(Calendar.YEAR)
-        val termStart = when (month) {
-            in Calendar.FEBRUARY..Calendar.JULY ->
-                Calendar.getInstance().apply { set(year, Calendar.MARCH, 2, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
-            Calendar.JANUARY ->
-                Calendar.getInstance().apply { set(year - 1, Calendar.SEPTEMBER, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
-            else ->
-                Calendar.getInstance().apply { set(year, Calendar.SEPTEMBER, 1, 0, 0, 0); set(Calendar.MILLISECOND, 0) }
-        }
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val termStart = TermResolver.estimatedFirstDay(TermResolver.inferCurrentTerm()) ?: return
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
         userRepository.termFirstDay = normalizeToMonday(sdf.format(termStart.time))
     }
 

@@ -25,20 +25,16 @@ class ElectiveParser @Inject constructor(
 
         val tables = doc.select("table")
         Log.d(TAG, "Found ${tables.size} tables in document")
-        val fullHtml = doc.html()
         var section = 0 // 0 = available, 1 = selected
 
-        // Find the "已选课程"/"已选列表" marker position once
-        val selectedPos1 = fullHtml.indexOf("已选课程")
-        val selectedPos2 = fullHtml.indexOf("已选列表")
-        val markerPos = when {
-            selectedPos1 >= 0 && selectedPos2 >= 0 -> minOf(selectedPos1, selectedPos2)
-            selectedPos1 >= 0 -> selectedPos1
-            selectedPos2 >= 0 -> selectedPos2
-            else -> -1
+        // 定位"已选课程"/"已选列表"标记改用文档顺序索引：旧实现拿
+        // table.outerHtml() 回 doc.html() 里 indexOf，Jsoup 序列化差异时返回 -1，
+        // section 游标永不推进，已选课程会全部混入可选列表。allElements 按
+        // 文档序排列、元素引用相等，索引天然单调推进。
+        val orderedElements = doc.allElements
+        val markerPos = orderedElements.indexOfFirst {
+            it.ownText().contains("已选课程") || it.ownText().contains("已选列表")
         }
-
-        var searchStart = 0
 
         for (table in tables) {
             val rows = table.select("tr")
@@ -54,15 +50,11 @@ class ElectiveParser @Inject constructor(
                 continue
             }
 
-            // Check if marker appears before this table using full outerHtml with tracked position
+            // Check if marker appears before this table in document order
             if (section == 0 && markerPos >= 0) {
-                val tableHtml = table.outerHtml()
-                val tablePos = fullHtml.indexOf(tableHtml, searchStart)
-                if (tablePos >= 0) {
-                    searchStart = tablePos + 1
-                    if (markerPos < tablePos) {
-                        section = 1
-                    }
+                val tablePos = orderedElements.indexOfFirst { it === table }
+                if (markerPos < tablePos) {
+                    section = 1
                 }
             }
 

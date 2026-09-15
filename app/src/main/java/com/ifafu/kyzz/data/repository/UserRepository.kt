@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.User
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -11,7 +12,8 @@ import javax.inject.Singleton
 
 @Singleton
 class UserRepository @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val cacheManager: CacheManager
 ) {
 
     private val prefs: SharedPreferences =
@@ -74,8 +76,9 @@ class UserRepository @Inject constructor(
 
     @Synchronized
     fun savePassword(password: String) {
+        // 密码只存 securePrefs 一份：ifafu_user 明文冗余备份已废弃，
+        // 老版本残留由 getPassword 的一次性迁移清理。
         securePrefs.edit().putString("password", password).apply()
-        prefs.edit().putString("password_backup", password).apply()
         saveAccountProfile(prefs.getString("account", "") ?: "")
         bumpAuthGeneration()
     }
@@ -84,7 +87,14 @@ class UserRepository @Inject constructor(
     fun getPassword(): String {
         val password = securePrefs.getString("password", "") ?: ""
         if (password.isNotEmpty()) return password
-        return prefs.getString("password_backup", "") ?: ""
+        // 一次性迁移老版本遗留在 ifafu_user 的明文备份：写回 securePrefs 后
+        // 删除 backup 键，明文不再双份留存。
+        val backup = prefs.getString("password_backup", "") ?: ""
+        if (backup.isNotEmpty()) {
+            securePrefs.edit().putString("password", backup).apply()
+            prefs.edit().remove("password_backup").apply()
+        }
+        return backup
     }
 
     @Synchronized
@@ -122,7 +132,11 @@ class UserRepository @Inject constructor(
     }
 
     var host: String
-        get() = prefs.getString("host", "http://jwgl.fafu.edu.cn") ?: "http://jwgl.fafu.edu.cn"
+        // 与 setter 同一把锁：无锁读可能撞上"putString 已提交、旧值还在"的
+        // 过渡态，拿到与 cookie 清理动作错位的 host。
+        get() = synchronized(this) {
+            prefs.getString("host", "http://jwgl.fafu.edu.cn") ?: "http://jwgl.fafu.edu.cn"
+        }
         set(value) {
             synchronized(this) {
                 if (value == host) return@synchronized
@@ -200,6 +214,11 @@ class UserRepository @Inject constructor(
         val profiles = getAccountProfiles().toMutableList()
         profiles.removeAll { it.account == account }
         securePrefs.edit().putString("saved_accounts", gson.toJson(profiles)).apply()
+        // 删除账号档案时同步清掉该账号的业务缓存：学籍（含身份证号等明文）、
+        // 成绩、聊天记录不得残留。clearCache 只清该账号前缀的键，不影响在用账号。
+        cacheManager.clearCache(account)
+        cacheManager.clearChatHistory(account)
+        cacheManager.clearScoreFirstSeen(account)
     }
 
     @Synchronized
@@ -213,6 +232,7 @@ class UserRepository @Inject constructor(
     /** Atomically stores a foreground login and invalidates older relogin work. */
     @Synchronized
     fun saveAuthenticatedUser(user: User, password: String) {
+        // 密码只写 securePrefs；不再向 ifafu_user 写 password_backup 明文副本
         prefs.edit().apply {
             putString("account", user.account)
             putString("name", user.name)
@@ -220,7 +240,6 @@ class UserRepository @Inject constructor(
             putString("clas", user.clas)
             putInt("enrollment", user.enrollment)
             putBoolean("isLogin", user.isLogin)
-            putString("password_backup", password)
             apply()
         }
         securePrefs.edit().apply {

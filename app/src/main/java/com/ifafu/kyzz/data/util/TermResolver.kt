@@ -1,8 +1,16 @@
 package com.ifafu.kyzz.data.util
 
 import java.util.Calendar
+import java.util.TimeZone
 
 object TermResolver {
+
+    /**
+     * 判"今天"统一取 Asia/Shanghai（与 WeatherApi/CacheManager 同口径）：教务
+     * 日历是北京时间，设备时区调整/出国后按本地时区推断会把学期切换点漂移一天。
+     */
+    private fun shanghaiNow(): Calendar =
+        Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai"))
 
     data class Term(val year: String, val term: String) {
         fun display(): String {
@@ -13,7 +21,7 @@ object TermResolver {
 
     data class BreakTransition(val previous: Term, val upcoming: Term)
 
-    fun inferCurrentTerm(now: Calendar = Calendar.getInstance()): Term {
+    fun inferCurrentTerm(now: Calendar = shanghaiNow()): Term {
         val y = now.get(Calendar.YEAR)
         return when {
             now.get(Calendar.MONTH) == Calendar.JANUARY ->
@@ -54,7 +62,7 @@ object TermResolver {
      * 8 月末开学周一（9月1日所在周的周一）之后不再是过渡期：新课表已经是
      * 当前学期，继续按"未开学"处理会把开学第一周的今日课程藏掉。
      */
-    fun breakTransition(now: Calendar = Calendar.getInstance()): BreakTransition? {
+    fun breakTransition(now: Calendar = shanghaiNow()): BreakTransition? {
         val year = now.get(Calendar.YEAR)
         return when (now.get(Calendar.MONTH)) {
             Calendar.JANUARY, Calendar.FEBRUARY -> BreakTransition(
@@ -78,7 +86,9 @@ object TermResolver {
      */
     fun estimatedFirstDay(term: Term): Calendar? {
         val startYear = term.year.substringBefore('-').toIntOrNull() ?: return null
-        val cal = Calendar.getInstance()
+        // 与 inferCurrentTerm 的默认 now 同用 Asia/Shanghai：开学周一按设备时区
+        // 推导时，边界比较（timeInMillis）两侧时区错位最多 8 小时，边界日判定漂移。
+        val cal = Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai"))
         when (term.term) {
             "1" -> cal.set(startYear, Calendar.SEPTEMBER, 1, 0, 0, 0)
             "2" -> cal.set(startYear + 1, Calendar.MARCH, 2, 0, 0, 0)

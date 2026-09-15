@@ -270,9 +270,10 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 val changed = oldDate.isNotEmpty() && newDate != oldDate
                 userRepository.termFirstDay = newDate
                 userRepository.termFirstDayManual = true
-                // Clear syllabus cache if term first day actually changed
+                // 学期首日变化只影响周次推算：仅让课表缓存失效按新周次重拉，
+                // 不能全量 clearCache 把成绩/考试等无关缓存一并清掉
                 if (changed) {
-                    cacheManager.clearCache(userRepository.getUser().account)
+                    cacheManager.invalidateSyllabus(userRepository.getUser().account)
                 }
                 updateTermFirstDaySummary(pref)
                 Toast.makeText(requireContext(), "学期首日已设置为 $year-${month + 1}-$dayOfMonth", Toast.LENGTH_SHORT).show()
@@ -354,11 +355,14 @@ class SettingsFragment : PreferenceFragmentCompat() {
 
     private fun showUpdateDialog(release: UpdateChecker.ReleaseInfo) {
         val sizeText = release.apkAsset?.let { UpdateChecker.formatSize(it.size) } ?: "未知"
-        val dialog = androidx.appcompat.app.AlertDialog.Builder(requireContext())
+        // 弹窗构建时捕获 context：点"立即更新"时 Fragment 可能已 detach，
+        // 回调里 requireContext() 会抛 IllegalStateException
+        val ctx = requireContext()
+        val dialog = androidx.appcompat.app.AlertDialog.Builder(ctx)
             .setTitle("发现新版本 v${release.versionName}")
-            .setMessage(UpdateMarkdown.render(requireContext(), release.body, "安装包大小：$sizeText"))
+            .setMessage(UpdateMarkdown.render(ctx, release.body, "安装包大小：$sizeText"))
             .setPositiveButton("立即更新") { _, _ ->
-                UpdateChecker.downloadAndInstall(requireContext(), release)
+                UpdateChecker.downloadAndInstall(ctx, release)
             }
             .setNegativeButton("稍后", null)
             .show()
@@ -408,10 +412,15 @@ class SettingsFragment : PreferenceFragmentCompat() {
         if (account.isNotEmpty()) {
             cacheManager.clearCache(account)
             cacheManager.clearChatHistory(account)
+            // NEW 角标基线与业务缓存解耦（clearCache 故意不清它），登出这类
+            // 隐私清理路径须单独清掉
+            cacheManager.clearScoreFirstSeen(account)
         }
         CourseReminderReceiver.cancel(ctx)
         ScoreCheckReceiver.cancel(ctx)
         userRepository.clearUser()
+        // clearWidgetData 内部发 WIDGET_UPDATE 显式广播，让桌面 Widget 立即
+        // 重绘为"未登录"占位，而不是最长等 30 分钟的下一次定时刷新
         com.ifafu.kyzz.widget.iFAFUWidget.clearWidgetData(ctx)
         startActivity(android.content.Intent(ctx, com.ifafu.kyzz.ui.login.LoginActivity::class.java))
         requireActivity().finish()

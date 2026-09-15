@@ -31,6 +31,9 @@ import javax.inject.Inject
 class CourseSelectionActivity : BaseActivity<ActivityCourseSelectionBinding>() {
 
     private val viewModel: CourseSelectionViewModel by viewModels()
+    // Adapter/LayoutManager 复用：数据每次发射都 new 会让列表跳回顶部
+    private var layoutManagerSet = false
+    private var selectionAdapter: Adapter? = null
 
     override fun createBinding() = ActivityCourseSelectionBinding.inflate(layoutInflater)
 
@@ -62,8 +65,16 @@ class CourseSelectionActivity : BaseActivity<ActivityCourseSelectionBinding>() {
         }
 
         viewModel.data.observe(this) { list ->
-            binding.recyclerView.layoutManager = LinearLayoutManager(this)
-            binding.recyclerView.adapter = Adapter(list)
+            if (!layoutManagerSet) {
+                binding.recyclerView.layoutManager = LinearLayoutManager(this)
+                layoutManagerSet = true
+            }
+            // 复用同一 Adapter 实例，数据更新走 updateData，滚动位置不重置
+            val adapter = selectionAdapter ?: Adapter(emptyList()).also { selectionAdapter = it }
+            if (binding.recyclerView.adapter !== adapter) {
+                binding.recyclerView.adapter = adapter
+            }
+            adapter.updateData(list)
         }
 
         viewModel.load()
@@ -75,8 +86,17 @@ class CourseSelectionActivity : BaseActivity<ActivityCourseSelectionBinding>() {
         data class Error(val message: String) : State()
     }
 
-    inner class Adapter(private val items: List<CourseSelection>) :
+    inner class Adapter(items: List<CourseSelection>) :
         RecyclerView.Adapter<Adapter.VH>() {
+
+        private val items: MutableList<CourseSelection> = items.toMutableList()
+
+        /** 原地替换数据：保持 Adapter 实例与 RecyclerView 滚动位置不变。 */
+        fun updateData(newItems: List<CourseSelection>) {
+            items.clear()
+            items.addAll(newItems)
+            notifyDataSetChanged()
+        }
 
         override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH {
             val card = MaterialCardView(parent.context).apply {

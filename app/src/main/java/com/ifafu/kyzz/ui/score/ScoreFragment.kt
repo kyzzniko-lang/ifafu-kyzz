@@ -41,6 +41,8 @@ class ScoreFragment : Fragment() {
     private var spinnerReady = false
     private val activeAnimators = mutableListOf<ValueAnimator>()
     private var layoutManagerSet = false
+    // Adapter 跨状态发射复用：每次 new 会让后台刷新完成时列表跳回顶部
+    private var scoreAdapter: ScoreAdapter? = null
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)
@@ -146,8 +148,14 @@ class ScoreFragment : Fragment() {
         binding.tvSemesterLabel.text = when {
             selectedYear != null && selectedTerm != null -> "$selectedYear · 第${selectedTerm}学期"
             selectedYear != null -> "$selectedYear · 全部学期"
+            // 只选了学期未选学年：不能笼统显示"全部学年"，要把学期信息带上
+            selectedTerm != null -> "全部学年 · 第${selectedTerm}学期"
             else -> "全部学年"
         }
+        // 两个学期按钮的选中态：按钮在 MaterialButtonToggleGroup(singleSelection)内，
+        // isChecked 由组渲染选中样式；未选学期时两个都不勾
+        binding.btnTerm1.isChecked = selectedTerm == "1"
+        binding.btnTerm2.isChecked = selectedTerm == "2"
     }
 
     private fun showLoading() {
@@ -192,7 +200,13 @@ class ScoreFragment : Fragment() {
             binding.recyclerView.layoutManager = LinearLayoutManager(requireContext())
             layoutManagerSet = true
         }
-        binding.recyclerView.adapter = ScoreAdapter(items)
+        // 复用同一 Adapter 实例（LayoutManager 已复用），数据更新走 updateData，
+        // notifyDataSetChanged 不重置 RecyclerView 的滚动位置
+        val adapter = scoreAdapter ?: ScoreAdapter(emptyList()).also { scoreAdapter = it }
+        if (binding.recyclerView.adapter !== adapter) {
+            binding.recyclerView.adapter = adapter
+        }
+        adapter.updateData(items)
     }
 
     private fun updateStats(scores: List<Score>) {
@@ -213,13 +227,18 @@ class ScoreFragment : Fragment() {
 
         val gpa = GpaCalculator.computeGpa(scores)
 
-        // Animated counter for stats
+        // Animated counter for stats：从上次显示值（读 TextView 当前文本）起步，
+        // 后台刷新/切换筛选时不再从 0 重播整段动画
         binding.gpaRingView.setGpa(gpa)
-        animateCounter(binding.tvWeightedAvg, 0f, weightedAvg, "%.1f", 800)
-        animateCounter(binding.tvTotalCredits, 0f, totalCredits, "%.1f", 800)
-        animateCounter(binding.tvAvgScore, 0f, avgScore, "%.1f", 800)
+        animateCounter(binding.tvWeightedAvg, currentCounterValue(binding.tvWeightedAvg), weightedAvg, "%.1f", 800)
+        animateCounter(binding.tvTotalCredits, currentCounterValue(binding.tvTotalCredits), totalCredits, "%.1f", 800)
+        animateCounter(binding.tvAvgScore, currentCounterValue(binding.tvAvgScore), avgScore, "%.1f", 800)
         binding.tvSubjectCount.text = subjectCount.toString()
     }
+
+    /** 统计数字动画起点：TextView 当前文本解析失败（空/占位符）时按 0 处理。 */
+    private fun currentCounterValue(textView: TextView): Float =
+        textView.text.toString().toFloatOrNull() ?: 0f
 
     private fun animateCounter(textView: TextView, from: Float, to: Float, format: String, duration: Long) {
         val animator = ValueAnimator.ofFloat(from, to)
@@ -245,11 +264,20 @@ class ScoreFragment : Fragment() {
     }
 
     inner class ScoreAdapter(
-        private val items: List<Any>
+        items: List<Any>
     ) : androidx.recyclerview.widget.RecyclerView.Adapter<androidx.recyclerview.widget.RecyclerView.ViewHolder>() {
+
+        private val items: MutableList<Any> = items.toMutableList()
 
         private val TYPE_TREND = 0
         private val TYPE_SCORE = 1
+
+        /** 原地替换数据：保持 Adapter 实例与 RecyclerView 滚动位置不变。 */
+        fun updateData(newItems: List<Any>) {
+            this.items.clear()
+            this.items.addAll(newItems)
+            notifyDataSetChanged()
+        }
 
         override fun getItemViewType(position: Int) =
             if (items[position] is List<*>) TYPE_TREND else TYPE_SCORE

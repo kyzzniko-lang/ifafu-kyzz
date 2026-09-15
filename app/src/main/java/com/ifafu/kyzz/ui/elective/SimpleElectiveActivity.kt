@@ -45,6 +45,10 @@ class SimpleElectiveActivity : BaseActivity<ActivitySimpleElectiveBinding>() {
     )
 
     private var selectedTab = 0
+    // Adapter/LayoutManager 复用：available/selected 各自触发 showCourses 时
+    // 每次 new 会让列表跳回顶部
+    private var layoutManagerSet = false
+    private var courseAdapter: CourseAdapter? = null
 
     override fun createBinding() = ActivitySimpleElectiveBinding.inflate(layoutInflater)
 
@@ -193,8 +197,16 @@ class SimpleElectiveActivity : BaseActivity<ActivitySimpleElectiveBinding>() {
 
         binding.recyclerView.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
-        binding.recyclerView.layoutManager = LinearLayoutManager(this)
-        binding.recyclerView.adapter = CourseAdapter(items)
+        if (!layoutManagerSet) {
+            binding.recyclerView.layoutManager = LinearLayoutManager(this)
+            layoutManagerSet = true
+        }
+        // 复用同一 Adapter 实例，数据更新走 updateData，滚动位置不重置
+        val adapter = courseAdapter ?: CourseAdapter(emptyList()).also { courseAdapter = it }
+        if (binding.recyclerView.adapter !== adapter) {
+            binding.recyclerView.adapter = adapter
+        }
+        adapter.updateData(items)
     }
 
     sealed class CourseItem {
@@ -203,11 +215,20 @@ class SimpleElectiveActivity : BaseActivity<ActivitySimpleElectiveBinding>() {
     }
 
     inner class CourseAdapter(
-        private val items: List<CourseItem>
+        items: List<CourseItem>
     ) : RecyclerView.Adapter<RecyclerView.ViewHolder>() {
+
+        private val items: MutableList<CourseItem> = items.toMutableList()
 
         private val TYPE_HEADER = 0
         private val TYPE_COURSE = 1
+
+        /** 原地替换数据：保持 Adapter 实例与 RecyclerView 滚动位置不变。 */
+        fun updateData(newItems: List<CourseItem>) {
+            items.clear()
+            items.addAll(newItems)
+            notifyDataSetChanged()
+        }
 
         override fun getItemViewType(position: Int) = when (items[position]) {
             is CourseItem.Header -> TYPE_HEADER

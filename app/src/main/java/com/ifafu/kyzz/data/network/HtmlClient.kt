@@ -46,7 +46,43 @@ class HtmlClient @Inject constructor(
 
     private val gbkCharset: Charset = Charset.forName("GBK")
 
-    private fun bytesToString(bytes: ByteArray): String = String(bytes, gbkCharset)
+    private fun bytesToString(bytes: ByteArray, contentType: String? = null): String =
+        String(bytes, resolveCharset(bytes, contentType))
+
+    /**
+     * 解析响应字符集：优先响应头 Content-Type 里的 charset；无则扫描响应体
+     * 前 2KB 的 ASCII 范围找 <meta charset=...> 声明；都没有才默认 GBK
+     * （正方教务是 GBK，但验证码/门户等附属接口可能是 UTF-8，强制 GBK 会乱码）。
+     */
+    private fun resolveCharset(bytes: ByteArray, contentType: String?): Charset =
+        headerCharset(contentType) ?: metaCharset(bytes) ?: gbkCharset
+
+    private fun headerCharset(contentType: String?): Charset? {
+        if (contentType.isNullOrEmpty()) return null
+        val match = Regex("""charset\s*=\s*([\w-]+)""", RegexOption.IGNORE_CASE)
+            .find(contentType) ?: return null
+        return charsetOrNull(match.groupValues[1])
+    }
+
+    /** 只把 ASCII 可见字节拼成嗅探串：GBK 高位字节直接转字符可能撞出伪 charset 声明。 */
+    private fun metaCharset(bytes: ByteArray): Charset? {
+        val scanLen = minOf(bytes.size, 2048)
+        val ascii = buildString {
+            for (i in 0 until scanLen) {
+                val b = bytes[i].toInt() and 0xFF
+                if (b in 0x20..0x7E) append(b.toChar()) else append(' ')
+            }
+        }
+        val match = Regex("""charset\s*=\s*["']?\s*([\w-]+)""", RegexOption.IGNORE_CASE)
+            .find(ascii) ?: return null
+        return charsetOrNull(match.groupValues[1])
+    }
+
+    private fun charsetOrNull(name: String): Charset? = try {
+        Charset.forName(name)
+    } catch (_: Exception) {
+        null
+    }
 
     data class GetResult(val doc: Document, val viewState: String, val viewStateGenerator: String, val url: String)
 
@@ -78,7 +114,7 @@ class HtmlClient @Inject constructor(
         }
         lastUrl = result.url
         referer = lastUrl
-        val html = bytesToString(result.bytes)
+        val html = bytesToString(result.bytes, result.contentType)
         checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
         Jsoup.parse(html).also(::extractViewState)
     } }
@@ -94,7 +130,7 @@ class HtmlClient @Inject constructor(
             }
             lastUrl = result.url
             referer = lastUrl
-            val html = bytesToString(result.bytes)
+            val html = bytesToString(result.bytes, result.contentType)
             checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
             Jsoup.parse(html).also(::extractViewState)
         } }
@@ -108,7 +144,7 @@ class HtmlClient @Inject constructor(
         }
         lastUrl = result.url
         referer = lastUrl
-        val html = bytesToString(result.bytes)
+        val html = bytesToString(result.bytes, result.contentType)
         checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
         val doc = Jsoup.parse(html)
         extractViewState(doc)
@@ -133,7 +169,7 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
-                val html = bytesToString(bytes)
+                val html = bytesToString(bytes, response.header("Content-Type"))
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -152,7 +188,7 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
-                val html = bytesToString(bytes)
+                val html = bytesToString(bytes, response.header("Content-Type"))
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 val doc = Jsoup.parse(html)
                 val vs = doc.select("input[name=__VIEWSTATE]").firstOrNull()
@@ -199,7 +235,7 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
-                val html = bytesToString(bytes)
+                val html = bytesToString(bytes, response.header("Content-Type"))
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -227,7 +263,7 @@ class HtmlClient @Inject constructor(
         }
         lastUrl = result.url
         referer = lastUrl
-        val html = bytesToString(result.bytes)
+        val html = bytesToString(result.bytes, result.contentType)
         checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
         html
     } }
@@ -246,7 +282,7 @@ class HtmlClient @Inject constructor(
         }
         lastUrl = result.url
         referer = lastUrl
-        val html = bytesToString(result.bytes)
+        val html = bytesToString(result.bytes, result.contentType)
         checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
         html
     } }
@@ -269,7 +305,7 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
-                bytesToString(bytes)
+                bytesToString(bytes, response.header("Content-Type"))
             }
         }
     }
@@ -316,7 +352,7 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 referer = lastUrl
-                bytesToString(bytes)
+                bytesToString(bytes, response.header("Content-Type"))
             }
         }
     }
@@ -330,7 +366,7 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
-                bytesToString(bytes)
+                bytesToString(bytes, response.header("Content-Type"))
             }
         }
     }
@@ -347,7 +383,7 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
-                val html = bytesToString(bytes)
+                val html = bytesToString(bytes, response.header("Content-Type"))
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -367,7 +403,7 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
-                val html = bytesToString(bytes)
+                val html = bytesToString(bytes, response.header("Content-Type"))
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -387,7 +423,7 @@ class HtmlClient @Inject constructor(
                 val bytes = response.body?.bytes() ?: ByteArray(0)
                 lastUrl = response.request.url.toString()
                 this@HtmlClient.referer = lastUrl
-                val html = bytesToString(bytes)
+                val html = bytesToString(bytes, response.header("Content-Type"))
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -409,7 +445,7 @@ class HtmlClient @Inject constructor(
                 android.util.Log.d("HtmlClient", "POST raw: url=${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(finalUrl)}, code=$code, bodyLen=${bytes.size}, hasRedirect=${url != finalUrl}")
                 lastUrl = finalUrl
                 this@HtmlClient.referer = finalUrl
-                bytesToString(bytes)
+                bytesToString(bytes, response.header("Content-Type"))
             }
         }
     }
@@ -420,7 +456,7 @@ class HtmlClient @Inject constructor(
                 throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
             }
             val bytes = response.body?.bytes() ?: ByteArray(0)
-            val html = bytesToString(bytes)
+            val html = bytesToString(bytes, response.header("Content-Type"))
             lastUrl = response.request.url.toString()
             referer = lastUrl
             checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
@@ -434,7 +470,8 @@ class HtmlClient @Inject constructor(
         val bytes: ByteArray,
         val code: Int,
         val message: String,
-        val url: String
+        val url: String,
+        val contentType: String? = null
     )
 
     private suspend fun executeRawCancellable(request: Request): RawHttpResult =
@@ -453,7 +490,8 @@ class HtmlClient @Inject constructor(
                                 bytes = it.body?.bytes() ?: ByteArray(0),
                                 code = it.code,
                                 message = it.message,
-                                url = it.request.url.toString()
+                                url = it.request.url.toString(),
+                                contentType = it.header("Content-Type")
                             )
                             if (continuation.isActive) continuation.resumeWith(Result.success(result))
                         }
@@ -544,24 +582,28 @@ class HtmlClient @Inject constructor(
 
     fun checkAlert(html: String): Response? {
         val regex = Regex("""(?is)(?:window\.)?alert\s*\(\s*(['"])(.*?)\1\s*\)""")
-        // 先在 raw HTML 中搜索（兼容非标准 script 标签或 script 内容解析差异）
-        val rawMatch = regex.find(html)
-        if (rawMatch != null && !isAlertInsideFunction(html, rawMatch.range.first)) {
-            return Response(false, -1, rawMatch.groupValues[2])
+        // 先在 raw HTML 中搜索（兼容非标准 script 标签或 script 内容解析差异）。
+        // 必须遍历所有 alert：只取第一个的话，前面函数内的校验提示会挡住
+        // 后面真正的页面级提示。
+        for (match in regex.findAll(html)) {
+            if (!isAlertInsideFunction(html, match.range.first)) {
+                return Response(false, -1, match.groupValues[2])
+            }
         }
         // 再在 Jsoup 解析的 script 标签内容中搜索（兼容 CDATA 等包装）
         val doc = Jsoup.parse(html)
         for (script in doc.select("script")) {
             val content = script.html()
-            val match = regex.find(content)
-            if (match != null) {
-                // 需要在原始 HTML 中定位此 script 内的 alert
+            for (match in regex.findAll(content)) {
+                // 需要在原始 HTML 中定位此 script 内的 alert；定位失败（Jsoup
+                // 序列化与原文不一致）时无法排除"函数内"可能，该 alert 一律按
+                // 函数内处理跳过，避免校验函数的提示被误判成页面级错误。
                 val scriptIdx = html.indexOf(content)
-                if (scriptIdx >= 0) {
-                    val absPos = scriptIdx + match.range.first
-                    if (isAlertInsideFunction(html, absPos)) continue
+                if (scriptIdx < 0) continue
+                val absPos = scriptIdx + match.range.first
+                if (!isAlertInsideFunction(html, absPos)) {
+                    return Response(false, -1, match.groupValues[2])
                 }
-                return Response(false, -1, match.groupValues[2])
             }
         }
         return null
@@ -598,7 +640,7 @@ class HtmlClient @Inject constructor(
                     throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
                 }
                 val bytes = response.body?.bytes() ?: ByteArray(0)
-                val html = bytesToString(bytes)
+                val html = bytesToString(bytes, response.header("Content-Type"))
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 val finalUrl = response.request.url.toString()
                 lastUrl = finalUrl
@@ -617,7 +659,7 @@ class HtmlClient @Inject constructor(
         if (result.code !in 200..299) {
             throw HttpException(result.code, "HTTP ${result.code}: ${result.message}")
         }
-        val html = bytesToString(result.bytes)
+        val html = bytesToString(result.bytes, result.contentType)
         checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
         lastUrl = result.url
         referer = result.url
