@@ -92,6 +92,26 @@ class SessionResponseClassifierTest {
     }
 
     @Test
+    fun accessDeniedAlertIsSessionExpired() {
+        // 正方对会话失效后直连功能页的拦截响应：不是登录页而是顶层 alert。
+        // 必须判为过期，否则自动重登链路被跳过，教务原文直接甩给用户。
+        val html = """<html><head><script>alert('对不起,禁止使用此功能')</script></head>
+            <body></body></html>"""
+        assertTrue(SessionResponseClassifier.isSessionExpired(html))
+    }
+
+    @Test
+    fun accessDeniedAlertMessageIsSessionExpiredKeyword() {
+        assertTrue(
+            com.ifafu.kyzz.data.network.AlertException.isSessionExpiredMessage("对不起,禁止使用此功能")
+        )
+        // 评教场景的其它"禁止"类文案不得被误判为会话过期
+        assertFalse(
+            com.ifafu.kyzz.data.network.AlertException.isSessionExpiredMessage("对不起,禁止评教此教师")
+        )
+    }
+
+    @Test
     fun mainPageRedirectProvesLoginSuccess() {
         assertTrue(
             SessionResponseClassifier.isAuthenticatedLoginResponse(

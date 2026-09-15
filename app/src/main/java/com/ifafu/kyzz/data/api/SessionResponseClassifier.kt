@@ -32,6 +32,15 @@ internal object SessionResponseClassifier {
             Log.w(TAG, "会话过期判定命中:页面含密码输入框且无业务页特征")
             return true
         }
+        // 正方对"会话失效后直连功能页"（URL 带过期 token 访问 xsgrxx 等）的
+        // 一种拦截响应：不返回登录页，而是顶层 alert（对不起,禁止使用此功能）。
+        // 不识别它的话，各 API 的自动重登链路会被跳过，教务原文被直接甩给用户。
+        // 判为过期以复用既有的重登重试；若重登后仍被拒（学校真禁用该功能），
+        // 重试路径的 throwIfAlert 会照常抛出原文，不受此影响。
+        if ("禁止使用此功能" in html || "禁止使用该功能" in html) {
+            Log.w(TAG, "会话过期判定命中:页面为\"禁止使用此功能\"拦截 alert")
+            return true
+        }
         return false
     }
 
