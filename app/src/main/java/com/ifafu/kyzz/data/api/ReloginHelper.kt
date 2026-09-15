@@ -159,7 +159,16 @@ class ReloginHelper @Inject constructor(
             Log.w(TAG, "Relogin retry cancelled because the active account or host changed")
             throw original
         }
-        return refetch(user)
+        return try {
+            refetch(user)
+        } catch (e: AlertException) {
+            // 重登成功后仍被拦截:会话是全新的,不再是会话问题——大概率是教务
+            // 对该功能模块(gnmkdm)本身停止了授权(学校侧下架/禁用)。明确告知
+            // 而非误导用户"会话过期,请重新登录"(重新登录也解决不了)。
+            throw AlertException(
+                "重登后教务仍拦截该功能,可能已被学校停用(教务提示:${e.message})"
+            )
+        }
     }
 
     /**
