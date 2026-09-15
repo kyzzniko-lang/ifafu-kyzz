@@ -42,6 +42,7 @@
     <string name="grid_syllabus_title">二维课表</string>
     <string name="score_title">成绩查询</string>
     <string name="exam_title">考试安排</string>
+    <string name="exam_empty_message">本学期暂无考试成绩发布</string>
     <string name="elective_title">选课</string>
     <string name="comment_title">一键评教</string>
     <string name="about_title">关于 iFAFU</string>

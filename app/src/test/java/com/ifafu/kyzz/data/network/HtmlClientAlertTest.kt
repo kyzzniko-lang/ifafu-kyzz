@@ -1,0 +1,33 @@
+package com.ifafu.kyzz.data.network
+
+import okhttp3.OkHttpClient
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Test
+
+class HtmlClientAlertTest {
+    private val client = HtmlClient(OkHttpClient())
+
+    @Test
+    fun longFunctionAlertsAreNotTreatedAsPageErrors() {
+        val longFunctionBody = "var untouched = 1;".repeat(1_100)
+        val html = """
+            <html><head><script>
+            function validate() {
+                alert('请输入内容');
+                $longFunctionBody
+                alert('对不起,禁止使用此功能');
+            }
+            </script></head><body><span id="lbxsgrxx_xm">姓名：</span></body></html>
+        """.trimIndent()
+
+        assertNull(client.checkAlert(html))
+    }
+
+    @Test
+    fun topLevelAlertIsStillTreatedAsPageError() {
+        val html = """<html><script>alert('对不起,禁止使用此功能')</script></html>"""
+
+        assertEquals("对不起,禁止使用此功能", client.checkAlert(html)?.message)
+    }
+}

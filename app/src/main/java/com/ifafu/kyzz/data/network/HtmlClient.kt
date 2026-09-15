@@ -615,10 +615,16 @@ class HtmlClient @Inject constructor(
     /** 检查 alert 是否在 function 定义内部 (如 function Keykz() { alert(...) }) */
     private fun isAlertInsideFunction(html: String, alertPos: Int): Boolean {
         if (alertPos < 0) return false
-        // 老教务系统的校验函数经常很长，alert 可能距离 function 关键字数千字符。
-        // 只看一个很短窗口会把函数内部的提示误判成页面级错误。
-        val start = maxOf(0, alertPos - 16_000)
-        val before = html.substring(start, alertPos)
+        // 只检查当前 script。个人信息等老页面的单个校验函数可能超过 16KB，
+        // 不能使用固定长度回看窗口，否则函数尾部的 alert 会被误判为顶层拦截。
+        val scriptStart = html.lastIndexOf("<script", alertPos, ignoreCase = true)
+        if (scriptStart < 0) return false
+        val scriptBodyStart = html.indexOf('>', scriptStart).takeIf { it in 0 until alertPos }
+            ?: return false
+        val scriptEnd = html.indexOf("</script", scriptBodyStart, ignoreCase = true)
+        if (scriptEnd in 0 until alertPos) return false
+
+        val before = html.substring(scriptBodyStart + 1, alertPos)
         val lastFunction = before.lastIndexOf("function", ignoreCase = true)
         if (lastFunction < 0) return false
 

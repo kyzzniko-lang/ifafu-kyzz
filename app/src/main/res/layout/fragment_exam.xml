@@ -55,6 +55,17 @@
 
         </androidx.swiperefreshlayout.widget.SwipeRefreshLayout>
 
+        <TextView
+            android:id="@+id/tvEmpty"
+            style="@style/ClaudeBody.Secondary"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="@string/exam_empty_message"
+            android:visibility="gone" />
+
         <include
             android:id="@+id/petLoading"
             layout="@layout/layout_pet_loading" />

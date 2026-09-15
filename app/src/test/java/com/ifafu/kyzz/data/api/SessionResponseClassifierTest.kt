@@ -112,6 +112,15 @@ class SessionResponseClassifierTest {
     }
 
     @Test
+    fun studentInfoBusinessPageWithAccessDeniedFunctionIsNotSessionExpired() {
+        val html = """<html><body><span id="lbxsgrxx_xm">姓名：</span>
+            <script>function validateAccess() { alert('对不起,禁止使用此功能') }</script>
+            </body></html>"""
+
+        assertFalse(SessionResponseClassifier.isSessionExpired(html))
+    }
+
+    @Test
     fun mainPageRedirectProvesLoginSuccess() {
         assertTrue(
             SessionResponseClassifier.isAuthenticatedLoginResponse(

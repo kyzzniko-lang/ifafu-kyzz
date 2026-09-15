@@ -96,12 +96,14 @@ class ExamFragment : Fragment() {
     private fun showLoading() {
         binding.petLoading.root.startLoading()
         binding.recyclerView.visibility = View.GONE
+        binding.tvEmpty.visibility = View.GONE
         binding.errorLayout.visibility = View.GONE
     }
 
     private fun showError(message: String) {
         binding.petLoading.root.stopLoading()
         binding.recyclerView.visibility = View.GONE
+        binding.tvEmpty.visibility = View.GONE
         binding.errorLayout.visibility = View.VISIBLE
         binding.tvError.text = message
         
@@ -116,7 +118,9 @@ class ExamFragment : Fragment() {
 
     private fun showExams(exams: List<Exam>) {
         binding.petLoading.root.stopLoading()
-        binding.recyclerView.visibility = View.VISIBLE
+        val isEmpty = exams.isEmpty()
+        binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
+        binding.tvEmpty.visibility = if (isEmpty) View.VISIBLE else View.GONE
         binding.errorLayout.visibility = View.GONE
 
         val conflicts = findConflicts(exams)

@@ -37,7 +37,11 @@ internal object SessionResponseClassifier {
         // 不识别它的话，各 API 的自动重登链路会被跳过，教务原文被直接甩给用户。
         // 判为过期以复用既有的重登重试；若重登后仍被拒（学校真禁用该功能），
         // 重试路径的 throwIfAlert 会照常抛出原文，不受此影响。
-        if ("禁止使用此功能" in html || "禁止使用该功能" in html) {
+        // 正常业务页也可能在校验函数中预置同名 alert（个人信息页即如此），
+        // 因此只有完全不具备业务页特征的纯拦截响应才能据此判会话过期。
+        if (("禁止使用此功能" in html || "禁止使用该功能" in html) &&
+            !looksLikeBusinessPage(html)
+        ) {
             Log.w(TAG, "会话过期判定命中:页面为\"禁止使用此功能\"拦截 alert")
             return true
         }
@@ -52,7 +56,7 @@ internal object SessionResponseClassifier {
      */
     fun looksLikeBusinessPage(html: String): Boolean = listOf(
         "datagrid1", "datagrid2", "dbgrid", "xhxm", "kbtable",
-        "gridlines", "xscjcx", "pyjh"
+        "gridlines", "xscjcx", "pyjh", "lbxsgrxx_"
     ).any { html.lowercase().contains(it) }
 
     fun isTransientServerError(html: String): Boolean =
