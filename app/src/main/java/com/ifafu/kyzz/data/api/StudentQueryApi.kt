@@ -29,36 +29,49 @@ class StudentQueryApi @Inject constructor(
         host: String, token: String, number: String, name: String
     ): QueryResult<List<CourseSelection>> {
         return try {
-            val url = "${host}/(${token})/xsxkqk.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121615"
-            val html = htmlClient.getString(url)
-            if (html.isBlank()) return QueryResult(false, "网络异常")
-
-            if (userApi.isSessionExpired(html)) {
-                val reloginResp = reloginHelper.relogin()
-                if (!reloginResp.success) return QueryResult(false, reloginResp.message)
-                val user = userRepository.getUser()
-                // 重登等待期间账号/主机可能已切换（守卫同 StudentInfoApi/ExamApi）：
-                // 新 token 配旧查询参数会把 A 的选课数据挂进 B 的会话并缓存串台。
-                if (user.account != number || userRepository.host != host) {
-                    return QueryResult(false, "登录信息已变更，请刷新重试")
-                }
-                val retryUrl = "${host}/(${user.token})/xsxkqk.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121615"
-                val retryHtml = htmlClient.getString(retryUrl)
-                if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
-                    return QueryResult(false, "会话已过期，请重新登录")
-                }
-                htmlClient.throwIfAlert(retryHtml)
-                return parseCourseSelections(retryHtml)
-            }
-
-            htmlClient.throwIfAlert(html)
-            parseCourseSelections(html)
+            fetchCourseSelections(host, token, number, name)
         } catch (e: CancellationException) { throw e }
-        catch (e: AlertException) { throw e }
+        catch (e: AlertException) {
+            // 会话失效时正方可能以"禁止使用此功能"类 alert 拦截而非登录页，
+            // getString 在网络层直接抛异常、isSessionExpired 预检走不到：
+            // 重登一次重取，仍被拒才抛回原文。
+            reloginHelper.reloginAndRetry(e, number, host) { user ->
+                fetchCourseSelections(host, user.token, user.account, user.name)
+            }
+        }
         catch (e: Exception) {
             Log.e(TAG, "Failed to get course selections", e)
             QueryResult(false, "网络异常")
         }
+    }
+
+    private suspend fun fetchCourseSelections(
+        host: String, token: String, number: String, name: String
+    ): QueryResult<List<CourseSelection>> {
+        val url = "${host}/(${token})/xsxkqk.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121615"
+        val html = htmlClient.getString(url)
+        if (html.isBlank()) return QueryResult(false, "网络异常")
+
+        if (userApi.isSessionExpired(html)) {
+            val reloginResp = reloginHelper.relogin()
+            if (!reloginResp.success) return QueryResult(false, reloginResp.message)
+            val user = userRepository.getUser()
+            // 重登等待期间账号/主机可能已切换（守卫同 StudentInfoApi/ExamApi）：
+            // 新 token 配旧查询参数会把 A 的选课数据挂进 B 的会话并缓存串台。
+            if (user.account != number || userRepository.host != host) {
+                return QueryResult(false, "登录信息已变更，请刷新重试")
+            }
+            val retryUrl = "${host}/(${user.token})/xsxkqk.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121615"
+            val retryHtml = htmlClient.getString(retryUrl)
+            if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
+                return QueryResult(false, "会话已过期，请重新登录")
+            }
+            htmlClient.throwIfAlert(retryHtml)
+            return parseCourseSelections(retryHtml)
+        }
+
+        htmlClient.throwIfAlert(html)
+        return parseCourseSelections(html)
     }
 
     private fun parseCourseSelections(html: String): QueryResult<List<CourseSelection>> {
@@ -129,36 +142,46 @@ class StudentQueryApi @Inject constructor(
         host: String, token: String, number: String, name: String
     ): QueryResult<List<MakeupExam>> {
         return try {
-            val url = "${host}/(${token})/xsbkkscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121617"
-            val html = htmlClient.getString(url)
-            if (html.isBlank()) return QueryResult(false, "网络异常")
-
-            if (userApi.isSessionExpired(html)) {
-                val reloginResp = reloginHelper.relogin()
-                if (!reloginResp.success) return QueryResult(false, reloginResp.message)
-                val user = userRepository.getUser()
-                // 重登等待期间账号/主机可能已切换（守卫同 StudentInfoApi/ExamApi）：
-                // 新 token 配旧查询参数会把 A 的缓考数据挂进 B 的会话并缓存串台。
-                if (user.account != number || userRepository.host != host) {
-                    return QueryResult(false, "登录信息已变更，请刷新重试")
-                }
-                val retryUrl = "${host}/(${user.token})/xsbkkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121617"
-                val retryHtml = htmlClient.getString(retryUrl)
-                if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
-                    return QueryResult(false, "会话已过期，请重新登录")
-                }
-                htmlClient.throwIfAlert(retryHtml)
-                return parseMakeupExams(retryHtml)
-            }
-
-            htmlClient.throwIfAlert(html)
-            parseMakeupExams(html)
+            fetchMakeupExams(host, token, number, name)
         } catch (e: CancellationException) { throw e }
-        catch (e: AlertException) { throw e }
+        catch (e: AlertException) {
+            reloginHelper.reloginAndRetry(e, number, host) { user ->
+                fetchMakeupExams(host, user.token, user.account, user.name)
+            }
+        }
         catch (e: Exception) {
             Log.e(TAG, "Failed to get makeup exams", e)
             QueryResult(false, "网络异常")
         }
+    }
+
+    private suspend fun fetchMakeupExams(
+        host: String, token: String, number: String, name: String
+    ): QueryResult<List<MakeupExam>> {
+        val url = "${host}/(${token})/xsbkkscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121617"
+        val html = htmlClient.getString(url)
+        if (html.isBlank()) return QueryResult(false, "网络异常")
+
+        if (userApi.isSessionExpired(html)) {
+            val reloginResp = reloginHelper.relogin()
+            if (!reloginResp.success) return QueryResult(false, reloginResp.message)
+            val user = userRepository.getUser()
+            // 重登等待期间账号/主机可能已切换（守卫同 StudentInfoApi/ExamApi）：
+            // 新 token 配旧查询参数会把 A 的缓考数据挂进 B 的会话并缓存串台。
+            if (user.account != number || userRepository.host != host) {
+                return QueryResult(false, "登录信息已变更，请刷新重试")
+            }
+            val retryUrl = "${host}/(${user.token})/xsbkkscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121617"
+            val retryHtml = htmlClient.getString(retryUrl)
+            if (retryHtml.isBlank() || userApi.isSessionExpired(retryHtml)) {
+                return QueryResult(false, "会话已过期，请重新登录")
+            }
+            htmlClient.throwIfAlert(retryHtml)
+            return parseMakeupExams(retryHtml)
+        }
+
+        htmlClient.throwIfAlert(html)
+        return parseMakeupExams(html)
     }
 
     private fun parseMakeupExams(html: String): QueryResult<List<MakeupExam>> {

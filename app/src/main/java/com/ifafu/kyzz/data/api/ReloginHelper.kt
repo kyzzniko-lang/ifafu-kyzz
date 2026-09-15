@@ -129,6 +129,40 @@ class ReloginHelper @Inject constructor(
     }
 
     /**
+     * "AlertException 型会话失效"的统一自救入口。
+     *
+     * HtmlClient.get/getString 在网络层对页面级 alert 直接抛 AlertException，
+     * API 层的 isSessionExpired 预检（只认登录页特征）根本没有机会执行——
+     * 正方对失效 session 直连功能页往往不返回登录页，而是顶层 alert
+     * （如"对不起,禁止使用此功能"），且文案随部署而变、无法穷举。
+     * 因此这里不依赖文案判断：catch 到 alert 后一律重登一次并重取。
+     *
+     * - 重登成功且账号/host 未变 → 用新会话重取，调用方无感恢复；
+     * - 重登失败或重取仍抛 → 抛回 [original]（或重取的新异常），由上层按
+     *   原文展示；若学校真禁用了该功能，原文即真相。
+     */
+    suspend fun <T> reloginAndRetry(
+        original: AlertException,
+        expectedAccount: String,
+        expectedHost: String,
+        refetch: suspend (com.ifafu.kyzz.data.model.User) -> T
+    ): T {
+        Log.w(TAG, "Page-level alert '${original.message}', retrying once after relogin")
+        val response = relogin()
+        if (!response.success) {
+            handleReloginFailure(response)
+            throw original
+        }
+        val user = userRepository.getUser()
+        // 重登等待期间账号/教务地址可能已切换：新会话配旧参数会跨账号串数据
+        if (user.account != expectedAccount || userRepository.host != expectedHost) {
+            Log.w(TAG, "Relogin retry cancelled because the active account or host changed")
+            throw original
+        }
+        return refetch(user)
+    }
+
+    /**
      * 简化版重登录重试，不探测主页面，适用于非核心 API。
      * 重试后仍过期直接返回 null。
      */

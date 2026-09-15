@@ -587,6 +587,9 @@ class HtmlClient @Inject constructor(
         // 后面真正的页面级提示。
         for (match in regex.findAll(html)) {
             if (!isAlertInsideFunction(html, match.range.first)) {
+                // 留痕教务返回的页面级 alert 原文：拦截类文案随部署而变
+                //（如"对不起,禁止使用此功能"），出问题时可凭 logcat 定位实际文案
+                android.util.Log.i("HtmlClient", "页面级 alert: ${match.groupValues[2]}")
                 return Response(false, -1, match.groupValues[2])
             }
         }
