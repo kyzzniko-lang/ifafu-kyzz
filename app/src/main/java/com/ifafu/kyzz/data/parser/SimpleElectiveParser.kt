@@ -27,10 +27,10 @@ class SimpleElectiveParser @Inject constructor() {
         }
 
         for (table in tables) {
-            val rows = table.select("tr")
+            val rows = table.select("tr").toList().filter { it.closest("table") === table }
             if (rows.isEmpty()) continue
 
-            val headerCells = rows[0].select("th, td")
+            val headerCells = rows[0].children().toList().filter { it.tagName() in setOf("th", "td") }
             if (headerCells.isEmpty()) continue
             val headerTexts = headerCells.map { it.text().trim() }
 
@@ -44,32 +44,29 @@ class SimpleElectiveParser @Inject constructor() {
                 }
             }
 
-            val hasSelect = headerTexts.any { it.contains("选定") || it.contains("选课") }
-            // 有复选框列时数据单元格从第 2 列开始（offset=1），表头也必须同步去掉
-            // 复选框列，否则 name/teacher/credits 等全部读到右侧相邻列的值。
-            val colMap = buildColumnMap(if (hasSelect) headerTexts.drop(1) else headerTexts)
+            val selectColumn = headerTexts.indexOfFirst { it in setOf("选定", "选课", "选择") }
+                .takeIf { it >= 0 }
+                ?: rows.drop(1).firstNotNullOfOrNull { row ->
+                    row.children().indexOfFirst { it.select("input[type=checkbox], input[type=radio]").isNotEmpty() }
+                        .takeIf { it >= 0 }
+                }
+            val colMap = buildColumnMap(headerTexts)
 
             for (i in 1 until rows.size) {
-                val cells = rows[i].select("td")
+                val cells = rows[i].children().toList().filter { it.tagName() == "td" }
                 if (cells.size < 3) continue
 
                 val course = SimpleCourse()
-                var offset = 0
-
-                if (hasSelect && cells.isNotEmpty()) {
-                    val input = cells[0].select("input").firstOrNull()
-                    course.courseIndex = input?.attr("name")?.takeIf { it.isNotBlank() }
-                        ?: rows[i].attr("id").takeIf { it.isNotBlank() }
-                        ?: ""
-                    offset = 1
+                if (selectColumn != null && section == 0) {
+                    course.courseIndex = cells.getOrNull(selectColumn)
+                        ?.select("input[type=checkbox], input[type=radio]")?.firstOrNull()
+                        ?.attr("name").orEmpty()
                 }
 
-                val dataCells = cells.subList(offset, cells.size)
-                if (dataCells.isEmpty()) continue
-
                 if (colMap.isNotEmpty()) {
-                    mapByHeaders(dataCells, colMap, course)
+                    mapByHeaders(cells, colMap, course)
                 } else {
+                    val dataCells = cells.filterIndexed { index, _ -> index != selectColumn }
                     mapByPosition(dataCells, course, section == 1)
                 }
 

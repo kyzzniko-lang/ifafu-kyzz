@@ -1,6 +1,8 @@
 package com.ifafu.kyzz.data.api
 
 import android.util.Log
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import org.jsoup.Jsoup
 
 /** Pure response classification kept separate so auth edge cases are unit-testable. */
 internal object SessionResponseClassifier {
@@ -62,8 +64,10 @@ internal object SessionResponseClassifier {
     fun isTransientServerError(html: String): Boolean =
         html.contains("<title>ERROR - 出错啦！</title>") || html.contains("系统正忙")
 
-    fun isAuthenticatedLoginResponse(finalUrl: String, html: String): Boolean =
-        finalUrl.contains("xs_main.aspx", ignoreCase = true) ||
-            html.contains("id=\"xhxm\"", ignoreCase = true) ||
-            html.contains("id='xhxm'", ignoreCase = true)
+    fun isAuthenticatedLoginResponse(finalUrl: String, html: String): Boolean {
+        if (isSessionExpired(html) || isTransientServerError(html)) return false
+        val mainPage = finalUrl.toHttpUrlOrNull()?.pathSegments?.lastOrNull()
+            ?.equals("xs_main.aspx", ignoreCase = true) == true
+        return mainPage || Jsoup.parse(html).getElementById("xhxm") != null
+    }
 }

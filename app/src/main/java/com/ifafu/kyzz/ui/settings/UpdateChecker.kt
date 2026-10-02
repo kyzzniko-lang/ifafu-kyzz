@@ -23,10 +23,12 @@ import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicBoolean
 
 object UpdateChecker {
 
@@ -61,7 +63,11 @@ object UpdateChecker {
 
         val versionName: String get() = tagName.removePrefix("v")
         val apkAsset: Asset? get() = assets
-            ?.filter { it.name.endsWith(".apk", ignoreCase = true) }
+            ?.filter {
+                // Gson can populate null in a non-null Kotlin field for a malformed response.
+                it.name?.endsWith(".apk", ignoreCase = true) == true && it.size > 0L &&
+                    it.downloadUrl?.toHttpUrlOrNull()?.isHttps == true
+            }
             ?.maxByOrNull { it.size }
     }
 
@@ -200,167 +206,199 @@ object UpdateChecker {
         "https://mirror.ghproxy.com"
     )
 
-    @Volatile
-    private var isDownloading = false
-    private val downloadStartLock = Any()
+    private val isDownloading = AtomicBoolean(false)
+    private const val KEY_DOWNLOAD_ID = "download_id"
+    private const val KEY_DOWNLOAD_RELEASE = "download_release"
+    private const val KEY_DOWNLOAD_MIRROR = "download_mirror"
+    private const val KEY_WAITING_INSTALL_PERMISSION = "waiting_install_permission"
+    private val downloadHandler by lazy { android.os.Handler(android.os.Looper.getMainLooper()) }
 
     fun downloadAndInstall(context: Context, release: ReleaseInfo) {
-        // check-then-act 必须原子：@Volatile 只保证可见性，双击/两入口并发调用
-        // 都会通过检查，各自 enqueue 一个 DownloadManager 写同一文件并注册两个
-        // receiver，完成时弹两个安装器。
-        synchronized(downloadStartLock) {
-            if (isDownloading) return
-            release.apkAsset ?: return
-            isDownloading = true
-        }
         val asset = release.apkAsset ?: return
-        // DownloadManager does not reliably replace an existing destination.
-        // Remove the previous installer before enqueuing a newer release.
-        context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?.resolve("ifafu-update.apk")
-            ?.delete()
-        val originalUrl = asset.downloadUrl
-        tryDownload(context, release, originalUrl, 0)
+        if (!isDownloading.compareAndSet(false, true)) return
+        val appContext = context.applicationContext
+        downloadHandler.post {
+            try {
+                val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                val savedRelease = readPendingRelease(appContext)
+                val id = prefs.getLong(KEY_DOWNLOAD_ID, -1L)
+                if (id >= 0 && savedRelease?.tagName == release.tagName) {
+                    observeDownload(appContext, release, asset.downloadUrl,
+                        prefs.getInt(KEY_DOWNLOAD_MIRROR, 0), id)
+                } else {
+                    if (id >= 0) {
+                        runCatching { (appContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).remove(id) }
+                    }
+                    clearPendingDownload(appContext)
+                    tryDownload(appContext, release, asset.downloadUrl, 0)
+                }
+            } catch (e: Exception) {
+                downloadFailed(appContext, e)
+            }
+        }
+    }
+
+    /** Reattach after process death, and continue installation after the permission screen. */
+    fun resumePendingDownload(context: Context) {
+        val appContext = context.applicationContext
+        val release = readPendingRelease(appContext) ?: return
+        val prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_WAITING_INSTALL_PERMISSION, false) &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            !appContext.packageManager.canRequestPackageInstalls()
+        ) return
+        if (!isNewerThanCurrent(appContext, release)) {
+            clearPendingDownload(appContext)
+            return
+        }
+        downloadAndInstall(appContext, release)
+    }
+
+    private fun readPendingRelease(context: Context): ReleaseInfo? = try {
+        val json = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_DOWNLOAD_RELEASE, null)
+        if (json.isNullOrEmpty()) null else Gson().fromJson(json, ReleaseInfo::class.java)
+    } catch (_: Exception) { null }
+
+    private fun clearPendingDownload(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove(KEY_DOWNLOAD_ID).remove(KEY_DOWNLOAD_RELEASE).remove(KEY_DOWNLOAD_MIRROR)
+            .remove(KEY_WAITING_INSTALL_PERMISSION).apply()
     }
 
     private fun tryDownload(context: Context, release: ReleaseInfo, originalUrl: String, mirrorIndex: Int) {
-        // 后续所有长生命周期引用(receiver 注册、超时轮询闭包)必须挂在
-        // applicationContext 上:调用方传入的是 Activity,慢网下载可达数十分钟,
-        // 若闭包/注册持有 Activity,整个下载期间都无法回收。
-        val appContext = context.applicationContext
-
-        val url = if (mirrorIndex < mirrors.size) {
-            "${mirrors[mirrorIndex]}/$originalUrl"
-        } else {
-            originalUrl
+        try {
+            val url = if (mirrorIndex < mirrors.size) "${mirrors[mirrorIndex]}/$originalUrl" else originalUrl
+            val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                ?: throw IOException("下载目录不可用")
+            val file = File(dir, "ifafu-update.apk")
+            if (file.exists() && !file.delete()) throw IOException("无法清理旧安装包")
+            val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+            val request = DownloadManager.Request(Uri.parse(url))
+                .setTitle("iFAFU 更新")
+                .setDescription("正在下载 v${release.versionName}")
+                .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, file.name)
+                .setMimeType("application/vnd.android.package-archive")
+            val downloadId = dm.enqueue(request)
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .putLong(KEY_DOWNLOAD_ID, downloadId)
+                .putString(KEY_DOWNLOAD_RELEASE, Gson().toJson(release))
+                .putInt(KEY_DOWNLOAD_MIRROR, mirrorIndex)
+                .putBoolean(KEY_WAITING_INSTALL_PERMISSION, false).apply()
+            observeDownload(context, release, originalUrl, mirrorIndex, downloadId)
+        } catch (e: Exception) {
+            // Enqueue/registration/storage failures must release the busy gate as well.
+            downloadFailed(context, e)
         }
+    }
 
-        val dm = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-        val request = DownloadManager.Request(Uri.parse(url))
-            .setTitle("iFAFU 更新")
-            .setDescription("正在下载 v${release.versionName}")
-            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-            .setDestinationInExternalFilesDir(context, Environment.DIRECTORY_DOWNLOADS, "ifafu-update.apk")
-            .setMimeType("application/vnd.android.package-archive")
-
-        val downloadId = dm.enqueue(request)
-
-        var receiver: BroadcastReceiver? = null
-        val timeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
-        // 慢网（校园 WiFi/镜像限速）下载大 APK 常超过 10 分钟：到点直接反注册
-        // receiver 的话，之后完成的下载无人处理，用户永远等不到安装界面。
-        // 改为查询状态：仍在进行就续等，已完成就地安装，失败才放弃。
-        val checkTimeout = object : Runnable {
-            override fun run() {
-                val status = queryStatus(dm, downloadId)
-                when (status) {
-                    DownloadManager.STATUS_SUCCESSFUL -> {
-                        try { appContext.unregisterReceiver(receiver) } catch (_: Exception) {}
-                        handleDownloadCompleted(appContext, dm, downloadId, release, originalUrl, mirrors.size)
-                    }
-                    DownloadManager.STATUS_PENDING,
-                    DownloadManager.STATUS_RUNNING,
-                    DownloadManager.STATUS_PAUSED ->
-                        timeoutHandler.postDelayed(this, 10 * 60 * 1000L)
-                    else -> {
-                        // 失败或记录已被清除：放弃本次监听，允许用户重新发起
-                        try { appContext.unregisterReceiver(receiver) } catch (_: Exception) {}
-                        isDownloading = false
+    private fun observeDownload(context: Context, release: ReleaseInfo, originalUrl: String,
+                                mirrorIndex: Int, downloadId: Long) {
+        val dm = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        val completed = AtomicBoolean(false)
+        var receiverRegistered = false
+        lateinit var receiver: BroadcastReceiver
+        lateinit var poll: Runnable
+        fun inspect() {
+            val status = queryStatus(dm, downloadId)
+            if (status == DownloadManager.STATUS_PENDING || status == DownloadManager.STATUS_RUNNING ||
+                status == DownloadManager.STATUS_PAUSED
+            ) {
+                downloadHandler.removeCallbacks(poll)
+                downloadHandler.postDelayed(poll, 10_000L)
+                return
+            }
+            // Broadcast delivery and polling can both observe completion. Handle it once.
+            if (!completed.compareAndSet(false, true)) return
+            downloadHandler.removeCallbacks(poll)
+            if (receiverRegistered) runCatching { context.unregisterReceiver(receiver) }
+            try {
+                if (status != DownloadManager.STATUS_SUCCESSFUL) {
+                    retryDownload(context, dm, downloadId, release, originalUrl, mirrorIndex)
+                } else {
+                    val file = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+                        ?.resolve("ifafu-update.apk")
+                    val archive = file?.takeIf { it.isFile && it.length() > 0L }
+                        ?.let { context.packageManager.getPackageArchiveInfo(it.absolutePath, 0) }
+                    if (archive?.packageName != context.packageName) {
+                        // A mirror may return an HTML error page with HTTP 200.
+                        retryDownload(context, dm, downloadId, release, originalUrl, mirrorIndex)
+                    } else {
+                        installDownloadedApk(context, file!!)
                     }
                 }
+            } catch (e: Exception) {
+                downloadFailed(context, e)
             }
         }
-
+        poll = Runnable { inspect() }
         receiver = object : BroadcastReceiver() {
             override fun onReceive(ctx: Context, intent: Intent) {
-                val id = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                if (id != downloadId) return
-
-                timeoutHandler.removeCallbacksAndMessages(null)
-                try { appContext.unregisterReceiver(receiver) } catch (_: Exception) {}
-
-                handleDownloadCompleted(ctx, dm, downloadId, release, originalUrl, mirrorIndex)
+                if (intent.action == DownloadManager.ACTION_DOWNLOAD_COMPLETE &&
+                    intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) == downloadId
+                ) inspect()
             }
         }
-
-        ContextCompat.registerReceiver(
-            appContext,
-            receiver,
-            IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE),
-            ContextCompat.RECEIVER_NOT_EXPORTED
-        )
-
-        timeoutHandler.postDelayed(checkTimeout, 10 * 60 * 1000L)
+        try {
+            // DownloadManager is a different privileged app. Validate the id AND queried status;
+            // a forged completion broadcast must never launch an incomplete installer.
+            ContextCompat.registerReceiver(context, receiver,
+                IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE), ContextCompat.RECEIVER_EXPORTED)
+            receiverRegistered = true
+        } catch (e: Exception) {
+            android.util.Log.w("UpdateChecker", "下载广播注册失败，改用状态轮询", e)
+        }
+        // Closes the enqueue-before-registration race and reattaches persisted completed tasks.
+        inspect()
     }
 
-    private fun queryStatus(dm: DownloadManager, downloadId: Long): Int {
-        return try {
-            dm.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
-                if (cursor.moveToFirst()) {
-                    cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                } else {
-                    DownloadManager.STATUS_FAILED
-                }
-            }
-        } catch (_: Exception) {
-            DownloadManager.STATUS_FAILED
+    private fun queryStatus(dm: DownloadManager, downloadId: Long): Int = try {
+        dm.query(DownloadManager.Query().setFilterById(downloadId)).use { cursor ->
+            if (cursor != null && cursor.moveToFirst())
+                cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+            else DownloadManager.STATUS_FAILED
         }
-    }
+    } catch (_: Exception) { DownloadManager.STATUS_FAILED }
 
-    /**
-     * 下载完成后的统一出口：失败按镜像顺序重试，镜像耗尽后回退浏览器下载；
-     * 成功则校验安装权限并拉起安装器。
-     */
-    private fun handleDownloadCompleted(
-        context: Context,
-        dm: DownloadManager,
-        downloadId: Long,
-        release: ReleaseInfo,
-        originalUrl: String,
-        failedMirrorIndex: Int
-    ) {
-        val status = queryStatus(dm, downloadId)
-        if (status == DownloadManager.STATUS_FAILED) {
-            dm.remove(downloadId)
-            if (failedMirrorIndex < mirrors.size) {
-                android.util.Log.w("UpdateChecker", "Mirror $failedMirrorIndex failed, trying next")
-                tryDownload(context, release, originalUrl, failedMirrorIndex + 1)
-            } else {
-                android.util.Log.w("UpdateChecker", "Direct download failed, opening browser")
-                isDownloading = false
-                android.widget.Toast.makeText(context, "下载失败，请在浏览器中下载", android.widget.Toast.LENGTH_SHORT).show()
-                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(originalUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-            }
-            return
-        }
-
-        isDownloading = false
-        if (status != DownloadManager.STATUS_SUCCESSFUL) return
-
-        val dir = context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS) ?: return
-        val file = File(dir, "ifafu-update.apk")
-
-        val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    private fun retryDownload(context: Context, dm: DownloadManager, downloadId: Long,
+                              release: ReleaseInfo, originalUrl: String, mirrorIndex: Int) {
+        runCatching { dm.remove(downloadId) }
+        clearPendingDownload(context)
+        if (mirrorIndex < mirrors.size) {
+            tryDownload(context, release, originalUrl, mirrorIndex + 1)
         } else {
-            Uri.fromFile(file)
+            isDownloading.set(false)
+            android.widget.Toast.makeText(context, "下载失败，请在浏览器中下载", android.widget.Toast.LENGTH_SHORT).show()
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(originalUrl))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }.onFailure { android.util.Log.w("UpdateChecker", "无法打开浏览器", it) }
         }
+    }
 
+    private fun installDownloadedApk(context: Context, file: File) {
+        isDownloading.set(false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !context.packageManager.canRequestPackageInstalls()) {
+            context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+                .putBoolean(KEY_WAITING_INSTALL_PERMISSION, true).apply()
             android.widget.Toast.makeText(context, "请允许安装未知来源应用", android.widget.Toast.LENGTH_LONG).show()
-            val intent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                Uri.parse("package:${context.packageName}"))
-            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
+            context.startActivity(Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                Uri.parse("package:${context.packageName}")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return
         }
-
-        val install = Intent(Intent.ACTION_VIEW).apply {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        context.startActivity(Intent(Intent.ACTION_VIEW).apply {
             setDataAndType(uri, "application/vnd.android.package-archive")
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        }
-        context.startActivity(install)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+        })
+        clearPendingDownload(context)
+    }
+
+    private fun downloadFailed(context: Context, error: Exception) {
+        isDownloading.set(false)
+        android.util.Log.w("UpdateChecker", "更新下载/安装失败", error)
+        android.widget.Toast.makeText(context, "更新失败，请稍后重试", android.widget.Toast.LENGTH_LONG).show()
     }
 
     fun formatSize(bytes: Long): String {
@@ -386,7 +424,8 @@ object UpdateChecker {
     fun shouldCheck(context: Context): Boolean {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         val lastTs = prefs.getLong(KEY_LAST_CHECK_TS, 0L)
-        return System.currentTimeMillis() - lastTs > CHECK_INTERVAL_MS
+        val elapsed = System.currentTimeMillis() - lastTs
+        return elapsed < 0L || elapsed > CHECK_INTERVAL_MS
     }
 
     fun markChecked(context: Context) {

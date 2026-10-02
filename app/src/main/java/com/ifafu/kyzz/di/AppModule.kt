@@ -9,13 +9,16 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.qualifiers.ApplicationContext
 import dagger.hilt.components.SingletonComponent
 import okhttp3.CookieJar
+import okhttp3.Cookie
+import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import org.json.JSONArray
 import java.net.CookieManager
 import java.net.CookiePolicy
 import java.net.HttpCookie
-import java.net.URI
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
 
@@ -43,6 +46,7 @@ object AppModule {
         }
         return OkHttpClient.Builder()
             .cookieJar(cookieJar)
+            .addInterceptor(cookieJar.sessionGuard)
             .addInterceptor(loggingInterceptor)
             .retryOnConnectionFailure(true)
             .connectTimeout(15, TimeUnit.SECONDS)
@@ -57,8 +61,10 @@ object AppModule {
     }
 }
 
-class JavaNetCookieJar private constructor(context: Context) : CookieJar {
-    private val store = CookieManager(null, CookiePolicy.ACCEPT_ALL)
+class JavaNetCookieJar internal constructor(
+    context: Context,
+    private val nowMillis: () -> Long = System::currentTimeMillis
+) : CookieJar {
     private val prefs: SharedPreferences =
         context.getSharedPreferences("ifafu_cookies", Context.MODE_PRIVATE)
 
@@ -75,10 +81,31 @@ class JavaNetCookieJar private constructor(context: Context) : CookieJar {
         }
     }
 
-    // 必须声明在 init{} 之前：Kotlin 按声明顺序执行初始化，若 init 先运行，
-    // loadPersistedCookies() 里访问 savedCookies 时它还是 null，恢复首条 Cookie
-    // 就抛 NPE 并被空 catch 吞掉，"会话持久化"自上线以来从未真正生效过。
-    private val savedCookies = java.util.concurrent.ConcurrentHashMap<String, MutableList<Pair<HttpCookie, Long>>>()
+    private data class CookieKey(val name: String, val domain: String, val path: String)
+    private data class StoredCookie(val url: HttpUrl, val cookie: Cookie)
+
+    private val stateLock = Any()
+    private val savedCookies = linkedMapOf<CookieKey, StoredCookie>()
+    private var generation = 0L
+    private val requestGeneration = ThreadLocal<Long>()
+
+    /** One generation spans the entire redirect chain, including its cookie callbacks. */
+    internal data class SessionTag(val generation: Long)
+
+    internal fun requestSessionTag(): SessionTag = synchronized(stateLock) { SessionTag(generation) }
+
+    internal fun isSessionCurrent(tag: SessionTag): Boolean = synchronized(stateLock) { tag.generation == generation }
+
+    internal val sessionGuard = Interceptor { chain ->
+        val previous = requestGeneration.get()
+        val requestTag = chain.request().tag(SessionTag::class.java) ?: requestSessionTag()
+        requestGeneration.set(requestTag.generation)
+        try {
+            chain.proceed(chain.request())
+        } finally {
+            if (previous == null) requestGeneration.remove() else requestGeneration.set(previous)
+        }
+    }
 
     init {
         loadPersistedCookies()
@@ -88,60 +115,62 @@ class JavaNetCookieJar private constructor(context: Context) : CookieJar {
         val json = prefs.getString(KEY_COOKIES, null) ?: return
         try {
             val arr = JSONArray(json)
-            val now = System.currentTimeMillis()
+            val now = nowMillis()
             for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val uri = URI(obj.getString("uri"))
-                val cookie = HttpCookie(obj.getString("name"), obj.getString("value"))
-                cookie.domain = obj.optString("domain", "")
-                cookie.path = obj.optString("path", "/")
-                val expiresAt = obj.optLong("expiresAt", 0)
-                if (expiresAt > 0 && expiresAt < now) continue
-                if (expiresAt > 0) {
-                    cookie.maxAge = (expiresAt - now) / 1000
-                } else {
-                    cookie.maxAge = Long.MAX_VALUE
+                // A single malformed entry must not hide the remaining valid cookies.
+                try {
+                    val obj = arr.getJSONObject(i)
+                    val url = obj.getString("uri").toHttpUrlOrNull() ?: continue
+                    val expiresAt = obj.optLong("expiresAt", 0L)
+                    if (expiresAt > 0L && expiresAt <= now) continue
+                    val builder = Cookie.Builder()
+                        .name(obj.getString("name"))
+                        .value(obj.getString("value"))
+                        .path(obj.optString("path", "/"))
+                    val domain = obj.optString("domain", url.host).ifBlank { url.host }
+                    // Old cache records omitted security attributes. Tighten their scope;
+                    // a later Set-Cookie restores the server's precise attributes.
+                    if (obj.optBoolean("hostOnly", true)) builder.hostOnlyDomain(domain)
+                    else builder.domain(domain)
+                    if (obj.optBoolean("secure", url.isHttps)) builder.secure()
+                    if (obj.optBoolean("httpOnly", false)) builder.httpOnly()
+                    if (obj.optBoolean("persistent", expiresAt > 0L) && expiresAt > 0L) {
+                        builder.expiresAt(expiresAt)
+                    }
+                    val cookie = builder.build()
+                    savedCookies[key(cookie)] = StoredCookie(url, cookie)
+                } catch (_: Exception) {
+                    // Ignore only this corrupted record.
                 }
-                // 同时写入 savedCookies：persistCookies() 只从 savedCookies 序列化，
-                // 若只恢复到 cookieStore，任何一次 Set-Cookie 都会把恢复的会话从磁盘抹掉
-                val cookieList = savedCookies.getOrPut(uri.toString()) {
-                    java.util.Collections.synchronizedList(mutableListOf())
-                }
-                synchronized(cookieList) {
-                    cookieList.removeAll { it.first.name == cookie.name }
-                    cookieList.add(cookie to expiresAt)
-                }
-                store.cookieStore.add(uri, cookie)
             }
         } catch (_: Exception) {}
     }
 
-    // clear()（登出/切号/换 host）与 saveFromResponse/persistCookies（OkHttp 网络
-    // 线程）之间没有任何互斥：clear 先清内存、网络线程随后把含旧 cookie 的快照
-    // 写回 prefs，被清除的会话 cookie 会"复活"并持久化，重启后可能造成新旧账号
-    // 会话串号。所有状态变更与落盘统一走这一把锁（单锁无嵌套，不存在死锁面）。
-    private val stateLock = Any()
+    private fun key(cookie: Cookie) = CookieKey(cookie.name, cookie.domain, cookie.path)
+
+    private fun pruneExpired(now: Long) {
+        savedCookies.entries.removeAll { it.value.cookie.expiresAt <= now }
+    }
 
     private fun persistCookies() {
         try {
             synchronized(stateLock) {
                 val arr = JSONArray()
-                val now = System.currentTimeMillis()
-                for ((uri, cookies) in savedCookies) {
-                    synchronized(cookies) {
-                        for (cookie in cookies) {
-                            val expiresAt = cookie.second
-                            if (expiresAt in 1..<now) continue
-                            val obj = org.json.JSONObject()
-                            obj.put("uri", uri)
-                            obj.put("name", cookie.first.name)
-                            obj.put("value", cookie.first.value)
-                            obj.put("domain", cookie.first.domain)
-                            obj.put("path", cookie.first.path)
-                            obj.put("expiresAt", expiresAt)
-                            arr.put(obj)
-                        }
-                    }
+                val now = nowMillis()
+                pruneExpired(now)
+                for ((url, cookie) in savedCookies.values) {
+                    val obj = org.json.JSONObject()
+                    obj.put("uri", url.toString())
+                    obj.put("name", cookie.name)
+                    obj.put("value", cookie.value)
+                    obj.put("domain", cookie.domain)
+                    obj.put("path", cookie.path)
+                    obj.put("expiresAt", if (cookie.persistent) cookie.expiresAt else 0L)
+                    obj.put("persistent", cookie.persistent)
+                    obj.put("secure", cookie.secure)
+                    obj.put("httpOnly", cookie.httpOnly)
+                    obj.put("hostOnly", cookie.hostOnly)
+                    arr.put(obj)
                 }
                 prefs.edit().putString(KEY_COOKIES, arr.toString()).apply()
             }
@@ -150,67 +179,57 @@ class JavaNetCookieJar private constructor(context: Context) : CookieJar {
 
     fun clear() {
         synchronized(stateLock) {
-            store.cookieStore.removeAll()
+            generation += 1L
             savedCookies.clear()
             prefs.edit().remove(KEY_COOKIES).apply()
         }
     }
 
-    fun getCookieStore() = store.cookieStore
+    /** Compatibility snapshot for legacy WebView callers. Network requests use Cookie.matches. */
+    fun getCookieStore(): java.net.CookieStore = synchronized(stateLock) {
+        val store = CookieManager(null, CookiePolicy.ACCEPT_ALL).cookieStore
+        val now = nowMillis()
+        pruneExpired(now)
+        for ((url, cookie) in savedCookies.values) {
+            val legacy = HttpCookie(cookie.name, cookie.value).apply {
+                domain = cookie.domain
+                path = cookie.path
+                secure = cookie.secure
+                isHttpOnly = cookie.httpOnly
+                version = 0
+                if (cookie.persistent) maxAge = ((cookie.expiresAt - now + 999L) / 1_000L).coerceAtLeast(1L)
+            }
+            store.add(url.toUri(), legacy)
+        }
+        store
+    }
 
     fun getCookieString(url: String): String {
-        val uri = URI(url)
-        return store.cookieStore.get(uri).joinToString("; ") { "${it.name}=${it.value}" }
+        val httpUrl = url.toHttpUrlOrNull() ?: return ""
+        return loadForRequest(httpUrl).joinToString("; ") { "${it.name}=${it.value}" }
     }
 
     override fun saveFromResponse(url: okhttp3.HttpUrl, cookies: List<okhttp3.Cookie>) {
-        val uri = url.toUri()
-        val uriStr = uri.toString()
-        // 与 persistCookies/clear 互斥：整段（内存更新 + 序列化落盘）要么完整发生在
-        // clear 之前、要么完整之后。否则两个并发响应各拿旧快照覆盖写 prefs，
-        // 后写者会把先写者刚保存的 cookie 从磁盘上抹掉（重启后会话恢复缺 cookie）。
         synchronized(stateLock) {
-            val cookieList = savedCookies.getOrPut(uriStr) { java.util.Collections.synchronizedList(mutableListOf()) }
+            // clear() can run while a response is in flight. Its obsolete Set-Cookie
+            // must not resurrect the previous account after logout or switching.
+            val requestSession = requestGeneration.get()
+            if (requestSession != null && requestSession != generation) return
+            val now = nowMillis()
             for (cookie in cookies) {
-                val httpCookie = HttpCookie(cookie.name, cookie.value)
-                httpCookie.domain = cookie.domain
-                httpCookie.path = cookie.path
-                httpCookie.secure = cookie.secure
-                val expiresAt = if (cookie.expiresAt != Long.MAX_VALUE) cookie.expiresAt else 0L
-                store.cookieStore.add(uri, httpCookie)
-                cookieList.removeAll { it.first.name == cookie.name }
-                cookieList.add(httpCookie to expiresAt)
+                if (cookie.expiresAt <= now) savedCookies.remove(key(cookie))
+                else savedCookies[key(cookie)] = StoredCookie(url, cookie)
             }
             persistCookies()
         }
     }
 
-    override fun loadForRequest(url: okhttp3.HttpUrl): List<okhttp3.Cookie> {
-        val uri = url.toUri()
-        val now = System.currentTimeMillis()
-
-        // Build lookup: name+domain+path -> expiresAt
-        val expiresMap = mutableMapOf<String, Long>()
-        for ((_, cookies) in savedCookies) {
-            synchronized(cookies) {
-                for ((cookie, expiresAt) in cookies) {
-                    if (expiresAt in 1..now) continue
-                    expiresMap["${cookie.name}|${cookie.domain}|${cookie.path ?: "/"}"] = expiresAt
-                }
-            }
+    override fun loadForRequest(url: HttpUrl): List<Cookie> = synchronized(stateLock) {
+        val requestSession = requestGeneration.get()
+        if (requestSession != null && requestSession != generation) {
+            return@synchronized emptyList()
         }
-
-        return store.cookieStore.get(uri).mapNotNull { cookie ->
-            val key = "${cookie.name}|${cookie.domain}|${cookie.path ?: "/"}"
-            val expiresAt = expiresMap[key] ?: 0L
-            if (expiresAt in 1..now) return@mapNotNull null
-            okhttp3.Cookie.Builder()
-                .name(cookie.name)
-                .value(cookie.value)
-                .domain(cookie.domain)
-                .path(cookie.path ?: "/")
-                .expiresAt(if (expiresAt > 0) expiresAt else Long.MAX_VALUE)
-                .build()
-        }
+        pruneExpired(nowMillis())
+        savedCookies.values.map { it.cookie }.filter { it.matches(url) }.sortedByDescending { it.path.length }
     }
 }

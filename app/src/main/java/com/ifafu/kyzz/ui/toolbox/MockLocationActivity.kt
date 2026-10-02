@@ -109,8 +109,11 @@ class MockLocationActivity : BaseActivity<ActivityMockLocationBinding>() {
 
         // Auto-start from ADB: am start -n ... --ef auto_lat 26.08 --ef auto_lng 119.23
         intent?.let { i ->
-            val autoLat = i.getDoubleExtra("auto_lat", Double.NaN)
-            val autoLng = i.getDoubleExtra("auto_lng", Double.NaN)
+            // 按 Number 读取：am start --ef 写入的是 Float，而 getDoubleExtra 对
+            // Float 值类型转换失败会返回默认值 NaN，导致自动启动分支整链路永不
+            // 执行。as? Number 同时兼容 --ef(Float) 与 --ed(Double)。
+            val autoLat = (i.extras?.get("auto_lat") as? Number)?.toDouble() ?: Double.NaN
+            val autoLng = (i.extras?.get("auto_lng") as? Number)?.toDouble() ?: Double.NaN
             if (!autoLat.isNaN() && !autoLng.isNaN()) {
                 isAutoStarting = true
                 prefs.edit()

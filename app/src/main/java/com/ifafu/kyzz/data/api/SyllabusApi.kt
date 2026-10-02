@@ -29,7 +29,24 @@ class SyllabusApi @Inject constructor(
 
     suspend fun getSyllabus(host: String, token: String, number: String, name: String): Syllabus? {
         return try {
-            val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
+            fetchSyllabus(host, token, number, name)
+        } catch (e: CancellationException) { throw e }
+        catch (e: AlertException) {
+            // 会话失效时正方可能以页面级 alert 拦截（"禁止使用此功能"等）而非
+            // 登录页，网络层直接抛异常、isSessionExpired 预检走不到：重登一次
+            // 重取（守卫同 StudentQueryApi），仍被拒才抛回原文。
+            reloginHelper.reloginAndRetry(e, number, host) { user ->
+                fetchSyllabus(host, user.token, user.account, user.name)
+            }
+        }
+        catch (e: Exception) {
+            Log.e("SyllabusApi", "Failed to fetch syllabus", e)
+            null
+        }
+    }
+
+    private suspend fun fetchSyllabus(host: String, token: String, number: String, name: String): Syllabus? {
+        val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
 
             var accessUrl = "${host}/(${token})/xskbcx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121603"
             var doc = htmlClient.getWithReferer(accessUrl, mainUrl)
@@ -168,13 +185,7 @@ class SyllabusApi @Inject constructor(
                 alignTermFirstDayToEstimated(inferred)
             }
             saveTermFirstDayIfNeeded(syllabus)
-            syllabus
-        } catch (e: CancellationException) { throw e }
-        catch (e: AlertException) { throw e }
-        catch (e: Exception) {
-            Log.e("SyllabusApi", "Failed to fetch syllabus", e)
-            null
-        }
+            return syllabus
     }
 
     suspend fun getSyllabusWithTerm(
@@ -255,7 +266,7 @@ class SyllabusApi @Inject constructor(
         val daysToSubtract = (syllabus.currentWeek - 1) * 7 + daysFromMonday
         cal.add(Calendar.DAY_OF_YEAR, -daysToSubtract)
 
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
         val termFirstDay = sdf.format(cal.time)
         // currentWeek 的解析正则较宽松,页面残留的"第18周教学检查"类横幅会被
         // 误读为当前周次,回推出的开学日整体偏移并永久污染周次基准。与按校历
@@ -268,7 +279,7 @@ class SyllabusApi @Inject constructor(
             }
         }
         Log.d("SyllabusApi", "Calculated termFirstDay=$termFirstDay from currentWeek=${syllabus.currentWeek}")
-        userRepository.termFirstDay = termFirstDay
+        userRepository.setAutomaticTermFirstDay(termFirstDay)
     }
 
     /**
@@ -286,7 +297,7 @@ class SyllabusApi @Inject constructor(
         val existing = userRepository.termFirstDay
         if (existing.isNotEmpty()) {
             try {
-                val parsed = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).parse(existing)
+                val parsed = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).parse(existing)
                 if (parsed != null &&
                     kotlin.math.abs(parsed.time - estimated.timeInMillis) < 8L * 7 * 24 * 60 * 60 * 1000
                 ) {
@@ -296,8 +307,8 @@ class SyllabusApi @Inject constructor(
                 // 现有值解析失败则直接覆盖
             }
         }
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        userRepository.termFirstDay = sdf.format(estimated.time)
+        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        userRepository.setAutomaticTermFirstDay(sdf.format(estimated.time))
         Log.i("SyllabusApi", "termFirstDay 对齐到${term.display()}校历估算首日 ${sdf.format(estimated.time)}")
     }
 
@@ -334,6 +345,7 @@ class SyllabusApi @Inject constructor(
                 "SyllabusApi",
                 "课表选择未完全生效: target=$targetYear-$targetTerm actual=$selectedYear-$selectedTerm"
             )
+            throw IllegalStateException("课表学期选择未生效，请重新选择")
         }
         return doc
     }

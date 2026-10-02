@@ -9,6 +9,7 @@ import com.ifafu.kyzz.ui.event.GlobalEvent
 import com.ifafu.kyzz.ui.event.GlobalEventBus
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.CancellationException
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -45,16 +46,22 @@ class ReloginHelper @Inject constructor(
         }
     }
 
-    suspend fun relogin(): Response {
+    suspend fun relogin(expectedSnapshot: UserRepository.AuthSnapshot? = null): Response {
         // 进入锁前快照当前 token，用于拿到锁后判断是否已被并发 caller 刷新
-        val userBefore = userRepository.getUser()
+        val before = userRepository.getAuthSnapshot()
+        if (expectedSnapshot != null && !userRepository.isSessionCurrent(expectedSnapshot)) {
+            return Response(false, -1, "账号或教务地址已变更，本次自动登录已取消")
+        }
+        val userBefore = before.user
         val tokenBefore = userBefore.token
-        val hostBefore = userRepository.host
+        val hostBefore = before.host
         return mutex.withLock {
             // 并发幂等：若在等待锁期间已有 caller 完成重登录，则直接复用，避免 clearCookies 把新会话冲掉。
             // 判定条件——token 已变化，且该变化发生在近期的成功 relogin 窗口内。
-            val userAfterLock = userRepository.getUser()
-            if (userAfterLock.account != userBefore.account || userRepository.host != hostBefore) {
+            val after = userRepository.getAuthSnapshot()
+            val userAfterLock = after.user
+            if (after.sessionGeneration != before.sessionGeneration ||
+                userAfterLock.account != userBefore.account || after.host != hostBefore || !userAfterLock.isLogin) {
                 Log.w(TAG, "Relogin cancelled because account/host changed while waiting")
                 return@withLock Response(false, -1, "账号或教务地址已变更，本次自动登录已取消")
             }
@@ -90,7 +97,10 @@ class ReloginHelper @Inject constructor(
         account: String,
         action: suspend (host: String, token: String, account: String) -> String
     ): String? {
+        val snapshot = userRepository.getAuthSnapshot()
+        if (snapshot.user.account != account || snapshot.host != host || !userRepository.isSessionCurrent(snapshot)) return null
         val html = action(host, token, account)
+        if (!userRepository.isSessionCurrent(snapshot)) return null
         if (!userApi.isSessionExpired(html)) return html
 
         // Session 过期，尝试重登录
@@ -103,7 +113,7 @@ class ReloginHelper @Inject constructor(
         }
 
         val user = userRepository.getUser()
-        if (user.account != account || userRepository.host != host) {
+        if (!userRepository.isSessionCurrent(snapshot)) {
             Log.w(TAG, "Relogin retry cancelled because the active account or host changed")
             return null
         }
@@ -111,13 +121,16 @@ class ReloginHelper @Inject constructor(
 
         // 用新 token 重试
         val retryHtml = action(userRepository.host, user.token, user.account)
+        if (!userRepository.isSessionCurrent(snapshot)) return null
         if (userApi.isSessionExpired(retryHtml)) {
             Log.w(TAG, "Session still expired after relogin")
             // 尝试探测主页面获取 alert
             try {
                 htmlClient.getCancellable("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
                 htmlClient.getCancellable("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
-            } catch (e: AlertException) { throw e } catch (_: Exception) {}
+            } catch (e: AlertException) { throw e }
+            catch (e: CancellationException) { throw e }
+            catch (_: Exception) {}
             return null
         }
 
@@ -147,6 +160,9 @@ class ReloginHelper @Inject constructor(
         expectedHost: String,
         refetch: suspend (com.ifafu.kyzz.data.model.User) -> T
     ): T {
+        val snapshot = userRepository.getAuthSnapshot()
+        if (snapshot.user.account != expectedAccount || snapshot.host != expectedHost ||
+            !userRepository.isSessionCurrent(snapshot)) throw original
         Log.w(TAG, "Page-level alert '${original.message}', retrying once after relogin")
         val response = relogin()
         if (!response.success) {
@@ -155,12 +171,14 @@ class ReloginHelper @Inject constructor(
         }
         val user = userRepository.getUser()
         // 重登等待期间账号/教务地址可能已切换：新会话配旧参数会跨账号串数据
-        if (user.account != expectedAccount || userRepository.host != expectedHost) {
+        if (!userRepository.isSessionCurrent(snapshot)) {
             Log.w(TAG, "Relogin retry cancelled because the active account or host changed")
             throw original
         }
         return try {
-            refetch(user)
+            refetch(user).also {
+                if (!userRepository.isSessionCurrent(snapshot)) throw CancellationException("账号或教务地址已变更")
+            }
         } catch (e: AlertException) {
             // 重登成功后仍被拦截:会话是全新的,不再是会话问题——大概率是教务
             // 对该功能模块(gnmkdm)本身停止了授权(学校侧下架/禁用)。明确告知
@@ -181,7 +199,10 @@ class ReloginHelper @Inject constructor(
         account: String,
         action: suspend (host: String, token: String, account: String) -> String
     ): String? {
+        val snapshot = userRepository.getAuthSnapshot()
+        if (snapshot.user.account != account || snapshot.host != host || !userRepository.isSessionCurrent(snapshot)) return null
         val html = action(host, token, account)
+        if (!userRepository.isSessionCurrent(snapshot)) return null
         if (!userApi.isSessionExpired(html)) return html
 
         val response = relogin()
@@ -191,8 +212,9 @@ class ReloginHelper @Inject constructor(
         }
 
         val user = userRepository.getUser()
-        if (user.account != account || userRepository.host != host) return null
+        if (!userRepository.isSessionCurrent(snapshot)) return null
         val retryHtml = action(userRepository.host, user.token, user.account)
+        if (!userRepository.isSessionCurrent(snapshot)) return null
         if (userApi.isSessionExpired(retryHtml)) return null
 
         try {

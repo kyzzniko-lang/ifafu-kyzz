@@ -8,6 +8,7 @@ import com.ifafu.kyzz.databinding.ActivityWebBinding
 import com.ifafu.kyzz.di.JavaNetCookieJar
 import com.ifafu.kyzz.ui.base.BaseActivity
 import java.net.URI
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 
 class WebActivity : BaseActivity<ActivityWebBinding>() {
 
@@ -56,10 +57,8 @@ class WebActivity : BaseActivity<ActivityWebBinding>() {
     }
 
     private fun isUrlAllowed(url: String): Boolean {
-        return try {
-            val host = java.net.URI(url).host ?: return false
-            ALLOWED_HOSTS.any { allowed -> host == allowed || host.endsWith(".$allowed") }
-        } catch (_: Exception) { false }
+        val parsed = url.toHttpUrlOrNull() ?: return false
+        return ALLOWED_HOSTS.any { allowed -> parsed.host == allowed || parsed.host.endsWith(".$allowed") }
     }
 
     private fun extractMainUrl(url: String): String {
@@ -78,22 +77,12 @@ class WebActivity : BaseActivity<ActivityWebBinding>() {
         webCookieManager.setAcceptCookie(true)
         webCookieManager.setAcceptThirdPartyCookies(binding.webView, false)
 
-        val host = try { URI(url).host ?: "" } catch (_: Exception) { "" }
-        if (host.isEmpty()) return
-
-        val cookieStore = JavaNetCookieJar.getInstance(this).getCookieStore()
-        val httpUri = URI("http://$host")
-        val httpsUri = URI("https://$host")
-
-        val cookies = mutableListOf<java.net.HttpCookie>()
-        cookies.addAll(cookieStore.get(httpUri))
-        cookies.addAll(cookieStore.get(httpsUri))
-
-        val cookieString = cookies.joinToString("; ") { "${it.name}=${it.value}" }
-        if (cookieString.isNotEmpty()) {
-            webCookieManager.setCookie(url, cookieString)
-            webCookieManager.setCookie("http://$host", cookieString)
-        }
+        val parsed = url.toHttpUrlOrNull() ?: return
+        val cookies = JavaNetCookieJar.getInstance(this).loadForRequest(parsed)
+        // setCookie accepts one Set-Cookie header, not a Cookie request header.
+        // Sending all name/value pairs together used to install only the first cookie.
+        cookies.forEach { webCookieManager.setCookie(url, it.toString()) }
+        webCookieManager.flush()
     }
 
     override fun onDestroy() {

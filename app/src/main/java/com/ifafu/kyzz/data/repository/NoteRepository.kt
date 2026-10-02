@@ -2,7 +2,7 @@ package com.ifafu.kyzz.data.repository
 
 import android.content.Context
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import com.google.gson.JsonParser
 import com.ifafu.kyzz.data.model.Note
 
 class NoteRepository(context: Context) {
@@ -20,7 +20,17 @@ class NoteRepository(context: Context) {
     fun loadNotes(): List<Note> = synchronized(fileLock) {
         val json = prefs.getString("notes", null) ?: return emptyList()
         return try {
-            gson.fromJson(json, object : TypeToken<List<Note>>() {}.type)
+            val array = JsonParser.parseString(json).takeIf { it.isJsonArray }?.asJsonArray
+                ?: return emptyList()
+            array.mapNotNull { item ->
+                try {
+                    if (!item.isJsonObject) return@mapNotNull null
+                    val note = gson.fromJson(item, Note::class.java)
+                    if (note.id.isNullOrBlank() || note.content.isNullOrBlank()) return@mapNotNull null
+                    note.copy(title = note.title.orEmpty(), audioPath = note.audioPath.orEmpty(),
+                        category = note.category.orEmpty())
+                } catch (_: Exception) { null }
+            }
         } catch (_: Exception) { emptyList() }
     }
 

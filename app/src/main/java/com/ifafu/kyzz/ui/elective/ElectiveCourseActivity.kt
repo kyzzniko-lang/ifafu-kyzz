@@ -160,7 +160,7 @@ class ElectiveCourseActivity : BaseActivity<ActivityElectiveCourseBinding>() {
             fun bind(item: AdapterItem.Course) {
                 val course = item.course
                 content.removeAllViews()
-                val canSelect = item.selectable && course.have > 0
+                val canSelect = item.selectable && course.have > 0 && course.courseIndex.isNotBlank()
                 if (canSelect) {
                     card.setOnClickListener { onSelect(course.courseIndex) }
                     card.alpha = 1f

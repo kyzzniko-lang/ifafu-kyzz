@@ -65,6 +65,9 @@ class MockLocationService : Service() {
         fun stopService(context: Context) {
             context.stopService(Intent(context, MockLocationService::class.java))
         }
+
+        internal fun isValidPosition(lat: Double, lng: Double): Boolean =
+            lat.isFinite() && lng.isFinite() && lat in -90.0..90.0 && lng in -180.0..180.0
     }
 
     private lateinit var locationManager: LocationManager
@@ -73,6 +76,7 @@ class MockLocationService : Service() {
     // onCreate 里 startForeground 失败时置位:此时系统已裁定服务不能成立,
     // 后续 onStartCommand/注入逻辑一律直接退出。
     @Volatile private var foregroundStartFailed = false
+    @Volatile private var destroyed = false
     // @Volatile: 这些字段在定位后台线程(updateRunnable)读写，Activity binder 线程也会写，
     // 必须保证可见性，否则后台线程可能读到旧值。
     @Volatile private var latitude: Double = 0.0
@@ -141,9 +145,16 @@ class MockLocationService : Service() {
         }
 
         removeTestProviderNetwork()
-        addTestProviderNetwork()
+        val networkReady = addTestProviderNetwork()
         removeTestProviderGPS()
-        addTestProviderGPS()
+        val gpsReady = addTestProviderGPS()
+        if (!networkReady && !gpsReady) {
+            // Permission/app-op can be revoked after the Activity's preflight check.
+            foregroundStartFailed = true
+            android.widget.Toast.makeText(this, "无法启用模拟定位，请检查模拟位置应用设置", android.widget.Toast.LENGTH_LONG).show()
+            stopSelf()
+            return
+        }
 
         initLocationHandler()
     }
@@ -153,7 +164,7 @@ class MockLocationService : Service() {
             stopSelf()
             return START_NOT_STICKY
         }
-        if (intent?.action == ACTION_STOP) {
+        if (intent == null || intent.action == ACTION_STOP) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -162,11 +173,14 @@ class MockLocationService : Service() {
 
         if (mode == MODE_TRAJECTORY) {
             // Read pending trajectory set by activity
-            val wp = pendingTrajectory
-            if (wp != null && wp.size >= 2) {
+            val wp = pendingTrajectory?.toList()
+            val speed = intent.getDoubleExtra(EXTRA_TRAJECTORY_SPEED, 1.2)
+            if (wp != null && wp.size >= 2 && wp.all { isValidPosition(it.lat, it.lng) } &&
+                speed.isFinite() && speed > 0.0
+            ) {
                 isTrajectoryMode = true
                 trajectoryWaypoints = wp
-                trajectorySpeed = intent?.getDoubleExtra(EXTRA_TRAJECTORY_SPEED, 1.2) ?: 1.2
+                trajectorySpeed = speed
                 elapsedTrajectoryTime = 0.0
                 currentWaypointIndex = 0
                 isLoopMode = pendingTrajectoryLoop
@@ -189,15 +203,22 @@ class MockLocationService : Service() {
                 // Clear pending so service restart doesn't re-use stale data
                 pendingTrajectory = null
             } else {
-                isTrajectoryMode = false
-                latitude = intent?.getDoubleExtra(EXTRA_LATITUDE, latitude) ?: latitude
-                longitude = intent?.getDoubleExtra(EXTRA_LONGITUDE, longitude) ?: longitude
+                // A missing in-memory trajectory after process death must not silently
+                // turn into a stationary mock at old coordinates.
+                pendingTrajectory = null
+                stopSelf()
+                return START_NOT_STICKY
             }
         } else {
             isTrajectoryMode = false
             trajectoryWaypoints = emptyList()
             latitude = intent?.getDoubleExtra(EXTRA_LATITUDE, latitude) ?: latitude
             longitude = intent?.getDoubleExtra(EXTRA_LONGITUDE, longitude) ?: longitude
+        }
+
+        if (!isValidPosition(latitude, longitude)) {
+            stopSelf()
+            return START_NOT_STICKY
         }
 
         getSharedPreferences("ifafu_user", MODE_PRIVATE).edit()
@@ -221,6 +242,7 @@ class MockLocationService : Service() {
     }
 
     override fun onDestroy() {
+        destroyed = true
         isRunning = false
         isTrajectoryMode = false
         trajectoryWaypoints = emptyList()
@@ -253,6 +275,7 @@ class MockLocationService : Service() {
         locationHandler = Handler(locationThread.looper)
         val updateRunnable = object : Runnable {
             override fun run() {
+                if (destroyed) return
                 // 显式运行守卫:主线程 removeCallbacks 与本 runnable 尾部的
                 // postDelayed 存在竞态,remove 后仍可能再排一条,此时不能再
                 // 推进轨迹/注入位置。注意 onStartCommand 才置 isRunning=true,
@@ -270,7 +293,7 @@ class MockLocationService : Service() {
                 } catch (_: Exception) {}
                 // Randomize interval by ±30ms so it's not perfectly regular
                 val jitter = random.nextInt(61) - 30 // -30 ~ +30 ms（nextInt 无负数符号问题）
-                locationHandler.postDelayed(this, (100L + jitter).coerceAtLeast(50L))
+                if (!destroyed) locationHandler.postDelayed(this, (100L + jitter).coerceAtLeast(50L))
             }
         }
         locationHandler.post(updateRunnable)
@@ -311,6 +334,10 @@ class MockLocationService : Service() {
             val pos = interpolatePosition(cumulativeTrajectoryDistance.coerceAtMost(totalTrajectoryDistance))
             latitude = pos.first
             longitude = pos.second
+            if (cumulativeTrajectoryDistance >= totalTrajectoryDistance) {
+                isTrajectoryMode = false
+                currentActualSpeed = 0.0
+            }
         }
         updateCoordsDisplay()
     }
@@ -396,8 +423,8 @@ class MockLocationService : Service() {
     // ==================== GPS Provider ====================
 
     @SuppressLint("wrongconstant")
-    private fun addTestProviderGPS() {
-        try {
+    private fun addTestProviderGPS(): Boolean {
+        return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 locationManager.addTestProvider(
                     LocationManager.GPS_PROVIDER, false, true, false,
@@ -418,8 +445,10 @@ class MockLocationService : Service() {
             locationManager.setTestProviderStatus(
                 LocationManager.GPS_PROVIDER, LocationProvider.AVAILABLE, null, System.currentTimeMillis()
             )
+            true
         } catch (e: Exception) {
             android.util.Log.e("MockLocation", "addTestProviderGPS failed", e)
+            false
         }
     }
 
@@ -526,8 +555,8 @@ class MockLocationService : Service() {
     // ==================== Network Provider ====================
 
     @SuppressLint("wrongconstant")
-    private fun addTestProviderNetwork() {
-        try {
+    private fun addTestProviderNetwork(): Boolean {
+        return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 locationManager.addTestProvider(
                     LocationManager.NETWORK_PROVIDER, true, false,
@@ -547,8 +576,10 @@ class MockLocationService : Service() {
             locationManager.setTestProviderStatus(
                 LocationManager.NETWORK_PROVIDER, LocationProvider.AVAILABLE, null, System.currentTimeMillis()
             )
+            true
         } catch (e: Exception) {
             android.util.Log.e("MockLocation", "addTestProviderNetwork failed", e)
+            false
         }
     }
 
@@ -705,6 +736,7 @@ class MockLocationService : Service() {
     inner class MockLocationBinder : Binder() {
         fun getService(): MockLocationService = this@MockLocationService
         fun setPosition(lat: Double, lng: Double) {
+            if (!isValidPosition(lat, lng)) return
             latitude = lat
             longitude = lng
         }

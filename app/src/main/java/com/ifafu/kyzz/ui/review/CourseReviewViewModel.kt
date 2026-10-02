@@ -11,6 +11,7 @@ import com.ifafu.kyzz.data.repository.UserRepository
 import com.ifafu.kyzz.data.util.AuthorId
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -42,6 +43,9 @@ class CourseReviewViewModel @Inject constructor(
     // 最近一次搜索词：网络刷新完成后要重新套用，否则搜索框里有关键词、
     // 列表却显示全量，用户以为筛选失效。
     private var lastQuery: String = ""
+    // 在途的分页/刷新请求：refresh 时取消在途分页，避免慢的旧分页请求晚到
+    // 把陈旧整页 append 进已重置的列表并错误递增 currentPage。
+    private var loadJob: Job? = null
 
     sealed class State {
         object Idle : State()
@@ -93,13 +97,17 @@ class CourseReviewViewModel @Inject constructor(
             if (state is State.Loading || state is State.LoadingMore) return
             _state.value = State.LoadingMore
         } else {
+            // 取消在途的分页请求（getReviews 挂起点会抛 CancellationException
+            // 结束旧协程，append/currentPage++ 不再执行），防止晚到的旧整页
+            // 污染刚重置的列表。
+            loadJob?.cancel()
             currentPage = 1
             allReviews.clear()
             hasMore = true
             _state.value = State.Loading
         }
 
-        viewModelScope.launch {
+        loadJob = viewModelScope.launch {
             try {
                 val result = reviewApi.getReviews(currentPage)
                 if (result == null) {
@@ -113,7 +121,11 @@ class CourseReviewViewModel @Inject constructor(
                 if (refresh) {
                     allReviews = result.toMutableList()
                 } else {
-                    allReviews.addAll(result)
+                    // 按 commentId 去重：页间数据偏移会让同一评价在相邻两页重复出现，
+                    // 直接 addAll 会把同一条评价追加两份（同 DiscussionViewModel 的做法）。
+                    allReviews.addAll(
+                        result.filter { fresh -> allReviews.none { it.commentId == fresh.commentId } }
+                    )
                 }
                 hasMore = result.size >= 20
                 currentPage++

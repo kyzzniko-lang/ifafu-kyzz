@@ -25,11 +25,12 @@ data class Course(
 ) {
     /** 本周是否有这节课（不含单双周过滤，由调用方叠加 [oddOrTwice] 判断）。 */
     fun coversWeek(week: Int): Boolean =
-        weeks?.contains(week) ?: (week in weekBegin..weekEnd)
+        week in 1..30 && (weeks?.contains(week) ?: (week in weekBegin..weekEnd))
 
     /** 课程占用的全部周次（不含单双周过滤）。 */
     fun activeWeeks(): List<Int> =
-        weeks ?: (weekBegin..weekEnd).toList()
+        weeks?.filter { it in 1..30 }?.distinct()?.sorted()
+            ?: (weekBegin.coerceAtLeast(1)..weekEnd.coerceAtMost(30)).toList()
 }
 
 /** 是否为非连续周排课（影响日历导出等按区间假设的逻辑）。 */
@@ -48,7 +49,8 @@ data class CourseScheduleIdentity(
     val end: Int,
     val weekBegin: Int,
     val weekEnd: Int,
-    val oddOrTwice: Int
+    val oddOrTwice: Int,
+    val weeks: List<Int> = emptyList()
 )
 
 /** A concrete recurring entry; preserves room, teacher, week range and parity changes. */
@@ -61,5 +63,6 @@ fun Course.scheduleIdentity() = CourseScheduleIdentity(
     end = end,
     weekBegin = weekBegin,
     weekEnd = weekEnd,
-    oddOrTwice = oddOrTwice
+    oddOrTwice = oddOrTwice,
+    weeks = activeWeeks().distinct().sorted()
 )

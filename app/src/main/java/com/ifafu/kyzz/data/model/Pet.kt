@@ -192,28 +192,36 @@ data class Pet(
         val hoursSinceLastTick = ((now - lastTickTime) / (1000 * 60 * 60)).toInt()
         if (hoursSinceLastTick < 1) return
 
+        // 衰减为增量口径(游标=lastTickTime):每次 tick 只补扣"自上次 tick 起
+        // 新跨过的完整周期数"。hunger/mood 是逐次累减的有状态值,旧实现每次
+        // tick 都按"距上次喂食/互动"的全额周期数重扣,宠物页常驻时(每分钟
+        // tick、每小时生效一次)同一时段被反复扣减,衰减达设计值数倍;改为
+        // 增量后断续打开 App 也只对每个周期补扣一次,与一次性追平结果一致。
         if (now < lastFeedTime) {
             lastFeedTime = now
         } else {
-            val hoursSinceLastFeed = ((now - lastFeedTime) / (1000 * 60 * 60)).toInt()
-            if (hoursSinceLastFeed > 4) {
+            val hungerPeriodsAt: (Long) -> Int = { at ->
+                val hours = ((at - lastFeedTime) / (1000 * 60 * 60)).toInt()
                 // 喂食后 4 小时起每满 4 小时扣 5 点；不足一个完整周期不扣。
-                val periods = ((hoursSinceLastFeed - 4) / 4).coerceAtMost(30)
-                if (periods > 0) {
-                    hunger = (hunger - 5 * periods).coerceAtLeast(0)
-                }
+                if (hours > 4) ((hours - 4) / 4).coerceAtMost(30) else 0
+            }
+            val newPeriods = hungerPeriodsAt(now) - hungerPeriodsAt(lastTickTime)
+            if (newPeriods > 0) {
+                hunger = (hunger - 5 * newPeriods).coerceAtLeast(0)
             }
         }
 
         if (now < lastInteractTime) {
             lastInteractTime = now
         } else {
-            val hoursSinceLastInteract = ((now - lastInteractTime) / (1000 * 60 * 60)).toInt()
-            if (hoursSinceLastInteract > 8) {
-                val periods = ((hoursSinceLastInteract - 8) / 8).coerceAtMost(30)
-                if (periods > 0) {
-                    mood = (mood - 2 * periods).coerceAtLeast(0)
-                }
+            val moodPeriodsAt: (Long) -> Int = { at ->
+                val hours = ((at - lastInteractTime) / (1000 * 60 * 60)).toInt()
+                // 互动后 8 小时起每满 8 小时扣 2 点；不足一个完整周期不扣。
+                if (hours > 8) ((hours - 8) / 8).coerceAtMost(30) else 0
+            }
+            val newPeriods = moodPeriodsAt(now) - moodPeriodsAt(lastTickTime)
+            if (newPeriods > 0) {
+                mood = (mood - 2 * newPeriods).coerceAtLeast(0)
             }
         }
 

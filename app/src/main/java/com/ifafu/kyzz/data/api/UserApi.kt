@@ -15,6 +15,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
+import org.jsoup.Jsoup
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -25,6 +26,7 @@ class UserApi @Inject constructor(
     private val zfVerify: ZFVerify
 ) {
     private val loginMutex = Mutex()
+    private var challengeGeneration = 0L
 
     /**
      * 等待前台登录(验证码加载/提交)的计数。后台自动重登在每次重试间隙检查它：
@@ -43,7 +45,10 @@ class UserApi @Inject constructor(
         val bitmap: Bitmap,
         internal val sessionToken: String,
         internal val loginUrl: String,
-        internal val viewState: String
+        internal val viewState: String,
+        internal val viewStateGenerator: String,
+        internal val authSnapshot: UserRepository.AuthSnapshot,
+        internal val generation: Long
     )
 
     suspend fun prepareLogin(host: String): LoginChallenge? {
@@ -58,16 +63,19 @@ class UserApi @Inject constructor(
     }
 
     private suspend fun prepareLoginLocked(host: String, clearCookies: Boolean): LoginChallenge? {
+        val snapshot = userRepository.getAuthSnapshot()
+        if (snapshot.host != host) return null
+        val generation = ++challengeGeneration
         return try {
             if (clearCookies) htmlClient.clearCookies()
 
             val page = htmlClient.getCancellableWithState(host)
             val loginUrl = page.url
-            Log.d(TAG, "prepareLogin: host=$host, loginUrl=$loginUrl")
+            Log.d(TAG, "prepareLogin: host=$host, loginUrl=${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(loginUrl)}")
 
             val tokenMatch = Regex("\\((.*?)\\)/").find(loginUrl)
             if (tokenMatch == null) {
-                Log.w(TAG, "prepareLogin: token not found in URL: $loginUrl")
+                Log.w(TAG, "prepareLogin: token not found in URL: ${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(loginUrl)}")
                 return null
             }
             val sessionToken = tokenMatch.groupValues[1]
@@ -75,8 +83,9 @@ class UserApi @Inject constructor(
 
             val captchaUrl = "${host}/(${sessionToken})/CheckCode.aspx"
             val bytes = htmlClient.getBytesCancellable(captchaUrl)
+            if (!userRepository.isAuthSnapshotCurrent(snapshot)) return null
             val bitmap = if (bytes.isNotEmpty()) BitmapFactory.decodeByteArray(bytes, 0, bytes.size) else null
-            bitmap?.let { LoginChallenge(it, sessionToken, loginUrl, page.viewState) }
+            bitmap?.let { LoginChallenge(it, sessionToken, loginUrl, page.viewState, page.viewStateGenerator, snapshot, generation) }
         } catch (e: CancellationException) { throw e }
         catch (e: Exception) {
             Log.e(TAG, "prepareLogin failed", e)
@@ -108,8 +117,12 @@ class UserApi @Inject constructor(
         user: User,
         challenge: LoginChallenge
     ): Response {
-        val formBody = htmlClient.buildFormBody(
-            "__VIEWSTATE" to challenge.viewState,
+        user.token = ""
+        user.isLogin = false
+        if (challenge.generation != challengeGeneration || !userRepository.isAuthSnapshotCurrent(challenge.authSnapshot)) {
+            return Response(false, -1, "验证码会话已失效，请刷新后重试")
+        }
+        val formBody = htmlClient.buildFormBodyWithViewState(
             "txtUserName" to account,
             "TextBox2" to password,
             "txtSecretCode" to captcha,
@@ -117,10 +130,14 @@ class UserApi @Inject constructor(
             "Button1" to "",
             "lbLanguage" to "",
             "hidPdrs" to "",
-            "hidsc" to ""
+            "hidsc" to "",
+            state = HtmlClient.ViewStateData(challenge.viewState, challenge.viewStateGenerator)
         )
 
-        val result = htmlClient.postWithFollowCancellable(challenge.loginUrl, formBody)
+        val result = htmlClient.postWithFollowCancellable(challenge.loginUrl, formBody, challenge.loginUrl)
+        if (!userRepository.isAuthSnapshotCurrent(challenge.authSnapshot)) {
+            return Response(false, -1, "账号或教务地址已变更，本次登录已取消")
+        }
         val postHtml = result.html
         val finalUrl = result.url
 
@@ -144,12 +161,8 @@ class UserApi @Inject constructor(
             return Response(false, 1, "检测到该账号首次登录需修改初始密码，请先在教务系统官网修改密码后重新登录")
         }
 
-        if (finalUrl.contains("xs_main.aspx")) {
-            user.token = challenge.sessionToken
-        } else {
-            val tokenFromUrl = Regex("\\((.*?)\\)/").find(finalUrl)
-            user.token = tokenFromUrl?.groupValues?.get(1) ?: challenge.sessionToken
-        }
+        val tokenFromUrl = Regex("\\((.*?)\\)/").find(finalUrl)
+        user.token = tokenFromUrl?.groupValues?.get(1) ?: challenge.sessionToken
 
         val authenticatedPage = SessionResponseClassifier.isAuthenticatedLoginResponse(finalUrl, postHtml)
         if (!authenticatedPage) {
@@ -159,10 +172,9 @@ class UserApi @Inject constructor(
             return Response(false, -1, "登录结果无法确认，请刷新验证码后重试")
         }
 
-        val nameMatch = Regex("""xhxm["']?>?\s*(.+?)\s*同学""").find(postHtml)
-            ?: Regex("""xhxm["']?>?\s*(.+?)\s*</""").find(postHtml)
-        if (nameMatch != null) {
-            user.name = nameMatch.groupValues[1].trim()
+        val name = Jsoup.parse(postHtml).getElementById("xhxm")?.text()?.substringBefore("同学")?.trim()
+        if (!name.isNullOrBlank()) {
+            user.name = name
         } else {
             Log.w(TAG, "Name extraction failed, html snippet: ${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(postHtml.take(1000))}")
         }
@@ -227,7 +239,7 @@ class UserApi @Inject constructor(
         val user = snapshot.user
         val password = snapshot.password
         Log.d(TAG, "Relogin: hasPassword=${password.isNotBlank()}")
-        if (user.account.isBlank() || password.isBlank()) {
+        if (!user.isLogin || user.account.isBlank() || password.isBlank()) {
             Log.w(TAG, "Relogin failed: account or password is blank")
             return Response(false, -1, "未保存登录信息")
         }
@@ -235,6 +247,9 @@ class UserApi @Inject constructor(
         // 权重懒加载后无法在此预判，识别失败走 recognize 返回空串的重试路径
         val maxRetry = 5
         for (i in 1..maxRetry) {
+            if (!userRepository.isAuthSnapshotCurrent(snapshot)) {
+                return Response(false, -1, "账号或教务地址已变更，本次自动登录已取消")
+            }
             // 前台登录(验证码加载/提交)在等锁时让位：最多再等完当前这一个
             // 在途请求(15s 超时)即返回,而不是把前台登录卡满整个 90s 重试链。
             if (foregroundLoginWaiting.get() > 0) {
@@ -252,6 +267,9 @@ class UserApi @Inject constructor(
                 }
 
                 val captcha = withContext(Dispatchers.Default) { zfVerify.recognize(challenge.bitmap) }
+                if (!userRepository.isAuthSnapshotCurrent(snapshot)) {
+                    return Response(false, -1, "账号或教务地址已变更，本次自动登录已取消")
+                }
                 if (captcha.isEmpty()) {
                     Log.w(TAG, "Relogin attempt $i: captcha recognition returned empty")
                     delay(500L * (1 shl (i - 1)).coerceAtMost(8))
@@ -262,6 +280,10 @@ class UserApi @Inject constructor(
                     loginLocked(user.account, password, captcha, freshUser, challenge)
                 } catch (e: com.ifafu.kyzz.data.network.AlertException) {
                     Response(false, -1, e.message ?: "登录失败")
+                }
+
+                if (!userRepository.isAuthSnapshotCurrent(snapshot)) {
+                    return Response(false, -1, "账号或教务地址已变更，本次自动登录已取消")
                 }
 
                 if (response.success) {

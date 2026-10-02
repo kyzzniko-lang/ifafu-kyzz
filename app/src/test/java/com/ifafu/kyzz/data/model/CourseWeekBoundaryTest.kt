@@ -7,6 +7,14 @@ import org.junit.Test
 
 class CourseWeekBoundaryTest {
     @Test
+    fun invalidCachedWeekBoundsCannotAllocateAnUnboundedRange() {
+        val course = Course(weekBegin = Int.MIN_VALUE, weekEnd = Int.MAX_VALUE)
+        assertEquals((1..30).toList(), course.activeWeeks())
+        assertFalse(course.coversWeek(0))
+        assertFalse(course.coversWeek(31))
+        assertEquals(listOf(1, 3), course.copy(weeks = listOf(-1, 3, 1, 3, 31)).activeWeeks())
+    }
+    @Test
     fun oldCacheWithoutExplicitWeeksUsesInclusiveRange() {
         val course = Course(weekBegin = 1, weekEnd = 18, weeks = null)
         assertTrue(course.coversWeek(1))

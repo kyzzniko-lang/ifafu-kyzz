@@ -43,16 +43,23 @@ class MakeupExamActivity : BaseActivity<ActivityMakeupExamBinding>() {
                 is State.Loading -> {
                     binding.petLoading.root.startLoading()
                     binding.recyclerView.visibility = View.GONE
+                    binding.tvEmpty.visibility = View.GONE
                     binding.errorLayout.visibility = View.GONE
                 }
                 is State.Success -> {
                     binding.petLoading.root.stopLoading()
-                    binding.recyclerView.visibility = View.VISIBLE
+                    // 无补考是常见正常结果：空列表展示空态而不是整页空白。
+                    // data 在 Success 之前发射（观察者同步执行），此时 adapter
+                    // 已持有最新列表。
+                    val isEmpty = (binding.recyclerView.adapter?.itemCount ?: 0) == 0
+                    binding.recyclerView.visibility = if (isEmpty) View.GONE else View.VISIBLE
+                    binding.tvEmpty.visibility = if (isEmpty) View.VISIBLE else View.GONE
                     binding.errorLayout.visibility = View.GONE
                 }
                 is State.Error -> {
                     binding.petLoading.root.stopLoading()
                     binding.recyclerView.visibility = View.GONE
+                    binding.tvEmpty.visibility = View.GONE
                     binding.errorLayout.visibility = View.VISIBLE
                     binding.tvError.text = state.message
                 }

@@ -29,12 +29,14 @@ class UserRepository @Inject constructor(
      * may only commit its result while this generation is still unchanged.
      */
     private var authGeneration: Long = prefs.getLong("auth_generation", 0L)
+    private var sessionGeneration: Long = prefs.getLong("session_generation", 0L)
 
     data class AuthSnapshot(
         val user: User,
         val password: String,
         val host: String,
-        val generation: Long
+        val generation: Long,
+        val sessionGeneration: Long = 0L
     )
 
     private fun bumpAuthGeneration() {
@@ -42,8 +44,15 @@ class UserRepository @Inject constructor(
         prefs.edit().putLong("auth_generation", authGeneration).apply()
     }
 
+    private fun bumpSessionGeneration() {
+        sessionGeneration += 1L
+        prefs.edit().putLong("session_generation", sessionGeneration).apply()
+    }
+
     @Synchronized
     fun saveUser(user: User) {
+        val previous = getUser()
+        if (previous.account != user.account || previous.isLogin != user.isLogin) bumpSessionGeneration()
         prefs.edit().apply {
             putString("account", user.account)
             putString("name", user.name)
@@ -76,6 +85,7 @@ class UserRepository @Inject constructor(
 
     @Synchronized
     fun savePassword(password: String) {
+        if (getPassword() != password) bumpSessionGeneration()
         // 密码只存 securePrefs 一份：ifafu_user 明文冗余备份已废弃，
         // 老版本残留由 getPassword 的一次性迁移清理。
         securePrefs.edit().putString("password", password).apply()
@@ -100,6 +110,7 @@ class UserRepository @Inject constructor(
     @Synchronized
     fun clearUser() {
         bumpAuthGeneration()
+        bumpSessionGeneration()
         com.ifafu.kyzz.di.JavaNetCookieJar.getInstance(context).clear()
         prefs.edit().apply {
             remove("account")
@@ -143,16 +154,29 @@ class UserRepository @Inject constructor(
                 prefs.edit().putString("host", value).apply()
                 com.ifafu.kyzz.di.JavaNetCookieJar.getInstance(context).clear()
                 bumpAuthGeneration()
+                bumpSessionGeneration()
             }
         }
 
     var termFirstDay: String
-        get() = prefs.getString("termFirstDay", "") ?: ""
-        set(value) = prefs.edit().putString("termFirstDay", value).apply()
+        get() = synchronized(this) { prefs.getString("termFirstDay", "") ?: "" }
+        set(value) = synchronized(this) { prefs.edit().putString("termFirstDay", value).apply() }
 
     var termFirstDayManual: Boolean
-        get() = prefs.getBoolean("termFirstDayManual", false)
-        set(value) = prefs.edit().putBoolean("termFirstDayManual", value).apply()
+        get() = synchronized(this) { prefs.getBoolean("termFirstDayManual", false) }
+        set(value) = synchronized(this) { prefs.edit().putBoolean("termFirstDayManual", value).apply() }
+
+    @Synchronized
+    fun setManualTermFirstDay(date: String) {
+        prefs.edit().putString("termFirstDay", date).putBoolean("termFirstDayManual", true).apply()
+    }
+
+    @Synchronized
+    fun setAutomaticTermFirstDay(date: String): Boolean {
+        if (termFirstDayManual) return false
+        termFirstDay = date
+        return true
+    }
 
     data class AccountProfile(val account: String, val name: String, val password: String)
 
@@ -172,18 +196,23 @@ class UserRepository @Inject constructor(
         securePrefs.edit().putString("saved_accounts", gson.toJson(profiles)).apply()
     }
 
+    @Synchronized
     fun getAccountProfiles(): List<AccountProfile> {
         val json = securePrefs.getString("saved_accounts", "") ?: ""
         if (json.isEmpty()) return emptyList()
         return try {
-            val type = object : TypeToken<List<AccountProfile>>() {}.type
-            gson.fromJson(json, type) ?: emptyList()
+            val type = object : TypeToken<List<AccountProfile?>>() {}.type
+            val profiles: List<AccountProfile?> = gson.fromJson(json, type) ?: emptyList()
+            profiles.filterNotNull().map {
+                it.copy(account = it.account.orEmpty(), name = it.name.orEmpty(), password = it.password.orEmpty())
+            }.filter { it.account.isNotBlank() }
         } catch (_: Exception) { emptyList() }
     }
 
     @Synchronized
     fun switchAccount(profile: AccountProfile) {
         bumpAuthGeneration()
+        bumpSessionGeneration()
         com.ifafu.kyzz.di.JavaNetCookieJar.getInstance(context).clear()
         prefs.edit().apply {
             putString("account", profile.account)
@@ -195,6 +224,8 @@ class UserRepository @Inject constructor(
             remove("institute")
             remove("clas")
             remove("enrollment")
+            remove("termFirstDay")
+            remove("termFirstDayManual")
             // 密码随 profile 写入后，prefs 里的 password_backup 就是上一账号的
             // 明文残留；不清的话空密码 profile 会回退用它去登错账号。
             remove("password_backup")
@@ -226,12 +257,39 @@ class UserRepository @Inject constructor(
         user = getUser().copy(),
         password = getPassword(),
         host = host,
-        generation = authGeneration
+        generation = authGeneration,
+        sessionGeneration = sessionGeneration
     )
+
+    /** Accepts same-account token refreshes while rejecting logout, credential/host changes and A→B→A switches. */
+    @Synchronized
+    fun isSessionCurrent(snapshot: AuthSnapshot): Boolean {
+        val current = getUser()
+        return current.isLogin && snapshot.user.isLogin &&
+            sessionGeneration == snapshot.sessionGeneration &&
+            current.account == snapshot.user.account && host == snapshot.host
+    }
+
+    /** Keeps the check and synchronous cache/UI commit atomic against logout and switching. */
+    @Synchronized
+    fun runIfSessionCurrent(snapshot: AuthSnapshot, block: () -> Unit): Boolean {
+        if (!isSessionCurrent(snapshot)) return false
+        block()
+        return true
+    }
+
+    @Synchronized
+    fun isAuthSnapshotCurrent(snapshot: AuthSnapshot): Boolean =
+        authGeneration == snapshot.generation && host == snapshot.host &&
+            getUser().account == snapshot.user.account
 
     /** Atomically stores a foreground login and invalidates older relogin work. */
     @Synchronized
     fun saveAuthenticatedUser(user: User, password: String) {
+        val previous = getUser()
+        if (previous.account != user.account || previous.isLogin != user.isLogin || getPassword() != password) {
+            bumpSessionGeneration()
+        }
         // 密码只写 securePrefs；不再向 ifafu_user 写 password_backup 明文副本
         prefs.edit().apply {
             putString("account", user.account)
@@ -249,6 +307,14 @@ class UserRepository @Inject constructor(
         }
         saveAccountProfileInternal(user.account, user.name, password)
         bumpAuthGeneration()
+    }
+
+    /** Commits a foreground login only while the challenge's original credentials/host are active. */
+    @Synchronized
+    fun saveAuthenticatedUserIfUnchanged(user: User, password: String, snapshot: AuthSnapshot): Boolean {
+        if (!isAuthSnapshotCurrent(snapshot)) return false
+        saveAuthenticatedUser(user, password)
+        return true
     }
 
     /**

@@ -28,7 +28,24 @@ class PetRepository @Inject constructor(
         val json = prefs.getString("pet", null)
         if (json != null) {
             try {
-                gson.fromJson(json, Pet::class.java)
+                val saved = com.google.gson.JsonParser.parseString(json)
+                if (!saved.isJsonObject) return Pet()
+                // Merge into constructor defaults; explicit nulls must not violate Kotlin fields.
+                val merged = gson.toJsonTree(Pet()).asJsonObject
+                saved.asJsonObject.entrySet().forEach { (key, value) ->
+                    if (!value.isJsonNull) merged.add(key, value)
+                }
+                val pet = gson.fromJson(merged, Pet::class.java)
+                if ((pet.state as com.ifafu.kyzz.data.model.PetState?) == null) {
+                    pet.state = com.ifafu.kyzz.data.model.PetState.IDLE
+                }
+                pet.level = pet.level.coerceIn(1, 10000)
+                pet.exp = pet.exp.coerceAtLeast(0)
+                pet.hunger = pet.hunger.coerceIn(0, 100)
+                pet.mood = pet.mood.coerceIn(0, 100)
+                pet.feedCount = pet.feedCount.coerceIn(0, Pet.MAX_CHARGE)
+                pet.playCount = pet.playCount.coerceIn(0, Pet.MAX_CHARGE)
+                pet
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to deserialize Pet data, returning new Pet", e)
                 Pet()

@@ -32,14 +32,13 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
     // 编辑进入时笔记引用的原音频：重录写新临时文件，保存成功才删它，
     // 放弃编辑则原样保留（旧实现 MediaRecorder 直接覆盖原文件，无法恢复）。
     private var originalAudioPath = ""
-    // 新建笔记时固定复用同一个草稿 id：每次点录音换一个新 UUID 会让"录一段→重录"
-    // 各写一个文件，旧文件从此无引用也无人清理，几年累积下来泄漏数十 MB。
-    private var draftAudioId: String? = null
     // 本次会话新录、且尚未随笔记保存的音频；放弃编辑退出时删除，避免孤儿文件。
     private var unsavedNewAudioPath: String? = null
     // "删除音频"暂不落盘，保存时才真正删（放弃编辑可恢复）。
     private var pendingDeleteAudioPath: String? = null
     private var recorder: MediaRecorder? = null
+    private var previousRecordingPath = ""
+    private var previousUnsavedAudioPath: String? = null
     private var isRecording = false
     private var player: MediaPlayer? = null
 
@@ -97,6 +96,13 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
 
         // 保存
         binding.btnSave.setOnClickListener { saveNote() }
+        savedInstanceState?.let { state ->
+            currentAudioPath = state.getString("draft_audio", currentAudioPath)
+            originalAudioPath = state.getString("original_audio", originalAudioPath)
+            unsavedNewAudioPath = state.getString("unsaved_audio")
+            pendingDeleteAudioPath = state.getString("deleted_audio")
+            updateAudioUI()
+        }
     }
 
     private fun checkAndStartRecording() {
@@ -111,30 +117,24 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
 
     @SuppressLint("MissingPermission")
     private fun startRecording() {
+        if (isRecording) return
+        player?.release()
+        player = null
+        binding.btnPlay.text = "播放"
         val audioDir = File(filesDir, "notes_audio")
         audioDir.mkdirs()
-        // 编辑模式写入新临时文件而不是笔记当前引用的文件：MediaRecorder 直接
-        // 覆盖原录音，放弃编辑后原音频就永久丢失（新建模式复用草稿 id 是为了
-        // 防孤儿文件，编辑模式必须换 id 才能保住原文件）。
-        val recordId = if (editingNoteId != null) {
-            "${editingNoteId}_rec_${System.currentTimeMillis()}"
-        } else {
-            draftAudioId ?: UUID.randomUUID().toString().also { draftAudioId = it }
-        }
-        // 重录时清掉上一段未保存的临时录音（编辑模式每段都是新文件名），
-        // 避免孤儿文件累积
-        unsavedNewAudioPath?.takeIf { it != File(audioDir, "$recordId.3gp").absolutePath }?.let { path ->
-            try { File(path).delete() } catch (_: Exception) {}
-        }
-        currentAudioPath = File(audioDir, "$recordId.3gp").absolutePath
+        // Always record into a fresh file; discard the previous draft only after
+        // this recording stops successfully, so microphone failures cannot erase it.
+        val recordId = UUID.randomUUID().toString()
+        val candidatePath = File(audioDir, "$recordId.3gp").absolutePath
 
-        recorder = MediaRecorder()
         try {
+            recorder = MediaRecorder()
             recorder?.apply {
                 setAudioSource(MediaRecorder.AudioSource.MIC)
                 setOutputFormat(MediaRecorder.OutputFormat.THREE_GPP)
                 setAudioEncoder(MediaRecorder.AudioEncoder.AMR_NB)
-                setOutputFile(currentAudioPath)
+                setOutputFile(candidatePath)
                 prepare()
                 start()
             }
@@ -142,13 +142,17 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
             // 麦克风被占用或存储不可用时 prepare()/start() 会抛异常
             try { recorder?.release() } catch (_: Exception) {}
             recorder = null
-            currentAudioPath = ""
+            try { File(candidatePath).delete() } catch (_: Exception) {}
+            updateAudioUI()
             android.widget.Toast.makeText(this, "录音启动失败：麦克风可能被占用", android.widget.Toast.LENGTH_SHORT).show()
             return
         }
         // 编辑与新建模式的会话录音都需要"未保存退出即清理"
         // （编辑模式录的是临时文件，清理不会碰笔记原音频）
-        unsavedNewAudioPath = currentAudioPath
+        previousRecordingPath = currentAudioPath
+        previousUnsavedAudioPath = unsavedNewAudioPath
+        currentAudioPath = candidatePath
+        unsavedNewAudioPath = candidatePath
         isRecording = true
         binding.btnRecord.text = "停止"
         binding.tvRecordStatus.text = "录音中..."
@@ -156,10 +160,12 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
         binding.btnDeleteAudio.visibility = android.view.View.GONE
     }
 
-    private fun stopRecording() {
+    private fun stopRecording(): Boolean {
+        if (!isRecording) return true
+        var completed = true
         try {
             recorder?.stop()
-        } catch (_: Exception) {}
+        } catch (_: Exception) { completed = false }
         finally {
             try {
                 recorder?.release()
@@ -168,7 +174,20 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
         recorder = null
         isRecording = false
         binding.btnRecord.text = "重录"
+        if (!completed) {
+            try { File(currentAudioPath).delete() } catch (_: Exception) {}
+            unsavedNewAudioPath = previousUnsavedAudioPath
+            currentAudioPath = previousRecordingPath
+            Toast.makeText(this, "录音未完成，请重新录制", Toast.LENGTH_SHORT).show()
+        } else {
+            previousUnsavedAudioPath?.takeIf { it != currentAudioPath }?.let { path ->
+                try { File(path).delete() } catch (_: Exception) {}
+            }
+        }
+        previousRecordingPath = ""
+        previousUnsavedAudioPath = null
         updateAudioUI()
+        return completed
     }
 
     private fun updateAudioUI() {
@@ -204,6 +223,9 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
     }
 
     private fun deleteAudio() {
+        player?.release()
+        player = null
+        binding.btnPlay.text = "播放"
         // 不立即删磁盘文件：误点删除后放弃编辑时还要能恢复（否则笔记引用的音频
         // 已被物理删除，列表 🎤 标记还在、播放却永远无声）。标记待删，保存时
         // 才真正删除；重新录音会覆盖同一路径，保存时按路径比对跳过误删。
@@ -220,6 +242,9 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
             Toast.makeText(this, "请输入内容", Toast.LENGTH_SHORT).show()
             return
         }
+        // Finalize the recording before persisting its path. onDestroy must never
+        // be the first place to stop a recording that has already been saved.
+        if (!stopRecording()) return
 
         val title = binding.etTitle.text?.toString()?.trim()?.ifEmpty {
             content.take(20).replace('\n', ' ')
@@ -328,6 +353,23 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
         }
     }
 
+    override fun onSaveInstanceState(outState: Bundle) {
+        stopRecording()
+        outState.putString("draft_audio", currentAudioPath)
+        outState.putString("original_audio", originalAudioPath)
+        outState.putString("unsaved_audio", unsavedNewAudioPath)
+        outState.putString("deleted_audio", pendingDeleteAudioPath)
+        super.onSaveInstanceState(outState)
+    }
+
+    override fun onStop() {
+        stopRecording()
+        player?.release()
+        player = null
+        binding.btnPlay.text = "播放"
+        super.onStop()
+    }
+
     override fun onDestroy() {
         // Remove listeners before releasing to prevent callbacks on destroyed binding
         player?.setOnCompletionListener(null)
@@ -338,9 +380,9 @@ class NoteEditActivity : BaseActivity<ActivityNoteEditBinding>() {
         }
         try { recorder?.release() } catch (_: Exception) {}
         recorder = null
-        // 新建笔记录了音但没保存就退出：删掉这段无主录音，避免 notes_audio 目录
-        // 随时间累积孤儿文件（重录已通过复用 draftAudioId 覆盖同一文件）。
-        unsavedNewAudioPath?.let { path ->
+        // Explicit exits discard the draft. Android background recreation retains
+        // the saved path, so keep the file until the restored editor saves/exits.
+        unsavedNewAudioPath?.takeIf { isFinishing }?.let { path ->
             try { File(path).delete() } catch (_: Exception) {}
         }
         unsavedNewAudioPath = null

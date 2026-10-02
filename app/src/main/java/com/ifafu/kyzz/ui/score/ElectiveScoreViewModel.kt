@@ -7,6 +7,7 @@ import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.model.Score
 import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.util.GpaCalculator
 import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
@@ -79,8 +80,11 @@ class ElectiveScoreViewModel @Inject constructor(
         val electives = scores.filter {
             it.courseType.contains("选修") || it.courseType.contains("公选")
         }
-        // 只有及格的选修课才计入"已获选修学分"，45 分的课学分并未到手
-        val totalCredits = electives.filter { it.score >= 60f }.sumOf { it.studyScore.toDouble() }.toFloat()
+        // 只有及格的选修课才计入"已获选修学分"，45 分的课学分并未到手；
+        // 判定复用 GpaCalculator.isPassed——挂科后补考及格（含真实 0 分挂科）
+        // 的选修课学分同样已获得，自建 `score >= 60` 会把它们漏掉。
+        val totalCredits = electives.filter { GpaCalculator.isPassed(it) }
+            .sumOf { it.studyScore.toDouble() }.toFloat()
         _state.value = State.Success(electives, totalCredits)
     }
 

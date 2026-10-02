@@ -14,6 +14,29 @@ class ExamDatesTest {
 
     private val today = LocalDate.of(2026, 6, 30)
 
+    @Test
+    fun nearestDayIgnoresPastSessionsWhenAnotherSessionIsUpcoming() {
+        assertEquals(2, ExamDates.daysUntilNearest("2026-06-29 09:00-11:00~2026-07-02 14:00-16:00", today))
+        assertEquals(-1, ExamDates.daysUntilNearest("2026-06-28~2026-06-29 09:00-11:00", today))
+    }
+
+    @Test
+    fun timeKeysSortMorningBeforeAfternoonAndRejectInvalidTimes() {
+        assertTrue(ExamDates.timeKey("9:00-11:00") < ExamDates.timeKey("14:00-16:00"))
+        assertEquals("09:00-11:00", ExamDates.timeKey("9：00～11：00"))
+        assertTrue(ExamDates.allPeriods("25:00-26:00").isEmpty())
+        assertTrue(ExamDates.allPeriods("09:60-11:00").isEmpty())
+    }
+
+    @Test
+    fun futureExamAndEmptyTablesAreNotExpired() {
+        assertFalse(ExamDates.areAllExamsExpired(listOf(exam("2026-07-03")), today))
+        assertFalse(ExamDates.areAllExamsExpired(listOf(exam("2026-06-29")), today))
+        assertTrue(ExamDates.areAllExamsExpired(listOf(exam("2026-06-27")), today))
+        assertFalse(ExamDates.areAllExamsExpired(emptyList(), today))
+        assertFalse(ExamDates.areAllExamsExpired(listOf(exam("待定")), today))
+    }
+
     // ==================== countdownState ====================
 
     @Test
@@ -103,6 +126,13 @@ class ExamDatesTest {
             "2026-06-29~2026-06-30(周一)09:00-11:00",
             "2026-06-30(周二)10:00-12:00"
         ))
+    }
+
+    @Test
+    fun timesRemainAttachedToTheirOwnDayInMultiSessionExams() {
+        val multi = "2026-06-29 09:00-11:00~2026-06-30 14:00-16:00"
+        assertFalse(ExamDates.conflictsBetween(multi, "2026-06-30 09:00-11:00"))
+        assertTrue(ExamDates.conflictsBetween(multi, "2026-06-30 15:00-17:00"))
     }
 
     @Test

@@ -11,6 +11,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import androidx.preference.PreferenceManager
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.api.ScoreApi
 import com.ifafu.kyzz.data.cache.CacheManager
@@ -22,6 +23,8 @@ import dagger.hilt.InstallIn
 import dagger.hilt.android.EntryPointAccessors
 import dagger.hilt.components.SingletonComponent
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.math.roundToInt
 
@@ -46,16 +49,17 @@ class ScoreCheckWorker(
                 Dependencies::class.java
             )
             val userRepository = dependencies.userRepository()
-            val user = userRepository.getUser()
-            if (!user.isLogin || user.account.isEmpty()) return Result.success()
+            val snapshot = userRepository.getAuthSnapshot()
+            val user = snapshot.user
+            if (!user.isLogin || user.account.isEmpty() || !notificationsEnabled()) return Result.success()
 
             val cacheManager = dependencies.cacheManager()
-            val cachedScores = cacheManager.loadScores(user.account)
+            val cacheSnapshot = cacheManager.getScoresSnapshot(user.account)
             val freshScores = withTimeoutOrNull(WORK_TIMEOUT_MS) {
                 // The default allows automatic relogin, including captcha
                 // recognition and bounded retries, inside WorkManager's window.
                 dependencies.scoreApi().getAllScores(
-                    userRepository.host,
+                    snapshot.host,
                     user.token,
                     user.account,
                     user.name
@@ -64,13 +68,17 @@ class ScoreCheckWorker(
 
             // 拉取期间用户可能已退出或切换账号。旧任务继续写缓存并弹通知会把
             // 上一个学生的成绩显示给当前用户；账号世代变化时静默丢弃本次结果。
-            val activeUser = userRepository.getUser()
-            if (!activeUser.isLogin || activeUser.account != user.account) {
+            currentCoroutineContext().ensureActive()
+            if (!userRepository.isSessionCurrent(snapshot) || !notificationsEnabled()) {
                 Log.i(TAG, "账号在成绩检查期间发生变化，丢弃旧账号结果")
                 return Result.success()
             }
 
-            processScores(user.account, cachedScores, freshScores, cacheManager)
+            userRepository.runIfSessionCurrent(snapshot) {
+                if (notificationsEnabled() && !isStopped) {
+                    processScores(user.account, cacheSnapshot.revision, freshScores, cacheManager)
+                }
+            }
             Result.success()
         } catch (e: CancellationException) {
             throw e
@@ -82,33 +90,32 @@ class ScoreCheckWorker(
 
     private fun processScores(
         account: String,
-        cachedScores: List<Score>?,
+        expectedCacheRevision: Long,
         freshScores: List<Score>,
         cacheManager: CacheManager
     ) {
-        // No score list means there is no trustworthy new/old comparison baseline.
-        if (cachedScores == null) {
-            cacheManager.commitFreshScores(account, freshScores)
-            return
-        }
-
         // 教务系统改版或返回错误页时，页面"正常"但解析出 0 门成绩。已有成绩的老用户
         // 突然一条不剩几乎必然是解析失败而非真实数据：此时若把缓存覆盖为空，下次
         // 成功拉取会把全部历史成绩（四年可达 50+ 门）误判为新出分并弹出巨型通知。
         // 无缓存时同样不落盘空基线——空列表会让下轮 diff 把全部课程误报为新出分。
         if (freshScores.isEmpty()) {
-            if (cachedScores.isNotEmpty()) {
-                Log.w(TAG, "本次拉取到 0 门成绩但缓存已有 ${cachedScores.size} 门，疑似教务页面异常，保留缓存")
-            }
+            Log.w(TAG, "本次拉取到 0 门成绩，保留缓存及通知基线")
             return
         }
 
+        // The foreground may refresh the same account while the request is in flight.
+        // Compare and commit under CacheManager's lock, including an originally absent
+        // cache (revision 0); never overwrite a newer response or diff an old baseline.
+        val committed = cacheManager.commitFreshScoresIfUnchanged(account, freshScores, expectedCacheRevision)
+        if (committed == null) {
+            Log.i(TAG, "成绩缓存已由其他请求更新，丢弃较早发起的后台响应")
+            return
+        }
+        val cachedScores = committed.first ?: return // First trustworthy baseline: do not notify history.
+        val effectiveScores = committed.second
+
         // 与 CacheManager.scoreMergeKey 同一实现:空课程代码的记录不得互相碰撞
         fun scoreKey(score: Score): Triple<String, String, String> = CacheManager.scoreMergeKey(score)
-
-        // POST 超时会降级返回默认视图(仅本学期)，比缓存少时按学期合并，
-        // 防止子集覆盖缓存导致次日全量误报"新成绩"。
-        val effectiveScores = cacheManager.mergeScoresIfShrunk(account, freshScores)
 
         val cachedByKey = cachedScores.associateBy(::scoreKey)
         val newScores = effectiveScores.filter { it.score > 0f && scoreKey(it) !in cachedByKey }
@@ -121,8 +128,6 @@ class ScoreCheckWorker(
                 old.makeupComment != fresh.makeupComment
             if (changed) old to fresh else null
         }
-
-        cacheManager.commitFreshScores(account, effectiveScores)
 
         if (newScores.isNotEmpty() || changedScores.isNotEmpty()) {
             val lines = buildList {
@@ -151,7 +156,12 @@ class ScoreCheckWorker(
         return if (runAttemptCount == 0) Result.retry() else Result.success()
     }
 
+    private fun notificationsEnabled(): Boolean =
+        PreferenceManager.getDefaultSharedPreferences(applicationContext)
+            .getBoolean("notify_score", true)
+
     private fun showNotification(title: String, content: String) {
+        if (!notificationsEnabled() || isStopped) return
         val notificationManager =
             applicationContext.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         // Android 13+ 通知权限被拒时 notify() 是静默 no-op，提前跳过

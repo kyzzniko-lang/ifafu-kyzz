@@ -163,18 +163,36 @@
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnFeed"
             style="@style/ClaudeButton.Outlined"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:minWidth="0dp"
+            android:maxLines="1"
             android:text="喂食"
             android:textSize="13sp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnPlay"
             style="@style/ClaudeButton.Outlined"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="12dp"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:minWidth="0dp"
+            android:maxLines="1"
             android:text="玩耍"
+            android:textSize="13sp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnChat"
+            style="@style/ClaudeButton.Outlined"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="8dp"
+            android:minWidth="0dp"
+            android:maxLines="1"
+            android:text="聊天"
             android:textSize="13sp" />
 
     </LinearLayout>

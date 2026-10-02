@@ -29,6 +29,17 @@
             android:clipToPadding="false"
             android:padding="16dp" />
 
+        <TextView
+            android:id="@+id/tvEmpty"
+            style="@style/ClaudeBody.Secondary"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:paddingStart="20dp"
+            android:paddingEnd="20dp"
+            android:text="暂无补考安排"
+            android:visibility="gone" />
+
         <include
             android:id="@+id/petLoading"
             layout="@layout/layout_pet_loading" />

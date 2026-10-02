@@ -2,6 +2,7 @@ package com.ifafu.kyzz.data.api
 
 import android.util.Log
 import com.ifafu.kyzz.data.model.ElectiveCourseList
+import com.ifafu.kyzz.data.model.ElectiveCourse
 import com.ifafu.kyzz.data.model.Response
 import com.ifafu.kyzz.data.network.HtmlClient
 import com.ifafu.kyzz.data.parser.ElectiveParser
@@ -22,6 +23,15 @@ class ElectiveCourseApi @Inject constructor(
 
     companion object {
         private const val TAG = "ElectiveCourseApi"
+
+        internal fun confirmsSelection(selected: List<ElectiveCourse>, requested: ElectiveCourse): Boolean =
+            selected.count {
+                it.name == requested.name &&
+                    (requested.code.isBlank() || it.code == requested.code) &&
+                    (requested.teacher.isBlank() || it.teacher == requested.teacher) &&
+                    (requested.time.isBlank() || it.time == requested.time) &&
+                    (requested.location.isBlank() || it.location == requested.location)
+            } == 1
     }
 
     suspend fun getElectiveCourseIndex(
@@ -129,6 +139,12 @@ class ElectiveCourseApi @Inject constructor(
             val reloginResp = reloginHelper.relogin()
             if (!reloginResp.success) return Response(false, -1, reloginResp.message)
             val user = userRepository.getUser()
+            // 重登等待期间账号/主机可能已切换（守卫同 getElectiveCourseIndex）：
+            // 继续用 userRepository 当前账号刷新列表并递归搜索，会把 A 界面
+            // 触发的搜索/提交落到 B 账号的会话上。
+            if (user.account != number || userRepository.host != host) {
+                return Response(false, -1, "登录信息已变更，请刷新重试")
+            }
             // 重登后旧 __VIEWSTATE 失效：先重新拉取列表页刷新状态再重试搜索。
             val indexResp = getElectiveCourseIndex(host, user.token, user.account, user.name, courseList)
             if (!indexResp.success) return indexResp
@@ -171,6 +187,10 @@ class ElectiveCourseApi @Inject constructor(
         courseList: ElectiveCourseList, courseIndex: String,
         depth: Int = 0
     ): Response {
+        val requestedCourse = courseList.courses.singleOrNull { it.courseIndex == courseIndex }?.copy()
+        if (courseIndex.isBlank() || requestedCourse == null) {
+            return Response(false, -1, "课程列表已变更，请刷新后重新选择")
+        }
         val accessUrl = "${host}/(${token})/xf_xsqxxxk.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121203"
         val filter = courseList.filter
 
@@ -203,12 +223,19 @@ class ElectiveCourseApi @Inject constructor(
             val reloginResp = reloginHelper.relogin()
             if (!reloginResp.success) return Response(false, -1, reloginResp.message)
             val user = userRepository.getUser()
+            // 重登等待期间账号/主机可能已切换（守卫同 getElectiveCourseIndex）：
+            // 不校验就递归重新提交，会把 A 界面触发的选课提交到 B 账号。
+            if (user.account != number || userRepository.host != host) {
+                return Response(false, -1, "登录信息已变更，请刷新重试")
+            }
             // 重登后是全新 ASP.NET 会话，旧的 __VIEWSTATE 大概率失效，
             // 直接原样重发 POST 只会拿到校验失败页；先重新拉取列表页刷新
             // viewState/筛选项，再重试提交。
             val indexResp = getElectiveCourseIndex(host, user.token, user.account, user.name, courseList)
             if (!indexResp.success) return indexResp
-            return electiveCourseInternal(host, user.token, user.account, user.name, courseList, courseIndex, depth + 1)
+            // 控件名标识的是当前页面的行，而不是课程。重登后的行顺序可能变化，
+            // 复用旧控件名会提交另一门课；刷新后让用户重新选择。
+            return Response(false, -1, "登录已恢复，课程列表已刷新，请重新选择课程")
         }
 
         val vs = htmlClient.parseViewState(html)
@@ -224,7 +251,16 @@ class ElectiveCourseApi @Inject constructor(
             // 消息含"成功"必须判成功：否则明明选上了却显示 Error，课表缓存也不失效。
             alert != null && alert.message.contains("成功") -> Response(true, 0, alert.message)
             alert != null -> Response(false, 0, alert.message)
-            else -> Response(true, 0, "选课成功")
+            else -> {
+                // 无提示时只以已选列表作成功证据，普通错误 HTML 不能默认为成功。
+                val returned = ElectiveCourseList()
+                electiveParser.parseCourseList(org.jsoup.Jsoup.parse(html), returned)
+                if (confirmsSelection(returned.electived, requestedCourse)) {
+                    Response(true, 0, "选课成功")
+                } else {
+                    Response(false, -1, "教务未确认选课结果，请刷新课程列表后查看")
+                }
+            }
         }
     }
 }

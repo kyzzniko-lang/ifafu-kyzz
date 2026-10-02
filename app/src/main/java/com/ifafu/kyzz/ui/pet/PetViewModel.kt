@@ -116,14 +116,12 @@ class PetViewModel @Inject constructor(
             petMutex.withLock {
                 // 先从磁盘读取最新数据，避免覆盖其他组件的修改
                 val fresh = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    petRepository.loadPet()
+                    petRepository.update { pet ->
+                        pet.tick()
+                        updatePetState(pet)
+                    }
                 }
-                fresh.tick()
-                updatePetState(fresh)
                 _pet.value = fresh
-                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    petRepository.savePet(fresh)
-                }
             }
         }
     }
@@ -181,17 +179,15 @@ class PetViewModel @Inject constructor(
     fun onPetClicked() {
         launchSafe {
             petMutex.withLock {
-                // 从磁盘读最新值而不是 _pet.value 快照：番茄钟/设置页等外部写者
-                // 可能刚改过，用旧快照全量写回会回滚它们的修改
-                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
-                pet.lastInteractTime = System.currentTimeMillis()
-                pet.mood = (pet.mood + 3).coerceAtMost(100)
-                val leveled = pet.addExp(2)
-                val dialogue = getRandomDialogue(pet)
-                showBubble(dialogue, 3000L)
-                if (leveled) { _showLevelUp.value = pet.level }
+                var leveled = false
+                val pet = petRepository.update { pet ->
+                    pet.lastInteractTime = System.currentTimeMillis()
+                    pet.mood = (pet.mood + 3).coerceAtMost(100)
+                    leveled = pet.addExp(2)
+                }
                 _pet.value = pet
-                withContext(Dispatchers.IO) { petRepository.savePet(pet) }
+                showBubble(getRandomDialogue(pet), 3000L)
+                if (leveled) _showLevelUp.value = pet.level
             }
         }
     }
@@ -415,29 +411,23 @@ class PetViewModel @Inject constructor(
 
     fun feed() {
         launchSafe {
-            var fed = false
             petMutex.withLock {
-                // 从磁盘读最新值：_pet.value 可能是几分钟前的快照，喂食次数/饱食度
-                // 按旧值判定后全量写回，会把外部写者(番茄钟经验、设置页改名)回滚
-                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
-                if (!pet.canFeed()) {
+                var fed = false
+                val pet = petRepository.update { pet ->
+                    if (!pet.canFeed()) return@update
+                    pet.feed()
+                    pet.lastInteractTime = System.currentTimeMillis()
+                    pet.state = PetState.EATING
+                    updatePetState(pet)
+                    fed = true
+                }
+                _pet.value = pet
+                if (fed) showBubble(getFeedResponse(), 3000L)
+                else {
                     val mins = (pet.nextFeedRecoverIn() / 60_000).toInt()
                     showBubble("肚子还饱着呢~ ${mins}分钟后再喂我吧，你以为我是饭桶吗？", 2000L)
-                    return@withLock
                 }
-                pet.feed()
-                pet.lastInteractTime = System.currentTimeMillis()
-                pet.state = PetState.EATING
-                // 状态推导与持久化必须同处一个临界区:若拆成两段锁,间隙里
-                // onGradeChanged 等外部写者落盘后会被这里旧快照的全量 save 回滚。
-                // 刚喂食时 updatePetState 会因 15 秒交互保护直接返回,属常规守卫。
-                updatePetState(pet)
-                showBubble(getFeedResponse(), 3000L)
-                _pet.value = pet
-                withContext(Dispatchers.IO) { petRepository.savePet(pet) }
-                fed = true
             }
-            if (!fed) return@launchSafe
         }
     }
 
@@ -499,26 +489,23 @@ class PetViewModel @Inject constructor(
 
     fun play() {
         launchSafe {
-            var played = false
             petMutex.withLock {
-                // 同 feed()：从磁盘读最新值，避免旧快照全量写回覆盖外部修改
-                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
-                if (!pet.canPlay()) {
+                var played = false
+                val pet = petRepository.update { pet ->
+                    if (!pet.canPlay()) return@update
+                    pet.play()
+                    pet.lastInteractTime = System.currentTimeMillis()
+                    pet.state = PetState.HAPPY
+                    updatePetState(pet)
+                    played = true
+                }
+                _pet.value = pet
+                if (played) showBubble(getPlayResponse(), 3000L)
+                else {
                     val mins = (pet.nextPlayRecoverIn() / 60_000).toInt()
                     showBubble("我有点累了~ ${mins}分钟后再陪我玩吧，你以为我是永动机吗？", 2000L)
-                    return@withLock
                 }
-                pet.play()
-                pet.lastInteractTime = System.currentTimeMillis()
-                pet.state = PetState.HAPPY
-                // 同 feed():推导+落盘合并在同一临界区,避免二段锁间隙回滚外部写入
-                updatePetState(pet)
-                showBubble(getPlayResponse(), 3000L)
-                _pet.value = pet
-                withContext(Dispatchers.IO) { petRepository.savePet(pet) }
-                played = true
             }
-            if (!played) return@launchSafe
         }
     }
 
@@ -578,68 +565,68 @@ class PetViewModel @Inject constructor(
     fun onGradeChanged(isImproved: Boolean, courseName: String) {
         launchSafe {
             petMutex.withLock {
-                // 从磁盘读最新值（与 feed() 一致）：成绩提醒触发时若番茄钟/设置页
-                // 刚写过宠物，_pet.value 旧快照全量写回会把那些修改回滚。
-                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
-                val isCrab = pet.petType == "crab"
-                val isCloudling = pet.petType == "cloudling"
-                val advice = if (isImproved) {
-                    pet.mood = (pet.mood + 15).coerceAtMost(100)
-                    pet.state = PetState.EXCITED
-                    when {
-                        isCrab -> listOf(
-                            "${courseName}进步了！这波代码跑得漂亮！",
-                            "成绩提高了！主人好厉害！",
-                            "${courseName}考得不错！继续保持！",
-                            "${courseName}进步了？是不是抄的？开玩笑的啦~",
-                            "厉害了！是不是终于开始学习了？",
-                            "${courseName}不错不错，看来我督促有效果！",
-                            "哟，进步了？看来骂你还是有用的嘛~"
-                        ).random()
-                        isCloudling -> listOf(
-                            "${courseName}进步了！太棒了！",
-                            "成绩提高了！主人好厉害！",
-                            "${courseName}考得不错！继续保持！",
-                            "${courseName}进步了？是不是抄的？开玩笑的啦~",
-                            "厉害了！是不是终于开始学习了？",
-                            "${courseName}不错不错，看来我督促有效果！",
-                            "哟，进步了？看来骂你还是有用的嘛~"
-                        ).random()
-                        else -> listOf(
-                            "${courseName}进步了！太棒了喵~",
-                            "成绩提高了！主人好厉害！",
-                            "${courseName}考得不错！继续保持！",
-                            "${courseName}进步了？是不是抄的？开玩笑的啦~",
-                            "厉害了！是不是终于开始学习了？",
-                            "${courseName}不错不错，看来我督促有效果！",
-                            "哟，进步了？看来骂你还是有用的嘛喵~"
+                var advice = ""
+                val pet = petRepository.update { pet ->
+                    val isCrab = pet.petType == "crab"
+                    val isCloudling = pet.petType == "cloudling"
+                    advice = if (isImproved) {
+                        pet.mood = (pet.mood + 15).coerceAtMost(100)
+                        pet.state = PetState.EXCITED
+                        when {
+                            isCrab -> listOf(
+                                "${courseName}进步了！这波代码跑得漂亮！",
+                                "成绩提高了！主人好厉害！",
+                                "${courseName}考得不错！继续保持！",
+                                "${courseName}进步了？是不是抄的？开玩笑的啦~",
+                                "厉害了！是不是终于开始学习了？",
+                                "${courseName}不错不错，看来我督促有效果！",
+                                "哟，进步了？看来骂你还是有用的嘛~"
+                            ).random()
+                            isCloudling -> listOf(
+                                "${courseName}进步了！太棒了！",
+                                "成绩提高了！主人好厉害！",
+                                "${courseName}考得不错！继续保持！",
+                                "${courseName}进步了？是不是抄的？开玩笑的啦~",
+                                "厉害了！是不是终于开始学习了？",
+                                "${courseName}不错不错，看来我督促有效果！",
+                                "哟，进步了？看来骂你还是有用的嘛~"
+                            ).random()
+                            else -> listOf(
+                                "${courseName}进步了！太棒了喵~",
+                                "成绩提高了！主人好厉害！",
+                                "${courseName}考得不错！继续保持！",
+                                "${courseName}进步了？是不是抄的？开玩笑的啦~",
+                                "厉害了！是不是终于开始学习了？",
+                                "${courseName}不错不错，看来我督促有效果！",
+                                "哟，进步了？看来骂你还是有用的嘛喵~"
+                            ).random()
+                        }
+                    } else {
+                        pet.mood = (pet.mood - 10).coerceAtLeast(0)
+                        pet.state = PetState.WORRY
+                        listOf(
+                            "${courseName}退步了... 要加油哦！",
+                            "别灰心，下次一定能考好！",
+                            "${courseName}需要多花时间复习呢~",
+                            "我陪你一起努力！不要放弃！",
+                            "${courseName}退步了？是不是天天摸我耽误学习了？",
+                            "你的绩点在滴血，你听到了吗？",
+                            "我就说让你少摸我多看书吧！",
+                            "没关系，至少你还有我...虽然我也有点嫌弃你了~",
+                            "${courseName}退步了？你说说你，是不是又偷懒了？",
+                            "退步成这样，我都替你尴尬..."
                         ).random()
                     }
-                } else {
-                    pet.mood = (pet.mood - 10).coerceAtLeast(0)
-                    pet.state = PetState.WORRY
-                    listOf(
-                        "${courseName}退步了... 要加油哦！",
-                        "别灰心，下次一定能考好！",
-                        "${courseName}需要多花时间复习呢~",
-                        "我陪你一起努力！不要放弃！",
-                        "${courseName}退步了？是不是天天摸我耽误学习了？",
-                        "你的绩点在滴血，你听到了吗？",
-                        "我就说让你少摸我多看书吧！",
-                        "没关系，至少你还有我...虽然我也有点嫌弃你了~",
-                        "${courseName}退步了？你说说你，是不是又偷懒了？",
-                        "退步成这样，我都替你尴尬..."
-                    ).random()
                 }
                 lastGradeAdvice = advice
-                showBubble(advice, 5000L)
                 _pet.value = pet
-                withContext(Dispatchers.IO) { petRepository.savePet(pet) }
+                showBubble(advice, 5000L)
             }
         }
     }
 
     fun onExamComing(courseName: String, daysLeft: Int) {
+        if (daysLeft !in 0..7) return
         launchSafe {
             petMutex.withLock {
                 // 同一场考试同一剩余天数只提醒一次：HomeFragment 每次下拉/自动刷新
@@ -648,72 +635,73 @@ class PetViewModel @Inject constructor(
                 if (remindKey == lastExamRemindKey) return@withLock
                 lastExamRemindKey = remindKey
                 // 从磁盘读最新值：避免旧内存快照全量写回覆盖并发的外部修改
-                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
-                pet.state = PetState.EXAM_REMIND
-                val isCrab = pet.petType == "crab"
-                val isCloudling = pet.petType == "cloudling"
-                val msg = when {
-                    daysLeft == 0 -> when {
-                        isCrab -> listOf(
-                            "今天考${courseName}！代码都记住了吗？加油！",
-                            "今天考${courseName}？你复习了吗？没有？那祝你好运！",
-                            "${courseName}今天考！相信自己...虽然我不太信~",
-                            "今天就考了？你昨天在干嘛？！现在才来抱佛脚？",
-                            "我赌你今天要裸考...别让我赢"
+                var msg = ""
+                val pet = petRepository.update { pet ->
+                    pet.state = PetState.EXAM_REMIND
+                    val isCrab = pet.petType == "crab"
+                    val isCloudling = pet.petType == "cloudling"
+                    msg = when {
+                        daysLeft == 0 -> when {
+                            isCrab -> listOf(
+                                "今天考${courseName}！代码都记住了吗？加油！",
+                                "今天考${courseName}？你复习了吗？没有？那祝你好运！",
+                                "${courseName}今天考！相信自己...虽然我不太信~",
+                                "今天就考了？你昨天在干嘛？！现在才来抱佛脚？",
+                                "我赌你今天要裸考...别让我赢"
+                            ).random()
+                            isCloudling -> listOf(
+                                "今天考${courseName}！加油！",
+                                "今天考${courseName}？你复习了吗？没有？那祝你好运！",
+                                "${courseName}今天考！相信自己...虽然我不太信~",
+                                "今天就考了？你昨天在干嘛？！现在才来抱佛脚？",
+                                "我赌你今天要裸考...别让我赢"
+                            ).random()
+                            else -> listOf(
+                                "今天考${courseName}！加油喵！",
+                                "今天考${courseName}？你复习了吗？没有？那祝你好运！",
+                                "${courseName}今天考！相信自己...虽然我不太信~",
+                                "今天就考了？你昨天在干嘛？！现在才来抱佛脚喵？",
+                                "我赌你今天要裸考...别让我赢~"
+                            ).random()
+                        }
+                        daysLeft == 1 -> if (isCrab) listOf(
+                            "明天就考${courseName}了，准备好了吗？",
+                            "明天考${courseName}！今晚通宵预习还来得及！",
+                            "明天就考了？你确定不现在开始看书？",
+                            "最后一天了！你要是挂了别怪我没提醒你！"
+                        ).random() else listOf(
+                            "明天就考${courseName}了，准备好了吗？",
+                            "明天考${courseName}！今晚通宵预习还来得及！",
+                            "明天就考了？你确定不现在开始看书？",
+                            "最后一天了！你要是挂了别怪我没提醒你！"
                         ).random()
-                        isCloudling -> listOf(
-                            "今天考${courseName}！加油！",
-                            "今天考${courseName}？你复习了吗？没有？那祝你好运！",
-                            "${courseName}今天考！相信自己...虽然我不太信~",
-                            "今天就考了？你昨天在干嘛？！现在才来抱佛脚？",
-                            "我赌你今天要裸考...别让我赢"
+                        daysLeft <= 3 -> if (isCrab) listOf(
+                            "还有${daysLeft}天就考${courseName}了，该复习了！",
+                            "还有${daysLeft}天考${courseName}，现在复习还来得及，再晚就真来不及了！",
+                            "${courseName}还有${daysLeft}天，你的复习计划呢？什么？没有计划？",
+                            "就剩${daysLeft}天了还在玩？你心真大啊！"
+                        ).random() else listOf(
+                            "还有${daysLeft}天就考${courseName}了，该复习了！",
+                            "还有${daysLeft}天考${courseName}，现在复习还来得及，再晚就真来不及了！",
+                            "${courseName}还有${daysLeft}天，你的复习计划呢？什么？没有计划？",
+                            "就剩${daysLeft}天了还在玩？你心真大啊！"
                         ).random()
-                        else -> listOf(
-                            "今天考${courseName}！加油喵！",
-                            "今天考${courseName}？你复习了吗？没有？那祝你好运！",
-                            "${courseName}今天考！相信自己...虽然我不太信~",
-                            "今天就考了？你昨天在干嘛？！现在才来抱佛脚喵？",
-                            "我赌你今天要裸考...别让我赢~"
+                        daysLeft <= 7 -> if (isCrab) listOf(
+                            "${courseName}考试临近，开始复习吧~",
+                            "下周就考${courseName}了，要不要我帮你划重点？开玩笑的，我又不会~",
+                            "${courseName}快考了，你是不是该减少摸我的时间了？",
+                            "还有${daysLeft}天，现在开始算临时抱佛脚，再晚就算临阵脱逃了"
+                        ).random() else listOf(
+                            "${courseName}考试临近，开始复习吧~",
+                            "下周就考${courseName}了，要不要我帮你划重点？开玩笑的，我又不会~",
+                            "${courseName}快考了，你是不是该减少摸我的时间了？",
+                            "还有${daysLeft}天，现在开始算临时抱佛脚，再晚就算临阵脱逃了"
                         ).random()
+                        else -> return@update
                     }
-                    daysLeft == 1 -> if (isCrab) listOf(
-                        "明天就考${courseName}了，准备好了吗？",
-                        "明天考${courseName}！今晚通宵预习还来得及！",
-                        "明天就考了？你确定不现在开始看书？",
-                        "最后一天了！你要是挂了别怪我没提醒你！"
-                    ).random() else listOf(
-                        "明天就考${courseName}了，准备好了吗？",
-                        "明天考${courseName}！今晚通宵预习还来得及！",
-                        "明天就考了？你确定不现在开始看书？",
-                        "最后一天了！你要是挂了别怪我没提醒你！"
-                    ).random()
-                    daysLeft <= 3 -> if (isCrab) listOf(
-                        "还有${daysLeft}天就考${courseName}了，该复习了！",
-                        "还有${daysLeft}天考${courseName}，现在复习还来得及，再晚就真来不及了！",
-                        "${courseName}还有${daysLeft}天，你的复习计划呢？什么？没有计划？",
-                        "就剩${daysLeft}天了还在玩？你心真大啊！"
-                    ).random() else listOf(
-                        "还有${daysLeft}天就考${courseName}了，该复习了！",
-                        "还有${daysLeft}天考${courseName}，现在复习还来得及，再晚就真来不及了！",
-                        "${courseName}还有${daysLeft}天，你的复习计划呢？什么？没有计划？",
-                        "就剩${daysLeft}天了还在玩？你心真大啊！"
-                    ).random()
-                    daysLeft <= 7 -> if (isCrab) listOf(
-                        "${courseName}考试临近，开始复习吧~",
-                        "下周就考${courseName}了，要不要我帮你划重点？开玩笑的，我又不会~",
-                        "${courseName}快考了，你是不是该减少摸我的时间了？",
-                        "还有${daysLeft}天，现在开始算临时抱佛脚，再晚就算临阵脱逃了"
-                    ).random() else listOf(
-                        "${courseName}考试临近，开始复习吧~",
-                        "下周就考${courseName}了，要不要我帮你划重点？开玩笑的，我又不会~",
-                        "${courseName}快考了，你是不是该减少摸我的时间了？",
-                        "还有${daysLeft}天，现在开始算临时抱佛脚，再晚就算临阵脱逃了"
-                    ).random()
-                    else -> return@withLock
                 }
-                showBubble(msg, 5000L)
                 _pet.value = pet
-                withContext(Dispatchers.IO) { petRepository.savePet(pet) }
+                showBubble(msg, 5000L)
             }
         }
     }
@@ -727,17 +715,14 @@ class PetViewModel @Inject constructor(
     fun checkIn() {
         launchSafe {
             petMutex.withLock {
-                // 同 feed()：从磁盘读最新值再判定签到状态
-                val pet = withContext(Dispatchers.IO) { petRepository.loadPet() }
-                if (pet.isCheckedInToday()) {
-                    _checkInResult.value = CheckInResult(0, pet.checkInStreak, true)
-                    return@withLock
+                var oldPoints = 0
+                var checkedIn = false
+                val pet = petRepository.update { pet ->
+                    oldPoints = pet.points
+                    checkedIn = pet.checkIn()
                 }
-                val oldPoints = pet.points
-                pet.checkIn()
-                _checkInResult.value = CheckInResult(pet.points - oldPoints, pet.checkInStreak, false)
                 _pet.value = pet
-                withContext(Dispatchers.IO) { petRepository.savePet(pet) }
+                _checkInResult.value = CheckInResult(pet.points - oldPoints, pet.checkInStreak, !checkedIn)
             }
         }
     }

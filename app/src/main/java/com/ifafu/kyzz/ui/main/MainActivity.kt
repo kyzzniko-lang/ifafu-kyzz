@@ -158,30 +158,12 @@ class MainActivity : BaseActivity<ActivityMainBinding>() {
     }
 
     private fun scheduleCourseReminder() {
-        val am = getSystemService(ALARM_SERVICE) as android.app.AlarmManager
-
-        val courseIntent = android.content.Intent(this, com.ifafu.kyzz.service.CourseReminderReceiver::class.java)
-        val coursePending = android.app.PendingIntent.getBroadcast(
-            this, 0, courseIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-        )
-        val courseCal = java.util.Calendar.getInstance().apply {
-            set(java.util.Calendar.HOUR_OF_DAY, 7); set(java.util.Calendar.MINUTE, 30); set(java.util.Calendar.SECOND, 0)
-            if (timeInMillis <= System.currentTimeMillis()) add(java.util.Calendar.DAY_OF_YEAR, 1)
-        }
-        try {
-            am.setAlarmClock(android.app.AlarmManager.AlarmClockInfo(courseCal.timeInMillis, null), coursePending)
-        } catch (_: SecurityException) {
-            am.set(android.app.AlarmManager.RTC_WAKEUP, courseCal.timeInMillis, coursePending)
-        }
-
-        // 成绩检查闹钟统一走 ScoreCheckReceiver.ensureScheduled 的 setAlarmClock
-        // 自续链:此处若用 setRepeating 注册同一 PendingIntent 会把它覆盖成非精确
-        // 闹钟,Doze 下延迟数小时,直到下次 receiver 触发才升回精确。
+        com.ifafu.kyzz.service.CourseReminderReceiver.ensureScheduled(this)
         com.ifafu.kyzz.service.ScoreCheckReceiver.ensureScheduled(this)
     }
-
     override fun onResume() {
         super.onResume()
+        com.ifafu.kyzz.ui.settings.UpdateChecker.resumePendingDownload(this)
         if (!viewModel.isLoggedIn) {
             startActivity(Intent(this, LoginActivity::class.java))
             finish()

@@ -7,6 +7,7 @@ import com.ifafu.kyzz.data.model.InternshipCourse
 import com.ifafu.kyzz.data.model.PracticeCourse
 import com.ifafu.kyzz.data.model.Syllabus
 import com.ifafu.kyzz.data.model.UnscheduledCourse
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import javax.inject.Inject
@@ -87,7 +88,7 @@ class SyllabusParser @Inject constructor(
         Log.d("SyllabusParser", "Table found: ${table != null}")
         if (table != null) {
             Log.d("SyllabusParser", "Table id: ${table.id()}, tagName: ${table.tagName()}")
-            val rows = table.select("tr")
+            val rows = table.select("tr").toList().filter { it.closest("table") === table }
             Log.d("SyllabusParser", "Rows found: ${rows.size}")
 
             var currentSection = 0
@@ -105,9 +106,9 @@ class SyllabusParser @Inject constructor(
                 // Collect all td elements in order, including section-label tds
                 // 显式标注 List<Element>: Elements 自带的 filter(NodeFilter) SAM
                 // 重载会抢先于 kotlin stdlib 扩展解析,导致布尔 lambda 无法使用
-                val allTds: List<Element> = row.select("td")
+                val allTds: List<Element> = row.children().toList().filter { it.tagName() == "td" }
                 for (td in allTds) {
-                    val m = Regex("第(\\d+)节").find(td.text())
+                    val m = Regex("第(\\d+)节").matchEntire(td.text().trim())
                     if (m != null) {
                         currentSection = m.groupValues[1].toIntOrNull() ?: currentSection
                     }
@@ -118,14 +119,18 @@ class SyllabusParser @Inject constructor(
                 val dataCells = allTds.filter { "center" == it.attr("align").lowercase() }
                 if (dataCells.isEmpty()) continue
 
-                // 过滤条件只有两类标签单元格:节次标签(第N节)与上下午分隔。
+                // 过滤条件只有两类标签单元格:节次标签(整格文本恰为"第N节")与上下午分隔。
+                // 节次判定必须整格锚定:单节次课程格的时间串"周三第5节{第1-16周}"
+                // 同样含"第N节"子串,未锚定的包含匹配会把整格当标签列丢弃,且该格
+                // 不推进 colIndex,同行右侧课程整体左移一天(多节次"第1,2节"因
+                // 逗号隔断不受影响,故只有单节次课程漏网)。
                 // 注意"&nbsp;"空占位格绝不能在此剔除——无课时段也是格子,它们
                 // 推进下方 colIndex 才能让后续课程落进正确的星期列;一旦把空格
                 // 滤掉,该行剩余课程全部左移串天。多课程堆叠的长文本格同理,
                 // 内容再长也必须保留参与占位。
                 val courseCells = dataCells.filter { cell ->
                     val text = cell.text().trim()
-                    !Regex("第\\d+节").containsMatchIn(text) &&
+                    !Regex("第\\d+节").matches(text) &&
                         !Regex("^(上午|下午|晚上|早晨)").containsMatchIn(text)
                 }
 
@@ -193,7 +198,7 @@ class SyllabusParser @Inject constructor(
 
         for (block in blocks) {
             val parts = block.split(Regex("<br\\s*/?>"))
-                .map { it.replace(Regex("<[^>]+>"), "").trim() }
+                .map { htmlParser.cleanNbsp(Jsoup.parseBodyFragment(it).text()) }
                 .filter { it.isNotEmpty() && it != "&nbsp;" }
 
             if (parts.size < 2) continue
@@ -203,6 +208,7 @@ class SyllabusParser @Inject constructor(
             val course = Course()
             course.account = account
             course.name = parts[0]
+            parseCourseExam(course, parts)
 
             var timeIndex = -1
             for (i in parts.indices) {
@@ -216,6 +222,8 @@ class SyllabusParser @Inject constructor(
             }
 
             if (timeIndex < 0) {
+                // 明确写有节次却非法时不能再按格位兜底，防止坏数据变成另一场课。
+                if (parts.any { Regex("周[一二三四五六日天].*第.*节").containsMatchIn(it) }) continue
                 val weekOnlyParsed = parseWeekOnly(course, parts)
                 if (weekOnlyParsed) {
                     course.weekDay = cellWeekDay
@@ -239,7 +247,8 @@ class SyllabusParser @Inject constructor(
 
                     Log.d("SyllabusParser", "  Course (pos fallback): ${course.name}, weekDay=${course.weekDay}, begin=${course.begin}, end=${course.end}")
 
-                    if (course.name.isNotEmpty() && course.weekDay > 0) {
+                    if (course.name.isNotEmpty() && course.weekDay in 1..7 &&
+                        course.begin in 1..12 && course.end in course.begin..12) {
                         courses.add(course)
                     }
                     continue
@@ -268,21 +277,6 @@ class SyllabusParser @Inject constructor(
                 }
             }
 
-            // 月/日允许不补零（如"2026年1月8日"），否则考试信息解析失败、考试倒计时漏课
-            val examRegex = Regex("(\\d{4})年(\\d{1,2})月(\\d{1,2})日\\((.*?)\\)")
-            for (part in parts) {
-                val examMatch = examRegex.find(part)
-                if (examMatch != null) {
-                    course.examDate = "${examMatch.groupValues[1]}-${examMatch.groupValues[2]}-${examMatch.groupValues[3]}"
-                    course.examTime = examMatch.groupValues[4]
-                    val examAddrIndex = parts.indexOf(part) + 1
-                    if (examAddrIndex < parts.size) {
-                        course.examAddress = parts[examAddrIndex]
-                    }
-                    break
-                }
-            }
-
             Log.d("SyllabusParser", "  Course: ${course.name}, weekDay=${course.weekDay}, begin=${course.begin}, end=${course.end}, teacher=${course.teacher}, address=${course.address}")
 
             if (course.name.isNotEmpty() && course.weekDay > 0) {
@@ -297,7 +291,7 @@ class SyllabusParser @Inject constructor(
                         it.begin == course.begin && it.end == course.end &&
                         it.weeks == course.weeks && it.weekBegin == course.weekBegin &&
                         it.weekEnd == course.weekEnd && it.oddOrTwice == course.oddOrTwice &&
-                        it.address == course.address
+                        it.address == course.address && it.teacher == course.teacher
                 }
                 if (!isDuplicate) {
                     if (syllabus.campus == 0 && course.address.contains("旗教")) {
@@ -306,6 +300,17 @@ class SyllabusParser @Inject constructor(
                     courses.add(course)
                 }
             }
+        }
+    }
+
+    private fun parseCourseExam(course: Course, parts: List<String>) {
+        val pattern = Regex("(\\d{4})年(\\d{1,2})月(\\d{1,2})日[（(](.*?)[）)]")
+        for ((index, part) in parts.withIndex()) {
+            val match = pattern.find(part) ?: continue
+            course.examDate = "${match.groupValues[1]}-${match.groupValues[2]}-${match.groupValues[3]}"
+            course.examTime = match.groupValues[4]
+            course.examAddress = parts.getOrNull(index + 1).orEmpty()
+            return
         }
     }
 
@@ -448,6 +453,7 @@ class SyllabusParser @Inject constructor(
         } else {
             course.end = course.begin
         }
+        if (course.begin !in 1..12 || course.end !in course.begin..12) return false
 
         // 周次内容是第 6 组：第 5 组是节次部分 (([,，\-~]\d+)*) 的内层重复组。
         // 写错成 [5] 时单节次课拿到空串被丢弃、多节次课把",2"解析成"第2周上课"。

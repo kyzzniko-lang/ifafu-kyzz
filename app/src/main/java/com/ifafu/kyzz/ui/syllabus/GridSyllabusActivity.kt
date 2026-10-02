@@ -35,7 +35,8 @@ import java.util.Calendar
 import java.util.Locale
 
 @AndroidEntryPoint
-class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
+class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>(),
+    OnCourseColorChangedListener {
 
     private val viewModel: SyllabusViewModel by viewModels()
 
@@ -222,7 +223,14 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
         }
 
         ensureTermFirstDay {
-            viewModel.loadSyllabus()
+            // 旋转等配置变更重建时 ViewModel 存活（selectedYear/selectedTerm 仍是
+            // 用户选中的历史学期）：再无参调用 loadSyllabus 会把选中项置空、主缓存
+            // 命中后又被 adoptLoadedSelection 改写回默认学期，用户选择静默丢失。
+            // 仅在 ViewModel 尚无已加载状态（全新实例）时发起初始加载；存活时
+            // state LiveData 粘性重放即可恢复网格与学期选择。
+            if (viewModel.state.value is UiState.Idle) {
+                viewModel.loadSyllabus()
+            }
         }
     }
 
@@ -686,12 +694,17 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>() {
     private fun showCourseDetailBottomSheet(courseList: List<Course>) {
         val course = courseList.firstOrNull() ?: return
         val color = getCourseColor(course.name)
-        val bottomSheet = CourseDetailBottomSheet.newInstance(courseList, color) { courseName, colorHex ->
-            customColors[courseName] = colorHex
-            saveCustomColors(customColors)
-            displayCoursesForWeek()
-        }
+        // 颜色回调通过 OnCourseColorChangedListener 传递（本 Activity 实现），
+        // BottomSheet 旋转重建后经 onAttach 重新发现宿主，不再依赖不可恢复的
+        // lambda 字段。
+        val bottomSheet = CourseDetailBottomSheet.newInstance(courseList, color)
         bottomSheet.show(supportFragmentManager, "course_detail")
+    }
+
+    override fun onCourseColorChanged(courseName: String, colorHex: String) {
+        customColors[courseName] = colorHex
+        saveCustomColors(customColors)
+        displayCoursesForWeek()
     }
 
     private fun exportToCalendar() {

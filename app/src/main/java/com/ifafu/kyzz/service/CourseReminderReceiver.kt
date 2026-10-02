@@ -44,20 +44,8 @@ class CourseReminderReceiver : BroadcastReceiver() {
         val userPrefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
         val loggedIn = userPrefs.getBoolean("isLogin", false)
         if (!preferences.getBoolean("notify_course", true)) {
-            // 开关关闭时只跳过通知,不能提前 return:每日摘要闹钟是自续链,
-            // 这里不重排的话当天之后链条永久断裂,重新打开开关也无法恢复。
-            // 登录态仍优先——未登出干净时链应由 cancel 拆除,不能借续链复活。
-            if (!loggedIn) {
-                cancel(context)
-            } else {
-                // 当日单次课前提醒是每日 7:30 汇总时挂的 setExactAndAllowWhileIdle
-                // 单次闹钟,拆每日链不影响它们:开关关闭后任一已挂闹钟触发走到这里,
-                // 必须把当天剩余的单次闹钟一并清掉,否则剩余提醒照常弹出
-                // （cancelTodayCourseAlarms 是 companion 的 private 方法,本类可直接访问）。
-                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-                cancelTodayCourseAlarms(context, am)
-                ensureScheduled(context)
-            }
+            // SettingsFragment re-arms the chain when the preference is enabled again.
+            cancel(context)
             return
         }
 
@@ -71,6 +59,12 @@ class CourseReminderReceiver : BroadcastReceiver() {
 
         val courseName = intent?.getStringExtra(EXTRA_COURSE_NAME)
         if (!courseName.isNullOrEmpty()) {
+            // Doze may deliver yesterday's alarm after midnight; account switching may
+            // also leave an already-delivered broadcast in the queue. Neither may notify.
+            if (intent.getStringExtra(EXTRA_REMINDER_DATE) != LocalDate.now().toString() ||
+                intent.getStringExtra(EXTRA_ACCOUNT) != userPrefs.getString("account", "") ||
+                intent.getLongExtra(EXTRA_SESSION, -1L) != userPrefs.getLong("session_generation", 0L)
+            ) return
             showNotification(
                 context,
                 "即将上课 · $courseName",
@@ -85,9 +79,18 @@ class CourseReminderReceiver : BroadcastReceiver() {
         // BootReceiver 重启后补挂提醒时置位：只重排今天剩余课程的精确闹钟，
         // 不再弹一次"今日课程提醒"汇总通知（开机时已经看过或还未到早晨）。
         val rescheduleOnly = intent?.getBooleanExtra(EXTRA_RESCHEDULE_ONLY, false) == true
+        val account = userPrefs.getString("account", "")
+        val generation = userPrefs.getLong("session_generation", 0L)
         scope.launch {
             try {
                 val courses = loadTodayCourses(context)
+                if (!userPrefs.getBoolean("isLogin", false) ||
+                    userPrefs.getString("account", "") != account ||
+                    userPrefs.getLong("session_generation", 0L) != generation ||
+                    !preferences.getBoolean("notify_course", true)
+                ) return@launch
+                val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+                cancelTodayCourseAlarms(context, am)
                 if (courses.isNotEmpty()) {
                     if (!rescheduleOnly) {
                         val text = courses.joinToString("\n") { c ->
@@ -181,7 +184,10 @@ class CourseReminderReceiver : BroadcastReceiver() {
 
     private fun scheduleCourseReminders(context: Context, courses: List<Course>) {
         val advanceMinutes = PreferenceManager.getDefaultSharedPreferences(context)
-            .getString("notify_advance", "15")?.toIntOrNull() ?: 15
+            .getString("notify_advance", "15")?.toIntOrNull()?.coerceIn(0, 60) ?: 15
+        val userPrefs = context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
+        val account = userPrefs.getString("account", "")
+        val generation = userPrefs.getLong("session_generation", 0L)
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val now = System.currentTimeMillis()
 
@@ -230,6 +236,9 @@ class CourseReminderReceiver : BroadcastReceiver() {
                     "${advanceMinutes}分钟后 · 第${course.begin}-${course.end}节 · ${course.address}"
                 )
                 putExtra(EXTRA_NOTIFICATION_ID, 1100 + index)
+                putExtra(EXTRA_REMINDER_DATE, LocalDate.now().toString())
+                putExtra(EXTRA_ACCOUNT, account)
+                putExtra(EXTRA_SESSION, generation)
             }
             val pending = PendingIntent.getBroadcast(
                 context,
@@ -250,6 +259,9 @@ class CourseReminderReceiver : BroadcastReceiver() {
     }
 
     private fun showNotification(context: Context, title: String, text: String, notificationId: Int) {
+        if (!PreferenceManager.getDefaultSharedPreferences(context).getBoolean("notify_course", true) ||
+            !context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE).getBoolean("isLogin", false)
+        ) return
         val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         // Android 13+ 通知权限被拒时 notify() 是静默 no-op：提前跳过，省掉无谓的
         // 通知构建开销，也避免每次提醒都往 logcat 刷警告
@@ -285,6 +297,9 @@ class CourseReminderReceiver : BroadcastReceiver() {
         private const val EXTRA_COURSE_NAME = "course_name"
         private const val EXTRA_COURSE_DETAIL = "course_detail"
         private const val EXTRA_NOTIFICATION_ID = "notification_id"
+        private const val EXTRA_REMINDER_DATE = "reminder_date"
+        private const val EXTRA_ACCOUNT = "reminder_account"
+        private const val EXTRA_SESSION = "reminder_session"
 
         /**
          * 挂每日 7:30 的课表摘要闹钟（自续链的起点）。幂等：requestCode 固定，
@@ -292,6 +307,12 @@ class CourseReminderReceiver : BroadcastReceiver() {
          * MainViewModel 登录态重挂（登出会拆链，重新登录后必须重挂）都走这里。
          */
         fun ensureScheduled(context: Context) {
+            if (!context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE).getBoolean("isLogin", false) ||
+                !PreferenceManager.getDefaultSharedPreferences(context).getBoolean("notify_course", true)
+            ) {
+                cancel(context)
+                return
+            }
             try {
                 val intent = Intent(context, CourseReminderReceiver::class.java)
                 val pending = PendingIntent.getBroadcast(
@@ -300,6 +321,7 @@ class CourseReminderReceiver : BroadcastReceiver() {
                 )
                 val cal = Calendar.getInstance().apply {
                     set(Calendar.HOUR_OF_DAY, 7); set(Calendar.MINUTE, 30); set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
                     // 开机补挂场景下（7:30 前重启）今天的摘要还没发，不能直接跳到明天
                     if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
                 }
@@ -314,6 +336,7 @@ class CourseReminderReceiver : BroadcastReceiver() {
                     set(Calendar.HOUR_OF_DAY, 7)
                     set(Calendar.MINUTE, 30)
                     set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
                     if (timeInMillis <= System.currentTimeMillis()) add(Calendar.DAY_OF_YEAR, 1)
                 }.timeInMillis
                 val am = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager

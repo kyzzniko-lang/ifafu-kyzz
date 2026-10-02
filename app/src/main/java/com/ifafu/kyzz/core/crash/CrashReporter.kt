@@ -183,7 +183,8 @@ object CrashReporter {
      */
     fun resetCrashLoopCount() {
         try {
-            prefs.edit().putInt(KEY_CRASH_COUNT, 0).apply()
+            // This is called immediately before the default handler terminates the process.
+            prefs.edit().putInt(KEY_CRASH_COUNT, 0).putLong(KEY_LAST_CRASH_TIME, 0L).commit()
         } catch (e: Exception) {
             Logger.e("CrashReporter", "resetCrashLoopCount failed", e)
         }
@@ -192,7 +193,7 @@ object CrashReporter {
     private fun isInCrashLoop(now: Long): Boolean {
         val lastTime = prefs.getLong(KEY_LAST_CRASH_TIME, 0L)
         val prevCount = prefs.getInt(KEY_CRASH_COUNT, 0)
-        val recentCount = if (now - lastTime < CRASH_LOOP_WINDOW_MS) prevCount + 1 else 1
+        val recentCount = if (now - lastTime in 0 until CRASH_LOOP_WINDOW_MS) prevCount + 1 else 1
         try {
             // 崩溃路径必须同步落盘：进程马上会被终止，异步 apply 丢失计数会让
             // "10s 内 >=3 次"的防崩溃循环判定失效。
@@ -209,10 +210,10 @@ object CrashReporter {
     private fun writeToFile(info: CrashInfo): File? {
         return try {
             if (!crashDir.exists()) crashDir.mkdirs()
-            val fileName = "${info.type}_${info.time}.txt"
-            val file = File(crashDir, fileName)
+            // Multiple reporting threads can finish in the same millisecond.
+            val file = File.createTempFile("${info.type}_${info.time}_", ".txt", crashDir)
             file.writeText(formatReport(info))
-            trimOldFiles()
+            trimOldFiles(file)
             file
         } catch (e: Exception) {
             Logger.e("CrashReporter", "write crash file failed", e)
@@ -220,11 +221,16 @@ object CrashReporter {
         }
     }
 
-    private fun trimOldFiles() {
+    private fun trimOldFiles(justWritten: File) {
         try {
-            val files = crashDir.listFiles()?.sortedBy { it.lastModified() } ?: return
+            val files = crashDir.listFiles()?.filter { it.isFile }
+                ?.sortedBy { it.lastModified() } ?: return
             if (files.size > MAX_FILES) {
-                files.take(files.size - MAX_FILES).forEach { it.delete() }
+                val pendingPath = if (prefs.getBoolean(KEY_PENDING, false))
+                    prefs.getString(KEY_PENDING_FILE, null) else null
+                // Repeated ANRs must not evict the crash referenced by the recovery dialog.
+                files.filter { it.absolutePath != pendingPath && it != justWritten }
+                    .take(files.size - MAX_FILES).forEach { it.delete() }
             }
         } catch (e: Exception) {
             Logger.e("CrashReporter", "trim old files failed", e)
@@ -248,7 +254,7 @@ object CrashReporter {
             val text = file.readText()
             // type 直接按文件名前缀判定（文件名形如 crash_<ts>.txt / anr_<ts>.txt）
             val type = if (file.name.startsWith("anr")) "anr" else "crash"
-            val time = file.name.substringAfter('_').substringBefore('.').toLongOrNull()
+            val time = file.name.substringAfter('_').substringBefore('_').substringBefore('.').toLongOrNull()
                 ?: System.currentTimeMillis()
             CrashInfo(
                 type = type,

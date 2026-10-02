@@ -25,6 +25,26 @@ class CacheManager @Inject constructor(
     private val gson = Gson()
     private val cacheLock = Any()
 
+    data class ScoresSnapshot(val scores: List<Score>?, val revision: Long)
+
+    /** Records a revision even for an empty cache so clearAll can invalidate in-flight work. */
+    fun getScoresSnapshot(account: String): ScoresSnapshot = synchronized(cacheLock) {
+        val revisionKey = "score_revision_$account"
+        if (!prefs.contains(revisionKey)) prefs.edit().putLong(revisionKey, 0L).apply()
+        ScoresSnapshot(loadScores(account), prefs.getLong(revisionKey, 0L))
+    }
+
+    /** Rejects a response older than a foreground refresh or cache clear, even in the same millisecond. */
+    fun commitFreshScoresIfUnchanged(
+        account: String,
+        fresh: List<Score>,
+        expectedRevision: Long
+    ): Pair<List<Score>?, List<Score>>? = synchronized(cacheLock) {
+        if (prefs.getLong("score_revision_$account", 0L) != expectedRevision) return@synchronized null
+        val previous = loadScores(account)
+        previous to commitFreshScores(account, fresh)
+    }
+
     companion object {
         private const val TAG = "CacheManager"
 
@@ -43,6 +63,8 @@ class CacheManager @Inject constructor(
 
         private const val MAX_CHAT_HISTORY = 50
         private const val MAX_DISCUSSION_CACHE = 100
+        // Distinguish a seen-but-unpublished score from a silently baselined published score (0).
+        private const val UNPUBLISHED_SCORE = -1L
     }
 
     fun saveDiscussionComments(comments: List<com.ifafu.kyzz.data.model.Comment>) {
@@ -156,6 +178,7 @@ class CacheManager @Inject constructor(
             prefs.edit()
                 .putString("scores_$account", gson.toJson(scores))
                 .putLong("scores_${account}_ts", System.currentTimeMillis())
+                .putLong("score_revision_$account", prefs.getLong("score_revision_$account", 0L) + 1L)
                 .apply()
         }
     }
@@ -166,6 +189,9 @@ class CacheManager @Inject constructor(
             prefs.edit()
                 .putString(key, gson.toJson(scores))
                 .putLong("${key}_ts", System.currentTimeMillis())
+                .apply {
+                    if (yearTermKey.isEmpty()) putLong("score_revision_$account", prefs.getLong("score_revision_$account", 0L) + 1L)
+                }
                 .apply()
         }
     }
@@ -296,6 +322,7 @@ class CacheManager @Inject constructor(
                 for (key in keysToRemove) {
                     remove(key)
                 }
+                putLong("score_revision_$account", prefs.getLong("score_revision_$account", 0L) + 1L)
                 apply()
             }
         }
@@ -430,7 +457,13 @@ class CacheManager @Inject constructor(
     }
 
     fun clearAll() {
-        prefs.edit().clear().apply()
+        synchronized(cacheLock) {
+            val revisions = prefs.all.filterKeys { it.startsWith("score_revision_") }
+            prefs.edit().clear().apply {
+                for ((key, value) in revisions) putLong(key, (value as? Long ?: 0L) + 1L)
+                apply()
+            }
+        }
     }
 
     fun getCacheSize(): Long {
@@ -506,9 +539,7 @@ class CacheManager @Inject constructor(
      *    清缓存后只有真正的新键会进入 NEW 窗口。
      *
      * 当前在读学期由 [com.ifafu.kyzz.data.util.TermResolver.inferCurrentTerm] 按手机当前
-     * 日期推断（如 2026 年 2-7 月 → 2025-2026 学年第二学期），并与爬取到的成绩数据复核：
-     * 若推断学期在成绩里已有数据，则用它；若推断学期还一门分都没出（如刚开学），则退回
-     * 数据里最大的学期作为"最近有分学期"，避免新学期还没出分时把上学期标 NEW。
+     * 日期推断。新学期尚未出分时，不把最近有分的历史学期当成当前学期。
      */
     fun mergeAndAssignFirstSeen(account: String, scores: List<com.ifafu.kyzz.data.model.Score>) {
         if (scores.isEmpty()) return
@@ -518,43 +549,38 @@ class CacheManager @Inject constructor(
             // 基线整体缺失：静默建基线，本轮不产生任何 NEW 标记
             val silentBootstrap = existing.isEmpty()
 
-            // 1. 用手机日期推断当前在读学期
             val inferred = com.ifafu.kyzz.data.util.TermResolver.inferCurrentTerm()
-            // 2. 复核：推断学期是否在爬取数据里有成绩
-            val hasInferredScores = scores.any { it.year == inferred.year && it.term == inferred.term }
-            // 3. 确定"当前学期"：有分用推断值；没分退回数据里最大的学期（最近有分学期）
-            val (curYear, curTerm) = if (hasInferredScores) {
-                inferred.year to inferred.term
-            } else {
-                val latestYear = scores.map { it.year }.maxOrNull() ?: return
-                val latestTerm = scores.filter { it.year == latestYear }
-                    .map { it.term }.maxOrNull() ?: return
-                latestYear to latestTerm
-            }
 
             for (s in scores) {
                 val key = scoreKey(s)
-                val isCurrentTerm = s.year == curYear && s.term == curTerm
+                val isCurrentTerm = s.year == inferred.year && s.term == inferred.term
                 // 与出分通知（ScoreCheckWorker）口径一致：未出分（0）与负数哨兵不进 NEW 窗口
                 val hasValidScore = s.score > 0f
                 if (key in existing) {
                     val old = existing.getValue(key)
                     s.firstSeenTs = when {
+                        !hasValidScore -> {
+                            existing[key] = UNPUBLISHED_SCORE; 0L
+                        }
                         // 自愈：非当前学期的成绩不应有窗口内时间戳（旧版本误标残留），纠正为 0
-                        !isCurrentTerm && old > 0L -> {
+                        !isCurrentTerm && old != 0L -> {
                             existing[key] = 0L; 0L
                         }
                         // 缓考/未出分行首次拿到有效分数：此时才进入 NEW 窗口
-                        isCurrentTerm && hasValidScore && old <= 0L && !silentBootstrap -> {
+                        isCurrentTerm && hasValidScore && old == UNPUBLISHED_SCORE && !silentBootstrap -> {
                             existing[key] = now; now
                         }
-                        else -> old
+                        else -> old.coerceAtLeast(0L)
                     }
                 } else {
                     // 仅当前学期且已有有效分数的成绩记 now，其余一律记 0（永不 NEW）
-                    val ts = if (!silentBootstrap && isCurrentTerm && hasValidScore) now else 0L
+                    val ts = when {
+                        !hasValidScore -> UNPUBLISHED_SCORE
+                        !silentBootstrap && isCurrentTerm -> now
+                        else -> 0L
+                    }
                     existing[key] = ts
-                    s.firstSeenTs = ts
+                    s.firstSeenTs = ts.coerceAtLeast(0L)
                 }
             }
             saveScoreFirstSeenInternal(account, existing)
@@ -566,7 +592,7 @@ class CacheManager @Inject constructor(
         if (scores.isEmpty()) return
         val map = loadScoreFirstSeenInternal(account)
         for (s in scores) {
-            s.firstSeenTs = map[scoreKey(s)] ?: 0L
+            s.firstSeenTs = (map[scoreKey(s)] ?: 0L).coerceAtLeast(0L)
         }
     }
 

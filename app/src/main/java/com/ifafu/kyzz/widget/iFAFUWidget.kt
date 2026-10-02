@@ -11,6 +11,7 @@ import android.widget.RemoteViews
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.util.TermResolver
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -45,6 +46,10 @@ class iFAFUWidget : AppWidgetProvider() {
 
         fun scheduleNextUpdate(context: Context) {
             try {
+                val ids = AppWidgetManager.getInstance(context).getAppWidgetIds(
+                    android.content.ComponentName(context, iFAFUWidget::class.java)
+                )
+                if (ids.isEmpty()) return
                 val intent = Intent(context, iFAFUWidget::class.java).apply {
                     action = ACTION_UPDATE
                     // 闹钟回发的广播同样要过 onReceive 的来源包名校验
@@ -115,6 +120,23 @@ class iFAFUWidget : AppWidgetProvider() {
                     return "📅 新学期${daysToStart}天后开始"
                 }
 
+                // 缓存学期 vs 日历推断学期守卫(与 CourseReminderReceiver.loadTodayCourses
+                // 及首页 belongsToDifferentTerm 同口径):termFirstDay 已翻到新学期而课表
+                // 缓存还是旧学期时,旧学期课程不能按新学期周次渲染整个开学周。
+                val upcoming = TermResolver.breakTransition()?.upcoming
+                val cachedYear = syllabus.searchYearOptions.getOrNull(syllabus.selectedYearOption)
+                val cachedTerm = syllabus.searchTermOptions.getOrNull(syllabus.selectedTermOption)
+                if (upcoming != null && cachedYear == upcoming.year && cachedTerm == upcoming.term) {
+                    // 新学期课表已发布但尚未开学:不按旧学期周次出课。
+                    return "🗓️ 新学期课表待开学"
+                }
+                if (!cachedYear.isNullOrEmpty() && !cachedTerm.isNullOrEmpty()) {
+                    val inferred = TermResolver.inferCurrentTerm()
+                    if (cachedYear != inferred.year || cachedTerm != inferred.term) {
+                        return "🗓️ 课表待更新"
+                    }
+                }
+
                 // ISO 周序（周一=1…周日=7），与原来的 Calendar.SUNDAY 映射等价
                 val todayDay = today.dayOfWeek.value
 
@@ -142,9 +164,8 @@ class iFAFUWidget : AppWidgetProvider() {
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
         val action = intent.action
-        // WIDGET_UPDATE/WIDGET_CLEAR 是 exported=true 的自定义 action，第三方应用
-        // 可伪造广播触发刷新/清除：校验广播由本应用发出（本应用自发的广播均带
-        // package）。系统 APPWIDGET_UPDATE 不携带 package，不在此校验范围内。
+        // Custom actions use a non-exported receiver and an explicit target package.
+        // The package check only validates routing; sender isolation is enforced by Manifest.
         if ((action == ACTION_UPDATE || action == ACTION_CLEAR) &&
             intent.getPackage() != context.packageName
         ) {
@@ -178,10 +199,12 @@ class iFAFUWidget : AppWidgetProvider() {
                 for (appWidgetId in appWidgetIds) {
                     updateWidget(context, appWidgetManager, appWidgetId)
                 }
-                scheduleNextUpdate(context)
             } catch (e: Exception) {
                 Log.e(TAG, "Widget update failed", e)
             } finally {
+                // A failed RemoteViews update must not permanently break the refresh chain.
+                // scheduleNextUpdate also checks for removal of the last widget during this task.
+                scheduleNextUpdate(context)
                 pendingResult.finish()
             }
         }.start()

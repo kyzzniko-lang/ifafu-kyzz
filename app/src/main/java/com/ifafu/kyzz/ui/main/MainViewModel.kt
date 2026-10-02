@@ -6,6 +6,7 @@ import com.ifafu.kyzz.data.model.Course
 import com.ifafu.kyzz.data.model.Exam
 import com.ifafu.kyzz.data.model.User
 import com.ifafu.kyzz.data.repository.UserRepository
+import com.ifafu.kyzz.data.network.awaitSuccessfulText
 import com.ifafu.kyzz.data.util.TermResolver
 import com.ifafu.kyzz.ui.base.ReloginViewModel
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -45,9 +46,25 @@ class MainViewModel @Inject constructor(
         _currentWeek.value = calculateCurrentWeek()
     }
 
-    val isLoggedIn: Boolean get() = _user.value?.isLogin == true
+    val isLoggedIn: Boolean get() = userRepository.getUser().isLogin
+    private var activeSessionGeneration = userRepository.getAuthSnapshot().sessionGeneration
+    private var syllabusFetchJob: kotlinx.coroutines.Job? = null
+    private var examFetchJob: kotlinx.coroutines.Job? = null
+    private var termSyncJob: kotlinx.coroutines.Job? = null
 
     fun refreshUser(manualRefresh: Boolean = false) {
+        val generation = userRepository.getAuthSnapshot().sessionGeneration
+        if (generation != activeSessionGeneration) {
+            activeSessionGeneration = generation
+            syllabusFetchJob?.cancel()
+            examFetchJob?.cancel()
+            termSyncJob?.cancel()
+            todayCoursesDayKey = 0
+            nextExamDayKey = 0
+            _todayCourses.value = emptyList()
+            _nextExam.value = null
+            hasFetchedTermFirstDay = false
+        }
         _user.value = userRepository.getUser()
         _currentWeek.value = calculateCurrentWeek()
         if (isLoggedIn) {
@@ -105,8 +122,9 @@ class MainViewModel @Inject constructor(
 
     private fun loadTodayCourses(force: Boolean = false) {
         viewModelScope.launch {
-            val user = userRepository.getUser()
-            if (!user.isLogin) { _todayCourses.postValue(emptyList()); return@launch }
+            val snapshot = userRepository.getAuthSnapshot()
+            val user = snapshot.user
+            if (!user.isLogin) { _todayCourses.value = emptyList(); return@launch }
 
             // 同一天已计算过、且课表缓存未被选课/退课标记失效：直接沿用内存结果，
             // 不再读盘或爬取。loadSyllabusTimestamp==0 表示 invalidateSyllabus 刚
@@ -124,6 +142,7 @@ class MainViewModel @Inject constructor(
                 cacheManager.migrateSyllabusCacheIfNeeded(user.account)
                 cacheManager.loadSyllabus(user.account)
             }
+            if (!userRepository.isSessionCurrent(snapshot)) return@launch
             if (syllabus == null) {
                 fetchSyllabusAndShow()
                 return@launch
@@ -131,7 +150,7 @@ class MainViewModel @Inject constructor(
             if (isPublishedUpcomingBreakSyllabus(syllabus)) {
                 // 新课表已发布但尚未开学：首页不把它按旧学期周数计算成“今日课程”。
                 todayCoursesDayKey = todayKey
-                _todayCourses.postValue(emptyList())
+                _todayCourses.value = emptyList()
                 return@launch
             }
             val currentWeek = calculateCurrentWeek()
@@ -153,7 +172,7 @@ class MainViewModel @Inject constructor(
                     }
                     else -> {
                         todayCoursesDayKey = todayKey
-                        _todayCourses.postValue(emptyList())
+                        _todayCourses.value = emptyList()
                     }
                 }
                 return@launch
@@ -161,7 +180,7 @@ class MainViewModel @Inject constructor(
             // 学期开始前（termFirstDay在未来），同样不显示课程
             if (currentWeek <= 0) {
                 todayCoursesDayKey = todayKey
-                _todayCourses.postValue(emptyList())
+                _todayCourses.value = emptyList()
                 return@launch
             }
             // termFirstDay 已按新学期计周（如 8月31日开学），但缓存课表仍属于上一
@@ -172,7 +191,7 @@ class MainViewModel @Inject constructor(
                     cacheManager.markSyllabusUpcomingProbe(user.account)
                     fetchSyllabusAndShow()
                 } else {
-                    _todayCourses.postValue(emptyList())
+                    _todayCourses.value = emptyList()
                 }
                 return@launch
             }
@@ -209,13 +228,18 @@ class MainViewModel @Inject constructor(
     }
 
     private fun fetchSyllabusAndShow() {
-        viewModelScope.launch {
+        syllabusFetchJob?.cancel()
+        syllabusFetchJob = viewModelScope.launch {
+            val snapshot = userRepository.getAuthSnapshot()
             try {
-                val freshUser = userRepository.getUser()
+                val freshUser = snapshot.user
                 if (!freshUser.isLogin) { _todayCourses.value = emptyList(); return@launch }
-                val syllabus = syllabusApi.getSyllabus(userRepository.host, freshUser.token, freshUser.account, freshUser.name)
+                val syllabus = syllabusApi.getSyllabus(snapshot.host, freshUser.token, freshUser.account, freshUser.name)
+                if (!userRepository.isSessionCurrent(snapshot)) return@launch
                 if (syllabus != null) {
-                    cacheManager.saveSyllabus(freshUser.account, syllabus)
+                    if (!userRepository.runIfSessionCurrent(snapshot) {
+                        cacheManager.saveSyllabus(freshUser.account, syllabus)
+                    }) return@launch
                     if (belongsToDifferentTerm(syllabus)) {
                         // 教务默认视图仍返回上一学期（新课表未发布）：不能按新学期
                         // 周次展示旧学期课程，显示"今日无课"等待发布。
@@ -229,16 +253,19 @@ class MainViewModel @Inject constructor(
                     val cached = withContext(kotlinx.coroutines.Dispatchers.IO) {
                         cacheManager.loadSyllabus(freshUser.account)
                     }
-                    if (cached != null) computeTodayCourses(cached)
+                    if (!userRepository.isSessionCurrent(snapshot)) return@launch
+                    if (cached != null && !belongsToDifferentTerm(cached)) computeTodayCourses(cached)
                     else _todayCourses.value = emptyList()
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
+                if (!userRepository.isSessionCurrent(snapshot)) return@launch
                 val cached = withContext(kotlinx.coroutines.Dispatchers.IO) {
-                    cacheManager.loadSyllabus(userRepository.getUser().account)
+                    cacheManager.loadSyllabus(snapshot.user.account)
                 }
-                if (cached != null) computeTodayCourses(cached)
+                if (!userRepository.isSessionCurrent(snapshot)) return@launch
+                if (cached != null && !belongsToDifferentTerm(cached)) computeTodayCourses(cached)
                 else _todayCourses.value = emptyList()
             }
         }
@@ -248,17 +275,17 @@ class MainViewModel @Inject constructor(
         // 成功算出（或合法地算空）今日课程：标记当天已完成，后续切页不再重算
         todayCoursesDayKey = currentDayKey()
         val firstDay = userRepository.termFirstDay
-        if (firstDay.isEmpty()) { _todayCourses.postValue(emptyList()); return }
+        if (firstDay.isEmpty()) { _todayCourses.value = emptyList(); return }
 
         try {
             // 复用 calculateCurrentWeek()：它带有 week>30→0 的上限（防止 termFirstDay
             // 过期时算出"第40周"之类荒谬值）。旧实现在此独立重算且只 coerceAtLeast(0)，
             // 会把荒谬周数顶到首页 chip 上，与 calculateCurrentWeek 自相矛盾。
             val currentWeek = calculateCurrentWeek()
-            _currentWeek.postValue(currentWeek)
+            _currentWeek.value = currentWeek
             // 学期开始前或假期中，不显示课程
             if (currentWeek <= 0) {
-                _todayCourses.postValue(emptyList())
+                _todayCourses.value = emptyList()
                 return
             }
             val today = Calendar.getInstance()
@@ -269,16 +296,17 @@ class MainViewModel @Inject constructor(
                 c.coversWeek(currentWeek) && c.weekDay == todayDay &&
                     (c.oddOrTwice == 0 || (c.oddOrTwice == 1 && currentWeek % 2 == 1) || (c.oddOrTwice == 2 && currentWeek % 2 == 0))
             }.sortedBy { it.begin }.map { TodayCourse(it.name, it.teacher, it.address, it.begin, it.end) }
-            _todayCourses.postValue(matched)
+            _todayCourses.value = matched
         } catch (_: Exception) {
-            _todayCourses.postValue(emptyList())
+            _todayCourses.value = emptyList()
         }
     }
 
     private fun loadNextExam(force: Boolean = false) {
         viewModelScope.launch {
-            val user = userRepository.getUser()
-            if (!user.isLogin) { _nextExam.postValue(null); return@launch }
+            val snapshot = userRepository.getAuthSnapshot()
+            val user = snapshot.user
+            if (!user.isLogin) { _nextExam.value = null; return@launch }
 
             // 同一天已计算过：直接沿用内存结果（下拉刷新/跨天除外）
             if (!force && _nextExam.value != null && nextExamDayKey == currentDayKey()) {
@@ -288,6 +316,7 @@ class MainViewModel @Inject constructor(
             val examTable = withContext(kotlinx.coroutines.Dispatchers.IO) {
                 cacheManager.loadExamTable(user.account)
             }
+            if (!userRepository.isSessionCurrent(snapshot)) return@launch
             if (examTable == null) {
                 fetchExamsAndShow()
                 return@launch
@@ -304,22 +333,41 @@ class MainViewModel @Inject constructor(
     }
 
     private fun fetchExamsAndShow() {
-        viewModelScope.launch {
+        examFetchJob?.cancel()
+        examFetchJob = viewModelScope.launch {
+            val snapshot = userRepository.getAuthSnapshot()
             try {
-                val freshUser = userRepository.getUser()
-                val examTable = examApi.getExamTable(userRepository.host, freshUser.token, freshUser.account, freshUser.name)
+                val freshUser = snapshot.user
+                if (!freshUser.isLogin) return@launch
+                val examTable = examApi.getExamTable(snapshot.host, freshUser.token, freshUser.account, freshUser.name)
+                if (!userRepository.isSessionCurrent(snapshot)) return@launch
                 if (examTable != null) {
-                    cacheManager.saveExamTable(freshUser.account, examTable)
+                    if (!userRepository.runIfSessionCurrent(snapshot) {
+                        cacheManager.saveExamTable(freshUser.account, examTable)
+                    }) return@launch
                     findNextExam(examTable.exams)
                 } else {
-                    _nextExam.value = null
+                    // 拉取失败但旧缓存仍在：保留缓存算出的最近考试，不把首页考试
+                    // 清空（对照 fetchSyllabusAndShow 的缓存守卫；仅拉取成功才覆盖）。
+                    // 置空会让缓存里本有的即将到来的考试消失且当日不再自愈。
+                    restoreNextExamFromCache(snapshot)
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (_: Exception) {
-                _nextExam.value = null
+                restoreNextExamFromCache(snapshot)
             }
         }
+    }
+
+    private suspend fun restoreNextExamFromCache(snapshot: UserRepository.AuthSnapshot) {
+        if (!userRepository.isSessionCurrent(snapshot)) return
+        val cached = withContext(kotlinx.coroutines.Dispatchers.IO) {
+            cacheManager.loadExamTable(snapshot.user.account)
+        }
+        if (!userRepository.isSessionCurrent(snapshot)) return
+        if (cached != null) findNextExam(cached.exams)
+        else _nextExam.value = null
     }
 
     private fun findNextExam(exams: List<com.ifafu.kyzz.data.model.Exam>) {
@@ -355,7 +403,9 @@ class MainViewModel @Inject constructor(
     }
 
     private fun fetchTermFirstDayFromGitHub() {
-        viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
+        termSyncJob?.cancel()
+        val snapshot = userRepository.getAuthSnapshot()
+        termSyncJob = viewModelScope.launch(kotlinx.coroutines.Dispatchers.IO) {
             try {
                 // 用户手动指定的开学日优先级最高，远端同步不得覆盖
                 // （SettingsFragment 设置 termFirstDayManual=true 后，此前这里的
@@ -366,14 +416,11 @@ class MainViewModel @Inject constructor(
                     .url("https://gh-proxy.com/https://api.github.com/repos/kyzzniko-lang/ifafu-kyzz/issues/2")
                     .header("Accept", "application/vnd.github.v3+json")
                     .build()
-                val response = client.newCall(request).execute()
-                response.use {
-                    if (!it.isSuccessful) {
-                        fallbackTermFirstDay()
-                        return@launch
-                    }
-                    val body = it.body?.string() ?: run {
-                        fallbackTermFirstDay()
+                val issueText = client.newCall(request).awaitSuccessfulText()
+                run {
+                    if (!userRepository.isSessionCurrent(snapshot)) return@launch
+                    val body = issueText ?: run {
+                        fallbackTermFirstDay(snapshot)
                         return@launch
                     }
                     val json = com.google.gson.JsonParser.parseString(body).asJsonObject
@@ -383,7 +430,9 @@ class MainViewModel @Inject constructor(
                     if (match != null) {
                         val dateStr = match.groupValues[1]
                         val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
-                        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(dateStr)
+                        val parsed = SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+                            isLenient = false
+                        }.parse(dateStr)
                         if (parsed != null) {
                             val newTermFirstDay = normalizeToMonday(sdf.format(parsed))
                             val oldTermFirstDay = userRepository.termFirstDay
@@ -392,7 +441,7 @@ class MainViewModel @Inject constructor(
                             // 与校历推断的开学日偏差超过 8 周的值一律不信。
                             if (!isPlausibleTermFirstDay(parsed)) {
                                 android.util.Log.w("MainViewModel", "Remote term_first_day $dateStr deviates >8 weeks from estimate, ignored")
-                                fallbackTermFirstDay()
+                                fallbackTermFirstDay(snapshot)
                                 return@launch
                             }
 
@@ -410,34 +459,42 @@ class MainViewModel @Inject constructor(
 
                             val semesterChanged = oldTermFirstDay.isNotEmpty() && newTermFirstDay != oldTermFirstDay
 
-                            userRepository.termFirstDay = newTermFirstDay
-                            _currentWeek.postValue(calculateCurrentWeek())
-
-                            // 首次确定学期起始日（全新安装/切换账号后为空）也必须重算：
-                            // 同步完成前 computeTodayCourses 可能已因 firstDay 为空
-                            // 记过一次"今日无课"，不强制重算当天首页会一直空着。
-                            val termFirstDayEstablished = oldTermFirstDay.isEmpty()
-                            if (semesterChanged || termFirstDayEstablished) {
-                                if (semesterChanged) {
-                                    val user = userRepository.getUser()
-                                    if (user.isLogin) {
-                                        cacheManager.clearCache(user.account)
-                                        android.util.Log.i("MainViewModel", "Semester changed ($oldTermFirstDay -> $newTermFirstDay), cache cleared")
+                            userRepository.runIfSessionCurrent(snapshot) {
+                                // Recheck after network I/O: a manual setting can change mid-request.
+                                if (userRepository.termFirstDayManual) return@runIfSessionCurrent
+                                userRepository.termFirstDay = newTermFirstDay
+                                viewModelScope.launch {
+                                    userRepository.runIfSessionCurrent(snapshot) {
+                                        _currentWeek.value = calculateCurrentWeek()
                                     }
                                 }
-                                // 绕过"当天已计算"守卫强制重算
-                                loadTodayCourses(force = true)
+
+                                // 首次确定学期起始日（全新安装/切换账号后为空）也必须重算：
+                                // 同步完成前 computeTodayCourses 可能已因 firstDay 为空
+                                // 记过一次"今日无课"，不强制重算当天首页会一直空着。
+                                val termFirstDayEstablished = oldTermFirstDay.isEmpty()
+                                if (semesterChanged || termFirstDayEstablished) {
+                                    if (semesterChanged) {
+                                        val user = userRepository.getUser()
+                                        if (user.isLogin) {
+                                            cacheManager.clearCache(user.account)
+                                            android.util.Log.i("MainViewModel", "Semester changed ($oldTermFirstDay -> $newTermFirstDay), cache cleared")
+                                        }
+                                    }
+                                    // 绕过"当天已计算"守卫强制重算
+                                    loadTodayCourses(force = true)
+                                }
+                                android.util.Log.i("MainViewModel", "Term first day synced from GitHub: $dateStr")
                             }
-                            android.util.Log.i("MainViewModel", "Term first day synced from GitHub: $dateStr")
                             return@launch
                         }
                     }
-                    fallbackTermFirstDay()
+                    fallbackTermFirstDay(snapshot)
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (_: Exception) {
-                fallbackTermFirstDay()
+                fallbackTermFirstDay(snapshot)
             }
         }
     }
@@ -449,7 +506,11 @@ class MainViewModel @Inject constructor(
         return kotlin.math.abs(parsed.time - estimated.timeInMillis) <= 8L * 7 * 24 * 60 * 60 * 1000
     }
 
-    private fun fallbackTermFirstDay() {
+    private fun fallbackTermFirstDay(snapshot: UserRepository.AuthSnapshot) {
+        userRepository.runIfSessionCurrent(snapshot) { fallbackTermFirstDayForCurrentSession() }
+    }
+
+    private fun fallbackTermFirstDayForCurrentSession() {
         // 手动指定的开学日不被兜底逻辑覆盖
         if (userRepository.termFirstDayManual) {
             loadTodayCourses(force = true)
@@ -537,6 +598,7 @@ class MainViewModel @Inject constructor(
             okhttp3.OkHttpClient.Builder()
                 .connectTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
                 .readTimeout(8, java.util.concurrent.TimeUnit.SECONDS)
+                .callTimeout(20, java.util.concurrent.TimeUnit.SECONDS)
                 .build()
         }
     }

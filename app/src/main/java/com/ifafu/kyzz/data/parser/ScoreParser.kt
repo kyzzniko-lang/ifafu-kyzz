@@ -2,6 +2,7 @@ package com.ifafu.kyzz.data.parser
 
 import com.ifafu.kyzz.data.model.Score
 import com.ifafu.kyzz.data.model.ScoreTable
+import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -40,10 +41,13 @@ class ScoreParser @Inject constructor(
         if (table != null) {
             val rows = table.select("tr")
             for (row in rows) {
-                if (row.select("th").isNotEmpty()) continue
-                val cells = row.select("td")
+                if (row.select("th").isNotEmpty() || row.hasClass("datelisthead")) continue
+                val cells = row.children().toList().filter { it.tagName() == "td" }
                 if (cells.size >= 14) {
-                    val scoreText = cells[7].text().trim()
+                    // 正方使用 td 表头；布局表/分页行也不能当成绩写入缓存。
+                    if (!cells[0].text().trim().matches(Regex("\\d{4}[-－]\\d{4}")) ||
+                        cells[3].text().isBlank()) continue
+                    val scoreText = htmlParser.cleanNbsp(cells[7].text())
                     scores.add(Score(
                         year = htmlParser.cleanNbsp(cells[0].text()),
                         term = htmlParser.cleanNbsp(cells[1].text()),
@@ -51,10 +55,10 @@ class ScoreParser @Inject constructor(
                         courseName = htmlParser.cleanNbsp(cells[3].text()),
                         courseType = htmlParser.cleanNbsp(cells[4].text()),
                         courseOwner = htmlParser.cleanNbsp(cells[5].text()),
-                        studyScore = cells[6].text().toFloatOrNull() ?: 0f,
-                        score = scoreText.toFloatOrNull() ?: textGradeToScore(scoreText),
-                        makeupScore = htmlParser.cleanNbspFloat(cells[8].text()),
-                        isRestudy = cells[9].text() == "是",
+                        studyScore = htmlParser.cleanNbspFloat(cells[6].text()),
+                        score = gradeToScore(scoreText),
+                        makeupScore = gradeToScore(htmlParser.cleanNbsp(cells[8].text())),
+                        isRestudy = htmlParser.cleanNbsp(cells[9].text()) == "是",
                         isDelayExam = cells[12].text().contains("缓考") || cells[13].text().contains("缓考"),
                         institute = htmlParser.cleanNbsp(cells[10].text()),
                         scorePoint = htmlParser.cleanNbspFloat(cells[11].text()),
@@ -65,7 +69,7 @@ class ScoreParser @Inject constructor(
             }
         }
 
-        if (scores.isEmpty()) {
+        if (scores.isEmpty() && table == null) {
             parseScoresFromRegex(doc.html(), scores)
         }
 
@@ -73,9 +77,14 @@ class ScoreParser @Inject constructor(
     }
 
     fun parseScores(html: String): List<Score> {
-        val scores = mutableListOf<Score>()
-        parseScoresFromRegex(html, scores)
-        return scores
+        // GET 与 POST 共用 DOM 路径，支持换行、td 属性、嵌套标签和无 footbox 的页面。
+        val doc = Jsoup.parse(html)
+        val parsed = parseScores(doc)
+        if (parsed.isNotEmpty() || doc.select("table").isNotEmpty()) return parsed
+        // 兼容调用方提供的无 table 标签片段（Jsoup 会移除片段里的裸 td）。
+        val fallback = mutableListOf<Score>()
+        parseScoresFromRegex(html, fallback)
+        return fallback
     }
 
     private fun parseScoresFromRegex(html: String, scores: MutableList<Score>) {
@@ -104,8 +113,8 @@ class ScoreParser @Inject constructor(
                 courseType = htmlParser.cleanNbsp(match.groupValues[5]),
                 courseOwner = htmlParser.cleanNbsp(match.groupValues[6]),
                 studyScore = htmlParser.cleanNbspFloat(match.groupValues[7]),
-                score = scoreText.toFloatOrNull() ?: textGradeToScore(scoreText),
-                makeupScore = htmlParser.cleanNbspFloat(match.groupValues[9]),
+                score = gradeToScore(scoreText),
+                makeupScore = gradeToScore(htmlParser.cleanNbsp(match.groupValues[9])),
                 isRestudy = match.groupValues[10] == "是",
                 isDelayExam = match.groupValues[13].contains("缓考") || match.groupValues[14].contains("缓考"),
                 institute = htmlParser.cleanNbsp(match.groupValues[11]),
@@ -115,6 +124,9 @@ class ScoreParser @Inject constructor(
             ))
         }
     }
+
+    private fun gradeToScore(grade: String): Float =
+        grade.toFloatOrNull()?.takeIf { it.isFinite() } ?: textGradeToScore(grade)
 
     private fun textGradeToScore(grade: String): Float {
         return when (grade) {

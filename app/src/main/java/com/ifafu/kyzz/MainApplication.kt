@@ -85,7 +85,7 @@ class MainApplication : Application() {
                 try {
                     app.getSharedPreferences("ifafu_user", MODE_PRIVATE).edit()
                         .putBoolean("mock_location_running", false)
-                        .apply()
+                        .commit()
                     app.stopService(Intent(app, MockLocationService::class.java))
                 } catch (_: Exception) {}
                 try {

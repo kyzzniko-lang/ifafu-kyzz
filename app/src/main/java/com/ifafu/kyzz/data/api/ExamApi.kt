@@ -29,57 +29,68 @@ class ExamApi @Inject constructor(
 
     suspend fun getExamTable(host: String, token: String, number: String, name: String): ExamTable? {
         return try {
-            val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
-
-            val accessUrl = "${host}/(${token})/xskscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
-            val doc = htmlClient.getWithReferer(accessUrl, mainUrl)
-            val html = doc.html()
-
-            if (userApi.isSessionExpired(html)) {
-                Log.d(TAG, "Session expired, attempting relogin...")
-                val response = reloginHelper.relogin()
-                if (!response.success) {
-                    Log.w(TAG, "Relogin failed: ${response.message}")
-                    return null
-                }
-                val user = userRepository.getUser()
-                // 等待重登期间用户可能已切换账号：继续用旧 name 发请求会把 A 的
-                // 查询参数混进 B 的会话，返回数据还会被缓存到 B 的 key 下（串台）。
-                if (user.account != number || userRepository.host != host) {
-                    Log.w(TAG, "Relogin retry cancelled: active account changed (${user.account} != $number)")
-                    return null
-                }
-                Log.d(TAG, "Relogin ok, retrying with fresh token")
-                val retryUrl = "${host}/(${user.token})/xskscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121604"
-                val retryDoc = htmlClient.getWithReferer(
-                    retryUrl,
-                    "${host}/(${user.token})/xs_main.aspx?xh=${user.account}"
-                )
-                val retryHtml = retryDoc.html()
-                if (userApi.isSessionExpired(retryHtml)) {
-                    Log.w(TAG, "Session still expired after relogin, retryUrl=${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(retryUrl)}")
-                    try {
-                        htmlClient.get("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
-                        htmlClient.get("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
-                    } catch (e: AlertException) {
-                        throw e
-                    } catch (e: Exception) {
-                        // ignore
-                    }
-                    return null
-                }
-                htmlClient.throwIfAlert(retryHtml)
-                return postAndParseExamTable(retryUrl, retryDoc)
-            }
-
-            htmlClient.throwIfAlert(html)
-            postAndParseExamTable(accessUrl, doc)
+            fetchExamTable(host, token, number, name)
         } catch (e: CancellationException) { throw e }
-        catch (e: AlertException) { throw e }
+        catch (e: AlertException) {
+            // 会话失效时正方可能以页面级 alert 拦截（"禁止使用此功能"等）而非
+            // 登录页，网络层直接抛异常、isSessionExpired 预检走不到：重登一次
+            // 重取（守卫同 StudentQueryApi），仍被拒才抛回原文。
+            reloginHelper.reloginAndRetry(e, number, host) { user ->
+                fetchExamTable(host, user.token, user.account, user.name)
+            }
+        }
         catch (e: Exception) {
             Log.e(TAG, "Failed to fetch exam table", e)
             null
         }
+    }
+
+    private suspend fun fetchExamTable(host: String, token: String, number: String, name: String): ExamTable? {
+        val mainUrl = "${host}/(${token})/xs_main.aspx?xh=${number}"
+
+        val accessUrl = "${host}/(${token})/xskscx.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121604"
+        val doc = htmlClient.getWithReferer(accessUrl, mainUrl)
+        val html = doc.html()
+
+        if (userApi.isSessionExpired(html)) {
+            Log.d(TAG, "Session expired, attempting relogin...")
+            val response = reloginHelper.relogin()
+            if (!response.success) {
+                Log.w(TAG, "Relogin failed: ${response.message}")
+                return null
+            }
+            val user = userRepository.getUser()
+            // 等待重登期间用户可能已切换账号：继续用旧 name 发请求会把 A 的
+            // 查询参数混进 B 的会话，返回数据还会被缓存到 B 的 key 下（串台）。
+            if (user.account != number || userRepository.host != host) {
+                Log.w(TAG, "Relogin retry cancelled: active account changed (${user.account} != $number)")
+                return null
+            }
+            Log.d(TAG, "Relogin ok, retrying with fresh token")
+            val retryUrl = "${host}/(${user.token})/xskscx.aspx?xh=${user.account}&xm=${URLEncoder.encode(user.name, "gbk")}&gnmkdm=N121604"
+            val retryDoc = htmlClient.getWithReferer(
+                retryUrl,
+                "${host}/(${user.token})/xs_main.aspx?xh=${user.account}"
+            )
+            val retryHtml = retryDoc.html()
+            if (userApi.isSessionExpired(retryHtml)) {
+                Log.w(TAG, "Session still expired after relogin, retryUrl=${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(retryUrl)}")
+                try {
+                    htmlClient.get("${host}/(${user.token})/xs_main.aspx?xh=${user.account}")
+                    htmlClient.get("${host}/(${user.token})/xsleft.aspx?xh=${user.account}")
+                } catch (e: AlertException) {
+                    throw e
+                } catch (e: Exception) {
+                    // ignore
+                }
+                return null
+            }
+            htmlClient.throwIfAlert(retryHtml)
+            return postAndParseExamTable(retryUrl, retryDoc)
+        }
+
+        htmlClient.throwIfAlert(html)
+        return postAndParseExamTable(accessUrl, doc)
     }
 
     private suspend fun postAndParseExamTable(accessUrl: String, getDoc: org.jsoup.nodes.Document): ExamTable {
@@ -114,6 +125,7 @@ class ExamApi @Inject constructor(
             }
             if (actualYear != targetYear || actualTerm != targetTerm) {
                 Log.w(TAG, "考试学期选择未完全生效: target=$targetYear-$targetTerm actual=$actualYear-$actualTerm")
+                throw IllegalStateException("考试学期选择未生效，请刷新重试")
             }
             htmlClient.throwIfAlert(postDoc.html())
             examParser.parseExamTable(postDoc)

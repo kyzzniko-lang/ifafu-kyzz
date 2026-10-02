@@ -18,6 +18,30 @@ class SyllabusParserTest {
 
     private val parser = SyllabusParser(HtmlParser())
 
+    @Test
+    fun invalidHugeSectionsAreRejectedBeforeRendering() {
+        assertTrue(parseCell("坏课程<br>周一第1-2147483647节{第1-16周}<br>教师<br>教室").isEmpty())
+    }
+
+    @Test
+    fun courseTextCannotReplaceTheRowsSectionLabel() {
+        val courses = parseTable("""
+            <tr><td>第1节</td>
+              <td align="Center">甲<br>周一第5节{第1-16周}<br>教师<br>教室</td>
+              <td align="Center">乙<br>{第1-16周}<br>教师<br>教室</td></tr>
+        """.trimIndent())
+        assertEquals(1, courses.single { it.name == "乙" }.begin)
+    }
+
+    @Test
+    fun weekOnlyCoursesKeepInlineExamAndDecodeEntities() {
+        val course = parseCell("A&amp;B<br>{第1-16周}<br>教师<br>教室<br>2026年1月8日（09:00-11:00）<br>考场").single()
+        assertEquals("A&B", course.name)
+        assertEquals("2026-1-8", course.examDate)
+        assertEquals("09:00-11:00", course.examTime)
+        assertEquals("考场", course.examAddress)
+    }
+
     /** 构造一个单行课表：节次标签列 + 一格课程。 */
     private fun parseCell(cellHtml: String): List<com.ifafu.kyzz.data.model.Course> {
         val html = """
@@ -159,5 +183,52 @@ class SyllabusParserTest {
         assertEquals(listOf("大学英语III（含听说）", "专业英语", "线性代数"),
             courses.map { it.name })
         assertEquals(listOf(1, 2, 3), courses.map { it.weekDay })
+    }
+
+    /**
+     * 回归：单节次课程格的时间串"周三第5节{第1-16周}"同样含"第N节"子串,
+     * 未锚定的节次标签过滤把整格当标签列丢弃(单节次课消失)。多节次的
+     * "第1,2节"因逗号隔断不受影响——此前测试样例全是双节次格式,正是漏网原因。
+     */
+    @Test
+    fun singleSectionCourseCellNotDroppedAsLabel() {
+        val courses = parseTable(
+            """
+            <tr>
+              <td>第1节</td>
+              <td align="Center">体育<br>周三第5节{第1-16周}<br>陈教练<br>操场</td>
+            </tr>
+            """.trimIndent()
+        )
+        assertEquals(1, courses.size)
+        val c = courses[0]
+        assertEquals("体育", c.name)
+        assertEquals(3, c.weekDay)
+        assertEquals(5, c.begin)
+        assertEquals(5, c.end)
+        assertEquals((1..16).toList(), c.weeks)
+    }
+
+    /**
+     * 回归：单节次课程格被误滤后不推进 colIndex,同行右侧课程左移一天。
+     * 右侧课程时间串用不可识别的"@周"强制走列位置回退 => 必须落在周二
+     * (colIndex 1);旧行为左侧单节次格被滤掉,本格左移到周一。
+     */
+    @Test
+    fun singleSectionCourseCellAdvancesColumnIndex() {
+        val courses = parseTable(
+            """
+            <tr>
+              <td>第1节</td>
+              <td align="Center">体育<br>周三第5节{第1-16周}<br>陈教练<br>操场</td>
+              <td align="Center">军事理论<br>@周第1,2节{第1-16周}<br>李教<br>教1-101</td>
+            </tr>
+            """.trimIndent()
+        )
+        assertEquals(2, courses.size)
+        // 体育: 时间串自带星期 => 周三
+        assertEquals(3, courses[0].weekDay)
+        // 军事理论: "@周"不可识别,按列位置回退 => 周二
+        assertEquals(2, courses[1].weekDay)
     }
 }

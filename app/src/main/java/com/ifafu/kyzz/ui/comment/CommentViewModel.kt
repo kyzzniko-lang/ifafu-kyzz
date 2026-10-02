@@ -11,6 +11,7 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.LiveData
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -56,6 +57,7 @@ class CommentViewModel @Inject constructor(
     val isBlacklisted: Boolean get() = _currentTeacherName.value in _teacherBlacklist
 
     fun toggleWhitelist(teacherName: String) {
+        if (isSubmitting) return
         if (teacherName in _teacherWhitelist) _teacherWhitelist.remove(teacherName)
         else { _teacherWhitelist.add(teacherName); _teacherBlacklist.remove(teacherName) }
         if (coursePaths.isNotEmpty() && manualCoursesDone < coursePaths.size) {
@@ -64,6 +66,7 @@ class CommentViewModel @Inject constructor(
     }
 
     fun toggleBlacklist(teacherName: String) {
+        if (isSubmitting) return
         if (teacherName in _teacherBlacklist) _teacherBlacklist.remove(teacherName)
         else { _teacherBlacklist.add(teacherName); _teacherWhitelist.remove(teacherName) }
         if (coursePaths.isNotEmpty() && manualCoursesDone < coursePaths.size) {
@@ -80,6 +83,10 @@ class CommentViewModel @Inject constructor(
     private var coursePaths: List<Pair<String, String>> = emptyList() // path, label
     private var manualCoursesDone = 0
     private var isSubmitting = false
+    private var loadCourseJob: Job? = null
+    private var loadCourseGeneration = 0L
+    private var courseOwnerAccount = ""
+    private var courseOwnerHost = ""
     private val _savedIndices = mutableSetOf<Int>() // 已保存的课程索引
 
     private fun refreshCourseLabels() {
@@ -126,6 +133,7 @@ class CommentViewModel @Inject constructor(
     var currentCommentText: String = ""
 
     fun startComment() {
+        if (isSubmitting || _state.value is CommentState.Loading) return
         val user = userRepository.getUser()
         if (!user.isLogin) { _state.value = CommentState.Error("未登录"); return }
         // 确保 SemiAuto 模式的 min/max 与当前下拉框一致
@@ -145,9 +153,14 @@ class CommentViewModel @Inject constructor(
             _state.value = CommentState.Loading("正在获取评教列表…")
             try {
                 val freshUser = userRepository.getUser()
+                val requestedHost = userRepository.host
                 val resp = commentTeacherApi.fetchCourseLinks(
-                    userRepository.host, freshUser.token, freshUser.account, freshUser.name
+                    requestedHost, freshUser.token, freshUser.account, freshUser.name
                 )
+                if (userRepository.getUser().account != freshUser.account || userRepository.host != requestedHost) {
+                    _state.value = CommentState.Error("登录信息已变更，请重新获取评教列表")
+                    return@launch
+                }
                 if (!resp.success && (resp.message.contains("所有评价已完成") || resp.message.contains("可以提交"))) {
                     _state.value = CommentState.ManualInput("所有课程已评价完成，请点击「提交总表」")
                     return@launch
@@ -155,11 +168,16 @@ class CommentViewModel @Inject constructor(
                 if (!resp.success) { _state.value = CommentState.Error(resp.message); return@launch }
 
                 val links = parseCourseLinksFromJson(resp.message)
+                val sameOwner = courseOwnerAccount == freshUser.account && courseOwnerHost == requestedHost
+                val savedPaths = if (sameOwner) _savedIndices.mapNotNull { coursePaths.getOrNull(it)?.first }.toSet()
+                    else emptySet()
+                courseOwnerAccount = freshUser.account
+                courseOwnerHost = requestedHost
                 coursePaths = links
-                // 保留 _savedIndices/manualCoursesDone：中途保存失败（网络抖动）后
-                // 重新点"开始评教"应从失败那门续着来，清零会强迫用户把已保存的
-                // 前几门重新评一遍。列表规模变化时索引由 bounds 检查兜底。
-                if (manualCoursesDone > links.size) manualCoursesDone = links.size
+                // 重取列表时按课程路径恢复进度，不能把旧行号套在重排后的课程上。
+                _savedIndices.clear()
+                links.forEachIndexed { index, link -> if (link.first in savedPaths) _savedIndices.add(index) }
+                manualCoursesDone = links.indices.firstOrNull { it !in _savedIndices } ?: links.size
                 refreshCourseLabels()
                 _totalCourses.value = links.size
                 isSubmitting = false
@@ -175,6 +193,11 @@ class CommentViewModel @Inject constructor(
     }
 
     private fun loadNextManualCourse() {
+        loadCourseJob?.cancel()
+        val generation = ++loadCourseGeneration
+        _manualItems.value = emptyList()
+        _manualSelections.value = mutableMapOf()
+        _currentTeacherName.value = ""
         if (manualCoursesDone >= coursePaths.size) {
             _state.value = CommentState.ManualInput("已保存全部 ${coursePaths.size} 门课程，请点击下方「提交总表」")
             return
@@ -183,23 +206,26 @@ class CommentViewModel @Inject constructor(
         _currentCourseIndex.value = manualCoursesDone
         _currentCourseName.value = label.ifEmpty { "课程 ${manualCoursesDone + 1}" }
 
-        viewModelScope.launch {
+        loadCourseJob = viewModelScope.launch {
             _state.value = CommentState.Loading(
                 "正在加载 (${manualCoursesDone + 1}/${coursePaths.size})：${_currentCourseName.value}"
             )
             try {
                 val freshUser = userRepository.getUser()
+                if (freshUser.account != courseOwnerAccount || userRepository.host != courseOwnerHost) {
+                    _state.value = CommentState.Error("登录信息已变更，请重新获取评教列表")
+                    return@launch
+                }
                 val result = commentTeacherApi.fetchCourseItems(
                     userRepository.host, freshUser.token, path, freshUser.account, freshUser.name
                 )
+                if (generation != loadCourseGeneration) return@launch
                 if (result.items.isEmpty()) {
                     _state.value = CommentState.Error("无法解析评价项")
                     return@launch
                 }
                 // 更新教师名（切换课程后重新提取）
-                if (result.teacherName.isNotEmpty()) {
-                    _currentTeacherName.value = result.teacherName
-                }
+                _currentTeacherName.value = result.teacherName
                 val items = result.items
                 initManualSelections(items) // 先初始化选择，设为默认 良好
                 // 预填评分（白名单优先于黑名单）
@@ -241,12 +267,14 @@ class CommentViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
+                if (generation != loadCourseGeneration) return@launch
                 _state.value = CommentState.Error(e.message ?: "加载失败")
             }
         }
     }
 
     fun switchToCourse(index: Int) {
+        if (isSubmitting) return
         if (index < 0 || index >= coursePaths.size || index == manualCoursesDone) return
         manualCoursesDone = index
         isSubmitting = false
@@ -254,18 +282,23 @@ class CommentViewModel @Inject constructor(
     }
 
     fun submitCurrentCourse(commentText: String = "") {
-        if (isSubmitting) return
-        val selections = _manualSelections.value ?: return
+        if (isSubmitting || _state.value !is CommentState.ManualInput || _manualItems.value.isNullOrEmpty()) return
+        val selections = _manualSelections.value?.toMap() ?: return
         if (coursePaths.isEmpty() || manualCoursesDone >= coursePaths.size) return
         val (path, _) = coursePaths[manualCoursesDone]
+        val submittedIndex = manualCoursesDone
+        isSubmitting = true
 
         viewModelScope.launch {
-            isSubmitting = true
             _state.value = CommentState.Loading(
                 "正在保存 (${manualCoursesDone + 1}/${coursePaths.size})：${_currentCourseName.value}"
             )
             try {
                 val freshUser = userRepository.getUser()
+                if (freshUser.account != courseOwnerAccount || userRepository.host != courseOwnerHost) {
+                    _state.value = CommentState.Error("登录信息已变更，请重新获取评教列表")
+                    return@launch
+                }
                 val resp = commentTeacherApi.submitManualCourse(
                     userRepository.host, freshUser.token, path, freshUser.account, freshUser.name, selections, commentText
                 )
@@ -273,9 +306,9 @@ class CommentViewModel @Inject constructor(
                     _state.value = CommentState.Error(resp.message)
                     return@launch
                 }
-                _savedIndices.add(manualCoursesDone)
+                _savedIndices.add(submittedIndex)
                 refreshCourseLabels()
-                manualCoursesDone++
+                manualCoursesDone = submittedIndex + 1
                 _state.value = CommentState.Loading(
                     "保存成功 (${manualCoursesDone}/${coursePaths.size})"
                 )
@@ -296,6 +329,8 @@ class CommentViewModel @Inject constructor(
     }
 
     private fun submitFinalAndFinish() {
+        if (isSubmitting || _state.value is CommentState.Loading) return
+        isSubmitting = true
         viewModelScope.launch {
             _state.value = CommentState.Loading("正在提交总表…")
             // 实际已保存门数：coursePaths.size 是"总共要评的门数"，断网保存了
@@ -303,6 +338,11 @@ class CommentViewModel @Inject constructor(
             val savedCount = _savedIndices.size
             try {
                 val freshUser = userRepository.getUser()
+                if (courseOwnerAccount.isNotBlank() &&
+                    (freshUser.account != courseOwnerAccount || userRepository.host != courseOwnerHost)) {
+                    _state.value = CommentState.Error("登录信息已变更，请重新获取评教列表")
+                    return@launch
+                }
                 val resp = commentTeacherApi.submitFinalTable(
                     userRepository.host, freshUser.token, freshUser.account, freshUser.name
                 )
@@ -315,6 +355,8 @@ class CommentViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 _state.value = CommentState.Error("提交失败：${e.message}（已保存 $savedCount/${coursePaths.size} 门，可重试提交）")
+            } finally {
+                isSubmitting = false
             }
         }
     }

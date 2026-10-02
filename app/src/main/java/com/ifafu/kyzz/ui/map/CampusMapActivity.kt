@@ -15,6 +15,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.TextView
+import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -63,8 +64,15 @@ class CampusMapActivity : BaseActivity<ActivityCampusMapBinding>(), LocationList
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
     ) { granted ->
-        if (granted[Manifest.permission.ACCESS_FINE_LOCATION] == true) {
+        // Android 12+ 用户可选"大致位置"（仅 COARSE 授权）：也算授权并放行定位
+        // （与 MockLocationActivity 同写法）；两者都拒绝时给出提示，
+        // 不再静默无响应。
+        if (granted[Manifest.permission.ACCESS_FINE_LOCATION] == true ||
+            granted[Manifest.permission.ACCESS_COARSE_LOCATION] == true
+        ) {
             startNativeLocation()
+        } else {
+            Toast.makeText(this, "需要定位权限才能显示当前位置", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -106,7 +114,11 @@ class CampusMapActivity : BaseActivity<ActivityCampusMapBinding>(), LocationList
     // ---------- 原生 GPS 定位 ----------
 
     private fun requestLocation() {
+        // 与权限回调同口径：仅"大致位置"（COARSE）授权时也直接定位，
+        // 不再重复弹权限框。
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION)
+            == PackageManager.PERMISSION_GRANTED ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION)
             == PackageManager.PERMISSION_GRANTED
         ) {
             startNativeLocation()
@@ -125,8 +137,12 @@ class CampusMapActivity : BaseActivity<ActivityCampusMapBinding>(), LocationList
         val lm = getSystemService(LOCATION_SERVICE) as LocationManager
         this.locationManager = lm
 
-        // 优先用 GPS
-        if (lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
+        // 优先用 GPS（GPS 更新按惯例需要 FINE；仅 COARSE 授权时跳过，
+        // 由下方网络定位兜底展示大致位置）
+        val fineGranted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+        if (fineGranted && lm.isProviderEnabled(LocationManager.GPS_PROVIDER)) {
             lm.requestSingleUpdate(LocationManager.GPS_PROVIDER, this, mainLooper)
         }
         // 同时请求网络定位作为快速兜底

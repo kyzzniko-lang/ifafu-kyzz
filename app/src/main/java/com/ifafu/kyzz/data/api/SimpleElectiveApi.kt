@@ -62,6 +62,9 @@ class SimpleElectiveApi @Inject constructor(
             val reloginResp = reloginHelper.relogin()
             if (!reloginResp.success) return Result(false, reloginResp.message)
             val user = userRepository.getUser()
+            if (user.account != number || userRepository.host != host) {
+                return Result(false, "登录信息已变更，请刷新重试")
+            }
             return getCoursesInternal(page, gnmkdm, host, user.token, user.account, user.name, depth + 1)
         }
 

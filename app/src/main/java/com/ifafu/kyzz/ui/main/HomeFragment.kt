@@ -31,7 +31,7 @@ import kotlinx.coroutines.delay
 import androidx.swiperefreshlayout.widget.SwipeRefreshLayout
 import com.airbnb.lottie.LottieAnimationView
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import com.ifafu.kyzz.data.util.CountdownDates
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.cache.CacheManager
 import com.ifafu.kyzz.data.util.GpaCalculator
@@ -144,7 +144,18 @@ class HomeFragment : Fragment() {
     private var lastDataRefreshDayKey: Int = -1
 
     private fun loadData() {
-        if (hasLoadedData) return
+        if (hasLoadedData) {
+            // 视图重建（切 tab 返回/返回栈恢复）但 Fragment 实例存活：今日课程与
+            // 考试走 LiveData 粘性重放自动恢复，而倒计时/天气两卡片是直接操作
+            // 视图的（初始 gone），旧视图销毁后没人再渲染。同日守卫挡住了
+            // refreshHomeContent，必须在这里单独补拉——倒计时读本地 prefs，
+            // 天气命中 30 分钟缓存，代价可控。
+            if (!simpleMode) {
+                loadCountdownEvents()
+                loadWeather()
+            }
+            return
+        }
         hasLoadedData = true
         refreshHomeContent()
     }
@@ -534,11 +545,7 @@ class HomeFragment : Fragment() {
     private fun loadCountdownEvents() {
         val prefs = requireContext().getSharedPreferences("countdown_prefs", android.content.Context.MODE_PRIVATE)
         val json = prefs.getString("events", null)
-        cachedCountdownEvents = if (json != null) {
-            try {
-                Gson().fromJson(json, object : TypeToken<List<CountdownEvent>>() {}.type)
-            } catch (_: Exception) { emptyList() }
-        } else emptyList()
+        cachedCountdownEvents = CountdownDates.readEvents(json)
         val events = cachedCountdownEvents
 
         if (events.isEmpty()) {
@@ -546,20 +553,10 @@ class HomeFragment : Fragment() {
             return
         }
 
-        val now = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-        }
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-
         val upcoming = events.mapNotNull { event ->
-            try {
-                val target = sdf.parse(event.date) ?: return@mapNotNull null
-                val days = ((target.time - now.time.time) / (24 * 60 * 60 * 1000L)).toInt()
-                // 过滤掉已过期事件（days < 0），否则负数排在最前会占满首页 3 个槽位
-                if (days < 0) return@mapNotNull null
-                event to days
-            } catch (_: Exception) { null }
+            val days = CountdownDates.daysUntil(event.date) ?: return@mapNotNull null
+            if (days < 0) return@mapNotNull null
+            event to days
         }.sortedBy { it.second }.take(3)
 
         if (upcoming.isEmpty()) {
@@ -597,7 +594,7 @@ class HomeFragment : Fragment() {
             })
             val daysText = when {
                 days < 0 -> "已过${-days}天"
-                days == 0 -> "就是今天！"
+                days == 0L -> "就是今天！"
                 else -> "${days}天后"
             }
             row.addView(TextView(requireContext()).apply {
@@ -626,18 +623,9 @@ class HomeFragment : Fragment() {
     private fun getCountdownPairs(): List<Pair<String, Int>> {
         val events = cachedCountdownEvents
 
-        val now = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-        }
-        val sdf = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
-
         return events.mapNotNull { event ->
-            try {
-                val target = sdf.parse(event.date) ?: return@mapNotNull null
-                val days = ((target.time - now.time.time) / (24 * 60 * 60 * 1000L)).toInt()
-                event.name to days
-            } catch (_: Exception) { null }
+            val days = CountdownDates.daysUntil(event.date) ?: return@mapNotNull null
+            event.name to days.toInt()
         }
     }
 
@@ -1367,6 +1355,7 @@ class HomeFragment : Fragment() {
         val tvExp = dialogView.findViewById<TextView>(R.id.tvExpValue)
         val btnFeed = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnFeed)
         val btnPlay = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnPlay)
+        val btnChat = dialogView.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnChat)
 
         // Set pet image based on state
         com.ifafu.kyzz.ui.pet.PetLottieManager.applyAnimation(
@@ -1407,6 +1396,10 @@ class HomeFragment : Fragment() {
 
         btnFeed.setOnClickListener { petViewModel.feed() }
         btnPlay.setOnClickListener { petViewModel.play() }
+        btnChat.setOnClickListener {
+            dialog.dismiss()
+            showPetChatDialog()
+        }
 
         // feed()/play() 是异步"读盘-改-写盘"，点击后同步读 LiveData 拿到的必然是
         // 旧值（喂食计数慢一拍、次数耗尽后按钮仍显示可点）。改为观察 LiveData
@@ -1418,26 +1411,6 @@ class HomeFragment : Fragment() {
         dialog.setOnDismissListener { petViewModel.pet.removeObserver(petObserver) }
         // 打开对话框时先按当前数据刷新一次按钮计数（LiveData 观察只在值变化时回调）
         refreshWith(petData)
-
-        // Add chat button
-        val chatButton = com.google.android.material.button.MaterialButton(requireContext()).apply {
-            text = "聊天"
-            textSize = 13f
-            setTextColor(resources.getColor(R.color.claude_terracotta, null))
-            typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
-            strokeWidth = 1
-            strokeColor = android.content.res.ColorStateList.valueOf(resources.getColor(R.color.claude_border, null))
-            backgroundTintList = android.content.res.ColorStateList.valueOf(resources.getColor(R.color.claude_bg_elevated, null))
-            cornerRadius = 20
-            setOnClickListener {
-                dialog.dismiss()
-                showPetChatDialog()
-            }
-        }
-        (btnFeed.parent as? LinearLayout)?.addView(chatButton, LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { marginStart = 24 })
 
         dialog.show()
     }

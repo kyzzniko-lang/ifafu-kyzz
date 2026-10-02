@@ -37,10 +37,10 @@ class ElectiveParser @Inject constructor(
         }
 
         for (table in tables) {
-            val rows = table.select("tr")
+            val rows = table.select("tr").toList().filter { it.closest("table") === table }
             if (rows.isEmpty()) continue
 
-            val headerCells = rows[0].select("th, td")
+            val headerCells = rows[0].children().toList().filter { it.tagName() in setOf("th", "td") }
             if (headerCells.isEmpty()) continue
             val headerTexts = headerCells.map { it.text().trim() }
 
@@ -58,37 +58,31 @@ class ElectiveParser @Inject constructor(
                 }
             }
 
-            val hasSelectColumn = headerTexts.any { it.contains("选定") || it.contains("选课") }
-            val isAlreadySelected = section == 1 && !hasSelectColumn
-            val colMap = if (hasSelectColumn) {
-                val shiftedHeaders = headerTexts.drop(1)
-                buildColumnMap(shiftedHeaders)
-            } else {
-                buildColumnMap(headerTexts)
-            }
+            // “选课课号”是课程数据，不能当复选框列；控件也可能在末列。
+            val selectColumn = headerTexts.indexOfFirst { it in setOf("选定", "选课", "选择") }
+                .takeIf { it >= 0 }
+                ?: rows.drop(1).firstNotNullOfOrNull { row ->
+                    row.children().indexOfFirst { it.select("input[type=checkbox], input[type=radio]").isNotEmpty() }
+                        .takeIf { it >= 0 }
+                }
+            val isAlreadySelected = section == 1
+            val colMap = buildColumnMap(headerTexts)
 
             for (i in 1 until rows.size) {
-                val cells = rows[i].select("td")
+                val cells = rows[i].children().toList().filter { it.tagName() == "td" }
                 if (cells.size < 3) continue
 
                 val course = ElectiveCourse()
-                var dataStart = 0
-
-                // If has select checkbox column, extract courseIndex from first cell
-                if (hasSelectColumn && cells.isNotEmpty()) {
-                    val input = cells[0].select("input").firstOrNull()
-                    course.courseIndex = input?.attr("name")?.takeIf { it.isNotBlank() }
-                        ?: rows[i].attr("id").takeIf { it.isNotBlank() }
-                        ?: "row_$i"
-                    dataStart = 1
+                if (selectColumn != null && !isAlreadySelected) {
+                    course.courseIndex = cells.getOrNull(selectColumn)
+                        ?.select("input[type=checkbox], input[type=radio]")?.firstOrNull()
+                        ?.attr("name").orEmpty()
                 }
 
-                val dataCells = cells.subList(dataStart, cells.size)
-                if (dataCells.isEmpty()) continue
-
                 if (colMap.isNotEmpty()) {
-                    mapByHeaders(dataCells, colMap, course)
+                    mapByHeaders(cells, colMap, course)
                 } else {
+                    val dataCells = cells.filterIndexed { index, _ -> index != selectColumn }
                     mapByPosition(dataCells, course, isAlreadySelected)
                 }
 
@@ -103,7 +97,9 @@ class ElectiveParser @Inject constructor(
         }
 
         // Parse pagination
-        val content = doc.html()
+        courseList.curPage = 1
+        courseList.pageSize = 1
+        val content = doc.text()
         val pagePattern = Regex("第.*?(\\d+).*?页/共.*?(\\d+).*?页")
         val pageMatch = pagePattern.find(content)
         if (pageMatch != null) {
@@ -125,6 +121,8 @@ class ElectiveParser @Inject constructor(
                 h.contains("课程名称") -> map["name"] = index
                 h.contains("课程代码") -> map["code"] = index
                 h.contains("教师") -> map["teacher"] = index
+                h.contains("起始结束周") || h.contains("周次") -> map["weekTime"] = index
+                h.contains("考核") || h.contains("考试") -> map["exam"] = index
                 h.contains("上课时间") || h.contains("时间") -> map["time"] = index
                 h.contains("上课地点") || h.contains("地点") -> map["location"] = index
                 h.contains("学分") -> map["credits"] = index
@@ -135,8 +133,6 @@ class ElectiveParser @Inject constructor(
                 h.contains("课程性质") || h.contains("性质") -> map["nature"] = index
                 h.contains("校区") -> map["campus"] = index
                 h.contains("开课学院") || h.contains("学院") -> map["college"] = index
-                h.contains("考核") || h.contains("考试") -> map["exam"] = index
-                h.contains("起始结束周") || h.contains("周次") -> map["weekTime"] = index
                 h.contains("专业方向") || h.contains("方向") -> map["direction"] = index
             }
         }

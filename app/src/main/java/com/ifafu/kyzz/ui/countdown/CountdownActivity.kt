@@ -13,12 +13,11 @@ import androidx.recyclerview.widget.RecyclerView
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.gson.Gson
-import com.google.gson.reflect.TypeToken
+import com.ifafu.kyzz.data.util.CountdownDates
 import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.CountdownEvent
 import com.ifafu.kyzz.databinding.ActivityCountdownBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
-import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
 import java.util.UUID
@@ -43,10 +42,7 @@ class CountdownActivity : BaseActivity<ActivityCountdownBinding>() {
 
     private fun loadEvents() {
         val json = prefs.getString("events", null)
-        events = if (json != null) {
-            try { gson.fromJson(json, object : TypeToken<MutableList<CountdownEvent>>() {}.type) }
-            catch (_: Exception) { mutableListOf() }
-        } else { mutableListOf() }
+        events = CountdownDates.readEvents(json).toMutableList()
     }
 
     private fun saveEvents() {
@@ -76,7 +72,7 @@ class CountdownActivity : BaseActivity<ActivityCountdownBinding>() {
         rowDate.setOnClickListener {
             val cal = Calendar.getInstance()
             DatePickerDialog(this, { _, year, month, day ->
-                selectedDate = String.format("%04d-%02d-%02d", year, month + 1, day)
+                selectedDate = String.format(Locale.US, "%04d-%02d-%02d", year, month + 1, day)
                 tvDate.text = selectedDate
             }, cal.get(Calendar.YEAR), cal.get(Calendar.MONTH), cal.get(Calendar.DAY_OF_MONTH))
                 .show()
@@ -190,17 +186,7 @@ class CountdownActivity : BaseActivity<ActivityCountdownBinding>() {
     }
 
     private fun calcDays(dateStr: String): Long {
-        return try {
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            // 解析失败用哨兵值而非 -1：-1 会与"昨天"无法区分，被渲染成"已过 1 天"
-            val target = sdf.parse(dateStr) ?: return INVALID_DAYS
-            val today = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0); set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0); set(Calendar.MILLISECOND, 0)
-            }
-            val diff = (target.time - today.time.time) / (24 * 60 * 60 * 1000)
-            diff
-        } catch (_: Exception) { INVALID_DAYS }
+        return CountdownDates.daysUntil(dateStr) ?: INVALID_DAYS
     }
 
     companion object {

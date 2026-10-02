@@ -13,6 +13,15 @@ import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Course
 import com.ifafu.kyzz.databinding.DialogCourseDetailSheetBinding
 
+/**
+ * 课程自定义颜色变化的回调通道。实现方为宿主 [GridSyllabusActivity]，
+ * 由 BottomSheet 在 onAttach 时发现——lambda 存字段的方式在旋转重建后
+ * （系统以无参构造恢复、字段为 null）会静默丢失回调，自定义颜色不落盘。
+ */
+interface OnCourseColorChangedListener {
+    fun onCourseColorChanged(courseName: String, colorHex: String)
+}
+
 class CourseDetailBottomSheet : BottomSheetDialogFragment() {
 
     private var _binding: DialogCourseDetailSheetBinding? = null
@@ -20,7 +29,7 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
 
     private var courses: List<Course> = emptyList()
     private var courseColor: Int = 0
-    private var onColorChanged: ((String, String) -> Unit)? = null
+    private var colorChangedListener: OnCourseColorChangedListener? = null
 
     private val timeMap = mapOf(
         1 to "08:00-08:45", 2 to "08:50-09:35", 3 to "09:55-10:40",
@@ -36,6 +45,13 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
         "#E74C3C", "#3498DB", "#2ECC71", "#F39C12", "#9B59B6",
         "#1ABC9C", "#E67E22", "#34495E", "#16A085"
     )
+
+    override fun onAttach(context: android.content.Context) {
+        super.onAttach(context)
+        // 每次附着（含旋转后系统重建）都从宿主重新发现监听器，
+        // 保证回调通道可重建；宿主未实现时保持 null，与旧行为一致地忽略。
+        colorChangedListener = context as? OnCourseColorChangedListener
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -122,7 +138,7 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
                 chipMinHeight = 0f
                 setEnsureMinTouchTargetSize(false)
                 setOnClickListener {
-                    onColorChanged?.invoke(courseName, colorHex)
+                    colorChangedListener?.onCourseColorChanged(courseName, colorHex)
                     binding.colorBar.setBackgroundColor(Color.parseColor(colorHex))
                 }
             }
@@ -141,11 +157,9 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
 
         fun newInstance(
             courses: List<Course>,
-            color: Int,
-            onColorChanged: (courseName: String, colorHex: String) -> Unit
+            color: Int
         ): CourseDetailBottomSheet {
             return CourseDetailBottomSheet().apply {
-                this.onColorChanged = onColorChanged
                 arguments = Bundle().apply {
                     putInt(ARG_COLOR, color)
                     putString(ARG_COURSES, com.google.gson.Gson().toJson(courses))

@@ -184,14 +184,15 @@ class ScoreFragment : Fragment() {
         binding.recyclerView.visibility = View.VISIBLE
         binding.errorLayout.visibility = View.GONE
 
-        val validScores = scores.filter { it.score > 0f && it.studyScore > 0f }
+        // 统计口径必须复用 GpaCalculator.valid：自建 `score > 0` 过滤会把
+        // "0 分挂科+补考及格"的课在进计算器前删掉，与成绩单页（直接交原始
+        // 列表）的总学分/GPA/科目数互相矛盾。
+        val validScores = GpaCalculator.valid(scores)
         updateStats(validScores)
 
         // 趋势图用全量成绩计算：它本质是跨学期视图，若跟随筛选器，默认选中
         // "最新学期"时会先渲染后消失（闪一下就不见），用户必须手动选"全部"才能看到。
-        val trendData = computeTrendData(
-            viewModel.getAllScores().filter { it.score > 0f && it.studyScore > 0f }
-        )
+        val trendData = computeTrendData(GpaCalculator.valid(viewModel.getAllScores()))
         val items = mutableListOf<Any>()
         if (trendData != null) items.add(trendData)
         items.addAll(scores)

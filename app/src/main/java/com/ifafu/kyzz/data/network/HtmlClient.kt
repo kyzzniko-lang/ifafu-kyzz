@@ -2,6 +2,7 @@ package com.ifafu.kyzz.data.network
 
 import com.ifafu.kyzz.data.model.Response
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -12,6 +13,7 @@ import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
@@ -35,6 +37,10 @@ class HtmlClient @Inject constructor(
 
     fun clearCookies() {
         (client.cookieJar as? com.ifafu.kyzz.di.JavaNetCookieJar)?.clear()
+        referer = ""
+        viewState = ""
+        viewStateGenerator = ""
+        lastUrl = ""
     }
 
     // 已知限制：全局单 Mutex 把所有教务 HTTP 串行化（锁覆盖整个请求周期）。
@@ -59,7 +65,7 @@ class HtmlClient @Inject constructor(
 
     private fun headerCharset(contentType: String?): Charset? {
         if (contentType.isNullOrEmpty()) return null
-        val match = Regex("""charset\s*=\s*([\w-]+)""", RegexOption.IGNORE_CASE)
+        val match = Regex("""charset\s*=\s*["']?\s*([\w-]+)""", RegexOption.IGNORE_CASE)
             .find(contentType) ?: return null
         return charsetOrNull(match.groupValues[1])
     }
@@ -162,14 +168,14 @@ class HtmlClient @Inject constructor(
     suspend fun getString(url: String): String = withContext(Dispatchers.IO) {
         mutex.withLock {
             val request = buildRequest(url).get().build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+            executeRawCancellable(request).let { response ->
+                if (response.code !in 200..299) {
                     throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
                 }
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                lastUrl = response.request.url.toString()
+                val bytes = response.bytes
+                lastUrl = response.url
                 referer = lastUrl
-                val html = bytesToString(bytes, response.header("Content-Type"))
+                val html = bytesToString(bytes, response.contentType)
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -181,14 +187,14 @@ class HtmlClient @Inject constructor(
     suspend fun getStringWithViewState(url: String): StringResult = withContext(Dispatchers.IO) {
         mutex.withLock {
             val request = buildRequest(url).get().build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+            executeRawCancellable(request).let { response ->
+                if (response.code !in 200..299) {
                     throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
                 }
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                lastUrl = response.request.url.toString()
+                val bytes = response.bytes
+                lastUrl = response.url
                 referer = lastUrl
-                val html = bytesToString(bytes, response.header("Content-Type"))
+                val html = bytesToString(bytes, response.contentType)
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 val doc = Jsoup.parse(html)
                 val vs = doc.select("input[name=__VIEWSTATE]").firstOrNull()
@@ -206,13 +212,13 @@ class HtmlClient @Inject constructor(
     suspend fun getBytes(url: String): ByteArray = withContext(Dispatchers.IO) {
         mutex.withLock {
             val request = buildRequest(url).get().build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+            executeRawCancellable(request).let { response ->
+                if (response.code !in 200..299) {
                     throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
                 }
-                lastUrl = response.request.url.toString()
+                lastUrl = response.url
                 referer = lastUrl
-                response.body?.bytes() ?: ByteArray(0)
+                response.bytes
             }
         }
     }
@@ -228,14 +234,14 @@ class HtmlClient @Inject constructor(
     suspend fun postString(url: String, formBody: FormBody): String = withContext(Dispatchers.IO) {
         mutex.withLock {
             val request = buildRequest(url).post(formBody).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+            executeRawCancellable(request).let { response ->
+                if (response.code !in 200..299) {
                     throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
                 }
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                lastUrl = response.request.url.toString()
+                val bytes = response.bytes
+                lastUrl = response.url
                 referer = lastUrl
-                val html = bytesToString(bytes, response.header("Content-Type"))
+                val html = bytesToString(bytes, response.contentType)
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -301,11 +307,34 @@ class HtmlClient @Inject constructor(
     suspend fun postStringRaw(url: String, formBody: FormBody): String = withContext(Dispatchers.IO) {
         mutex.withLock {
             val request = buildRequest(url).post(formBody).build()
-            client.newCall(request).execute().use { response ->
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                lastUrl = response.request.url.toString()
+            executeRawCancellable(request).let { response ->
+                val bytes = response.bytes
+                lastUrl = response.url
                 referer = lastUrl
-                bytesToString(bytes, response.header("Content-Type"))
+                bytesToString(bytes, response.contentType)
+            }
+        }
+    }
+
+    /**
+     * Atomic: set referer + post form and return the raw response (no alert check).
+     *
+     * 与 [postStringRaw] 同语义并补齐原子 referer 更新（含 Origin 头，请求形状
+     * 与 [postStringWithReferer] 一致）：评教等旧版页面对成功与失败都以顶层
+     * alert 返回（如 alert('完成评价...')），走 [postStringWithReferer] 会在
+     * 网络层抛 AlertException，调用方"alert 含成功文案即成功"的判定不可达，
+     * 实际成功被兜底成失败。与其它 Raw 方法一致：不做 HTTP 状态码检查。
+     */
+    suspend fun postStringRawWithReferer(url: String, formBody: FormBody, refererUrl: String): String = withContext(Dispatchers.IO) {
+        mutex.withLock {
+            referer = refererUrl
+            val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
+            val request = buildRequest(url).post(formBody).addHeader("Origin", origin).build()
+            executeRawCancellable(request).let { response ->
+                val bytes = response.bytes
+                lastUrl = response.url
+                this@HtmlClient.referer = lastUrl
+                bytesToString(bytes, response.contentType)
             }
         }
     }
@@ -330,11 +359,17 @@ class HtmlClient @Inject constructor(
 
     private fun buildRequest(url: String): Request.Builder {
         return Request.Builder().url(url).apply {
+            (client.cookieJar as? com.ifafu.kyzz.di.JavaNetCookieJar)?.let { cookieJar ->
+                tag(com.ifafu.kyzz.di.JavaNetCookieJar.SessionTag::class.java, cookieJar.requestSessionTag())
+            }
             header("User-Agent", USER_AGENT)
             header("Accept", ACCEPT)
             header("Accept-Language", ACCEPT_LANGUAGE)
             header("Upgrade-Insecure-Requests", "1")
-            if (referer.isNotEmpty()) {
+            val destination = url.toHttpUrlOrNull()
+            val source = referer.toHttpUrlOrNull()
+            if (source != null && destination != null && source.scheme == destination.scheme &&
+                source.host == destination.host && source.port == destination.port) {
                 header("Referer", referer)
             }
         }
@@ -348,11 +383,11 @@ class HtmlClient @Inject constructor(
     suspend fun getStringRaw(url: String): String = withContext(Dispatchers.IO) {
         mutex.withLock {
             val request = buildRequest(url).get().build()
-            client.newCall(request).execute().use { response ->
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                lastUrl = response.request.url.toString()
+            executeRawCancellable(request).let { response ->
+                val bytes = response.bytes
+                lastUrl = response.url
                 referer = lastUrl
-                bytesToString(bytes, response.header("Content-Type"))
+                bytesToString(bytes, response.contentType)
             }
         }
     }
@@ -362,11 +397,11 @@ class HtmlClient @Inject constructor(
         mutex.withLock {
             referer = refererUrl
             val request = buildRequest(url).get().build()
-            client.newCall(request).execute().use { response ->
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                lastUrl = response.request.url.toString()
+            executeRawCancellable(request).let { response ->
+                val bytes = response.bytes
+                lastUrl = response.url
                 this@HtmlClient.referer = lastUrl
-                bytesToString(bytes, response.header("Content-Type"))
+                bytesToString(bytes, response.contentType)
             }
         }
     }
@@ -376,14 +411,14 @@ class HtmlClient @Inject constructor(
         mutex.withLock {
             referer = refererUrl
             val request = buildRequest(url).get().build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+            executeRawCancellable(request).let { response ->
+                if (response.code !in 200..299) {
                     throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
                 }
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                lastUrl = response.request.url.toString()
+                val bytes = response.bytes
+                lastUrl = response.url
                 this@HtmlClient.referer = lastUrl
-                val html = bytesToString(bytes, response.header("Content-Type"))
+                val html = bytesToString(bytes, response.contentType)
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -396,14 +431,14 @@ class HtmlClient @Inject constructor(
             referer = refererUrl
             val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
             val request = buildRequest(url).post(formBody).addHeader("Origin", origin).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+            executeRawCancellable(request).let { response ->
+                if (response.code !in 200..299) {
                     throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
                 }
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                lastUrl = response.request.url.toString()
+                val bytes = response.bytes
+                lastUrl = response.url
                 this@HtmlClient.referer = lastUrl
-                val html = bytesToString(bytes, response.header("Content-Type"))
+                val html = bytesToString(bytes, response.contentType)
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -416,14 +451,14 @@ class HtmlClient @Inject constructor(
             referer = refererUrl
             val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
             val request = buildRequest(url).post(body).addHeader("Origin", origin).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+            executeRawCancellable(request).let { response ->
+                if (response.code !in 200..299) {
                     throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
                 }
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                lastUrl = response.request.url.toString()
+                val bytes = response.bytes
+                lastUrl = response.url
                 this@HtmlClient.referer = lastUrl
-                val html = bytesToString(bytes, response.header("Content-Type"))
+                val html = bytesToString(bytes, response.contentType)
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
                 html
             }
@@ -437,27 +472,27 @@ class HtmlClient @Inject constructor(
             val origin = url.let { it.substring(0, it.indexOf('/', it.indexOf("://") + 3).let { idx -> if (idx < 0) it.length else idx }) }
             val body = rawBytes.toRequestBody("application/x-www-form-urlencoded".toMediaType())
             val request = buildRequest(url).post(body).addHeader("Origin", origin).build()
-            client.newCall(request).execute().use { response ->
-                val bytes = response.body?.bytes() ?: ByteArray(0)
+            executeRawCancellable(request).let { response ->
+                val bytes = response.bytes
                 val code = response.code
-                val finalUrl = response.request.url.toString()
+                val finalUrl = response.url
                 // finalUrl 内嵌会话 token（/(token)/...），脱敏后再入日志
                 android.util.Log.d("HtmlClient", "POST raw: url=${com.ifafu.kyzz.core.crash.TraceSanitizer.sanitize(finalUrl)}, code=$code, bodyLen=${bytes.size}, hasRedirect=${url != finalUrl}")
                 lastUrl = finalUrl
                 this@HtmlClient.referer = finalUrl
-                bytesToString(bytes, response.header("Content-Type"))
+                bytesToString(bytes, response.contentType)
             }
         }
     }
 
-    private fun execute(request: Request): Document {
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
+    private suspend fun execute(request: Request): Document {
+        executeRawCancellable(request).let { response ->
+            if (response.code !in 200..299) {
                 throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
             }
-            val bytes = response.body?.bytes() ?: ByteArray(0)
-            val html = bytesToString(bytes, response.header("Content-Type"))
-            lastUrl = response.request.url.toString()
+            val bytes = response.bytes
+            val html = bytesToString(bytes, response.contentType)
+            lastUrl = response.url
             referer = lastUrl
             checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
             val doc = Jsoup.parse(html)
@@ -493,7 +528,15 @@ class HtmlClient @Inject constructor(
                                 url = it.request.url.toString(),
                                 contentType = it.header("Content-Type")
                             )
-                            if (continuation.isActive) continuation.resumeWith(Result.success(result))
+                            val sessionTag = request.tag(com.ifafu.kyzz.di.JavaNetCookieJar.SessionTag::class.java)
+                            val cookieJar = client.cookieJar as? com.ifafu.kyzz.di.JavaNetCookieJar
+                            if (continuation.isActive) {
+                                if (sessionTag != null && cookieJar?.isSessionCurrent(sessionTag) == false) {
+                                    continuation.resumeWith(Result.failure(CancellationException("会话已变更，请重新请求")))
+                                } else {
+                                    continuation.resumeWith(Result.success(result))
+                                }
+                            }
                         }
                     } catch (e: Exception) {
                         if (continuation.isActive) continuation.resumeWith(Result.failure(e))
@@ -624,15 +667,80 @@ class HtmlClient @Inject constructor(
         val scriptEnd = html.indexOf("</script", scriptBodyStart, ignoreCase = true)
         if (scriptEnd in 0 until alertPos) return false
 
-        val before = html.substring(scriptBodyStart + 1, alertPos)
-        val lastFunction = before.lastIndexOf("function", ignoreCase = true)
-        if (lastFunction < 0) return false
-
-        val functionBody = before.substring(lastFunction)
-        val openBraces = functionBody.count { it == '{' }
-        val closeBraces = functionBody.count { it == '}' }
-        // 仍有未闭合的大括号，说明 alert 仍处于最近一个 function 的作用域。
-        return openBraces > closeBraces
+        // Count lexical scopes, not braces in strings/comments/regular expressions.
+        // A finished nested function must not hide the still-open outer function.
+        val scopes = mutableListOf<Boolean>()
+        val pendingFunctions = mutableListOf<Pair<Int, Boolean>>()
+        var parentheses = 0
+        var previous = '\u0000'
+        var index = scriptBodyStart + 1
+        while (index < alertPos) {
+            val char = html[index]
+            val next = html.getOrNull(index + 1)
+            if (char == '\'' || char == '"' || char == '`') {
+                val quote = char
+                var closed = false
+                index += 1
+                while (index < alertPos) {
+                    if (html[index] == '\\') index += 2
+                    else if (html[index++] == quote) { closed = true; break }
+                }
+                // The regex matched text inside an unfinished string, not executable alert().
+                if (!closed) return true
+                previous = quote
+                continue
+            }
+            if (char == '/' && (next == '/' || next == '*')) {
+                val end = if (next == '/') html.indexOf('\n', index + 2)
+                    else html.indexOf("*/", index + 2).let { if (it < 0) it else it + 2 }
+                if (end < 0 || end > alertPos) return true
+                index = end
+                continue
+            }
+            if (char == '/' && previous in "=(:,[!&|?;{}") {
+                index += 1
+                var characterClass = false
+                var closed = false
+                while (index < alertPos) {
+                    val token = html[index++]
+                    if (token == '\\') index += 1
+                    else if (token == '[') characterClass = true
+                    else if (token == ']') characterClass = false
+                    else if (token == '/' && !characterClass) { closed = true; break }
+                }
+                if (!closed) return true
+                previous = '/'
+                continue
+            }
+            if (html.regionMatches(index, "function", 0, 8) &&
+                html.getOrNull(index - 1)?.let { !it.isLetterOrDigit() && it != '_' && it != '$' } != false &&
+                html.getOrNull(index + 8)?.let { !it.isLetterOrDigit() && it != '_' && it != '$' } != false) {
+                pendingFunctions.add(parentheses to false)
+                index += 8
+                previous = 'f'
+                continue
+            }
+            if (char == '=' && next == '>') {
+                pendingFunctions.add(parentheses to true)
+                index += 2
+                previous = '>'
+                continue
+            }
+            when (char) {
+                '(' -> parentheses += 1
+                ')' -> parentheses -= 1
+                '{' -> {
+                    val declaration = pendingFunctions.indexOfLast { it.first == parentheses }
+                    scopes.add(declaration >= 0)
+                    if (declaration >= 0) pendingFunctions.removeAt(declaration)
+                }
+                '}' -> if (scopes.isNotEmpty()) scopes.removeAt(scopes.lastIndex)
+                ';' -> pendingFunctions.removeAll { it.second }
+            }
+            if (!char.isWhitespace()) previous = char
+            index += 1
+        }
+        return scopes.any { it } || pendingFunctions.any { it.second }
     }
 
     fun throwIfAlert(html: String) {
@@ -644,14 +752,14 @@ class HtmlClient @Inject constructor(
     suspend fun postWithFollow(url: String, formBody: FormBody): PostResult = withContext(Dispatchers.IO) {
         mutex.withLock {
             val request = buildRequest(url).post(formBody).build()
-            client.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
+            executeRawCancellable(request).let { response ->
+                if (response.code !in 200..299) {
                     throw HttpException(response.code, "HTTP ${response.code}: ${response.message}")
                 }
-                val bytes = response.body?.bytes() ?: ByteArray(0)
-                val html = bytesToString(bytes, response.header("Content-Type"))
+                val bytes = response.bytes
+                val html = bytesToString(bytes, response.contentType)
                 checkAlert(html)?.let { throw AlertException.fromAlert(it.message) }
-                val finalUrl = response.request.url.toString()
+                val finalUrl = response.url
                 lastUrl = finalUrl
                 referer = finalUrl
                 extractViewState(html)
@@ -662,7 +770,8 @@ class HtmlClient @Inject constructor(
 
 
     /** Cancellable login form submission with the final redirect URL. */
-    suspend fun postWithFollowCancellable(url: String, formBody: FormBody): PostResult = withContext(Dispatchers.IO) { mutex.withLock {
+    suspend fun postWithFollowCancellable(url: String, formBody: FormBody, refererUrl: String? = null): PostResult = withContext(Dispatchers.IO) { mutex.withLock {
+        if (refererUrl != null) referer = refererUrl
         val request = buildRequest(url).post(formBody).build()
         val result = executeRawCancellable(request)
         if (result.code !in 200..299) {

@@ -129,4 +129,25 @@ class SessionResponseClassifierTest {
             )
         )
     }
+
+    @Test
+    fun mainPageNameInQueryDoesNotProveLoginSuccess() {
+        assertFalse(SessionResponseClassifier.isAuthenticatedLoginResponse(
+            "http://jwgl.example/default2.aspx?return=xs_main.aspx", "<html>登录失败</html>"
+        ))
+    }
+
+    @Test
+    fun scriptMentionOfStudentMarkerDoesNotProveLoginSuccess() {
+        assertFalse(SessionResponseClassifier.isAuthenticatedLoginResponse(
+            "http://jwgl.example/default2.aspx", """<script>var text = 'id="xhxm"';</script>"""
+        ))
+    }
+
+    @Test
+    fun loginFormOverridesMainPageUrl() {
+        assertFalse(SessionResponseClassifier.isAuthenticatedLoginResponse(
+            "http://jwgl.example/xs_main.aspx", """<input id="txtUserName"><input id="TextBox2">"""
+        ))
+    }
 }

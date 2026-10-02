@@ -154,7 +154,7 @@ class ToolboxActivity : BaseActivity<ActivityToolboxBinding>() {
         val existing = viewModel.termFirstDay
         if (existing.isNotEmpty()) {
             try {
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
                 sdf.parse(existing)?.let { cal.time = it }
             } catch (_: Exception) {}
         }
@@ -169,7 +169,7 @@ class ToolboxActivity : BaseActivity<ActivityToolboxBinding>() {
                     val dow = get(Calendar.DAY_OF_WEEK)
                     add(Calendar.DAY_OF_YEAR, -(if (dow == Calendar.SUNDAY) 6 else dow - Calendar.MONDAY))
                 }
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
                 val newDate = sdf.format(selected.time)
                 val oldDate = viewModel.termFirstDay
                 viewModel.saveTermFirstDay(newDate)

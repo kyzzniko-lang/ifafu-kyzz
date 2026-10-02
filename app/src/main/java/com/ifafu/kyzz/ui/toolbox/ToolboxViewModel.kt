@@ -13,8 +13,7 @@ class ToolboxViewModel @Inject constructor(
     val termFirstDay: String get() = userRepository.termFirstDay
 
     fun saveTermFirstDay(date: String) {
-        userRepository.termFirstDay = date
-        userRepository.termFirstDayManual = true
+        userRepository.setManualTermFirstDay(date)
     }
 
     fun getAccountProfiles() = userRepository.getAccountProfiles()

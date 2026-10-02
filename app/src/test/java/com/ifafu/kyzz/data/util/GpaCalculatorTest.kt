@@ -2,6 +2,8 @@ package com.ifafu.kyzz.data.util
 
 import com.ifafu.kyzz.data.model.Score
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -115,5 +117,38 @@ class GpaCalculatorTest {
     fun emptyListYieldsZero() {
         assertEquals(0f, GpaCalculator.computeTotalCredits(emptyList()), 0.001f)
         assertEquals(0f, GpaCalculator.computeGpa(emptyList()), 0.001f)
+    }
+
+    @Test
+    fun validKeepsZeroScoreWithMakeupOnly() {
+        // 调用方预过滤必须复用 valid()：自建 `score > 0` 会把"真实 0 分挂科+
+        // 补考及格"删掉，导致与直接交原始列表的统计互相矛盾。
+        val zeroMakeup = score("PHY", "大学物理", "2024-2025", "1", 4f, 0f, makeupScore = 80f)
+        val notPublished = score("CS", "算法", "2024-2025", "1", 3f, 0f)   // 未出分
+        val exempt = score("PE", "体育", "2024-2025", "1", 1f, -1f)        // 免修哨兵
+        val absent = score("HIS", "历史", "2024-2025", "1", 2f, -2f)       // 缺考哨兵
+        val zeroCredit = score("ART", "艺术", "2024-2025", "1", 0f, 90f)   // 0 学分
+        val normal = score("MATH", "高数", "2024-2025", "1", 5f, 88f, scorePoint = 3.8f)
+
+        val valid = GpaCalculator.valid(listOf(zeroMakeup, notPublished, exempt, absent, zeroCredit, normal))
+        assertEquals(listOf("大学物理", "高数"), valid.map { it.courseName })
+    }
+
+    @Test
+    fun isPassedCountsMakeupPassButNotFailOrSentinel() {
+        // 直接及格
+        assertTrue(GpaCalculator.isPassed(score("A", "课A", "2024-2025", "1", 2f, 85f)))
+        // 挂科后补考及格（选修学分同样已获得）
+        assertTrue(GpaCalculator.isPassed(score("B", "课B", "2024-2025", "1", 2f, 45f, makeupScore = 70f)))
+        // 真实 0 分挂科 + 补考及格
+        assertTrue(GpaCalculator.isPassed(score("C", "课C", "2024-2025", "1", 2f, 0f, makeupScore = 60f)))
+        // 挂科未补考 / 补考仍不及格
+        assertFalse(GpaCalculator.isPassed(score("D", "课D", "2024-2025", "1", 2f, 45f)))
+        assertFalse(GpaCalculator.isPassed(score("E", "课E", "2024-2025", "1", 2f, 50f, makeupScore = 55f)))
+        // 免修/缺考哨兵不算已获得成绩
+        assertFalse(GpaCalculator.isPassed(score("F", "课F", "2024-2025", "1", 2f, -1f)))
+        assertFalse(GpaCalculator.isPassed(score("G", "课G", "2024-2025", "1", 2f, -2f)))
+        // 未出分
+        assertFalse(GpaCalculator.isPassed(score("H", "课H", "2024-2025", "1", 2f, 0f)))
     }
 }

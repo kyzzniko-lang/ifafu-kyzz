@@ -27,8 +27,17 @@ class ScoreCheckReceiver : BroadcastReceiver() {
         }
         val shouldNotify = PreferenceManager.getDefaultSharedPreferences(context)
             .getBoolean("notify_score", true)
-        if (shouldNotify) enqueueCheck(context)
-        ensureScheduled(context)
+        if (!shouldNotify) {
+            cancel(context)
+            return
+        }
+        try {
+            enqueueCheck(context)
+        } catch (e: Exception) {
+            Log.w(TAG, "成绩检查任务注册失败", e)
+        } finally {
+            ensureScheduled(context)
+        }
     }
 
     private fun enqueueCheck(context: Context) {
@@ -57,6 +66,13 @@ class ScoreCheckReceiver : BroadcastReceiver() {
          * 重挂都走这里。
          */
         fun ensureScheduled(context: Context) {
+            if (!context.getSharedPreferences("ifafu_user", Context.MODE_PRIVATE)
+                    .getBoolean("isLogin", false) ||
+                !PreferenceManager.getDefaultSharedPreferences(context).getBoolean("notify_score", true)
+            ) {
+                cancel(context)
+                return
+            }
             try {
                 val pending = PendingIntent.getBroadcast(
                     context,
@@ -99,6 +115,12 @@ class ScoreCheckReceiver : BroadcastReceiver() {
 
         /** 登出时取消每日成绩检查闹钟（requestCode 与 ensureScheduled 一致），拆断自续链。 */
         fun cancel(context: Context) {
+            // 闹钟只负责入队；关开关/登出时也必须取消已等待网络或正在执行的任务。
+            try {
+                WorkManager.getInstance(context).cancelUniqueWork(UNIQUE_WORK_NAME)
+            } catch (e: Exception) {
+                Log.w(TAG, "取消后台成绩检查失败", e)
+            }
             try {
                 val pending = PendingIntent.getBroadcast(
                     context, 1, Intent(context, ScoreCheckReceiver::class.java),

@@ -3,13 +3,14 @@ package com.ifafu.kyzz.data.api
 import com.ifafu.kyzz.data.model.Response
 import com.ifafu.kyzz.data.network.AlertException
 import com.ifafu.kyzz.data.network.HtmlClient
+import com.ifafu.kyzz.data.parser.CommentFormParser
+import com.google.gson.Gson
 import com.ifafu.kyzz.data.repository.UserRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.RequestBody.Companion.toRequestBody
 import org.jsoup.Jsoup
 import java.net.URLEncoder
+import java.net.URLDecoder
 import java.util.Random
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -68,8 +69,7 @@ class CommentTeacherApi @Inject constructor(
                 ?: return Response(false, -1, result.error?.message ?: "评价页面加载失败，请检查网络后重试")
             val links = parseCourseLinks(html)
             if (links.isNotEmpty()) {
-                val data = links.joinToString(",") { "[\"${it.path}\",\"${it.label}\"]" }
-                return Response(true, 0, "[$data]")
+                return Response(true, 0, Gson().toJson(links.map { listOf(it.path, it.label) }))
             }
             // 没有 open() 时，检查是否是直接进入评价页（含 JS1 评价项）
             if (html.contains("JS1") || html.contains("DataGrid1:_ctl")) {
@@ -79,23 +79,21 @@ class CommentTeacherApi @Inject constructor(
                 val basePath = "xsjxpj.aspx?xh=${number}&xm=${URLEncoder.encode(name, "gbk")}&gnmkdm=N121401"
                 val teacherName = parseTeacherName(html)
                 if (pjkcSelect != null) {
-                    val options = mutableListOf<String>()
+                    val options = mutableListOf<List<String>>()
                     for (option in pjkcSelect.select("option")) {
                         val valStr = option.attr("value")
                         val labelStr = option.text().trim()
-                        val isSelected = option.hasAttr("selected")
-                        val displayLabel = labelStr
-                        val path = if (isSelected) basePath else "$basePath&_pjkc=$valStr"
-                        options.add("""["$path","$displayLabel"]""")
+                        if (valStr.isBlank()) continue
+                        val path = "$basePath&_pjkc=${URLEncoder.encode(valStr, "GBK")}"
+                        options.add(listOf(path, labelStr))
                     }
                     if (options.isNotEmpty()) {
-                        val data = options.joinToString(",")
-                        return Response(true, 0, "[$data]")
+                        return Response(true, 0, Gson().toJson(options))
                     }
                 }
                 // fallback: 只有一个课程
                 val courseName = pjkcSelect?.select("option[selected]")?.first()?.text()?.trim() ?: "课程评价"
-                return Response(true, 0, "[[\"$basePath\",\"$courseName\"]]")
+                return Response(true, 0, Gson().toJson(listOf(listOf(basePath, courseName))))
             }
             return Response(false, -3, "没有需要评价的课程")
         } catch (e: CancellationException) {
@@ -113,7 +111,7 @@ class CommentTeacherApi @Inject constructor(
         val html: String
         if (coursePath.contains("_pjkc=")) {
             val accessUrl = "${host}/(${token})/${coursePath.substringBefore("&_pjkc=")}"
-            val pjkcValue = coursePath.substringAfter("_pjkc=")
+            val pjkcValue = URLDecoder.decode(coursePath.substringAfter("_pjkc=").substringBefore("&"), "GBK")
             android.util.Log.d("CommentApi", "Switching course: pjkc='$pjkcValue' accessUrl=$accessUrl")
             val pageHtml = htmlClient.getStringWithReferer(accessUrl, mainUrl)
             if (pageHtml.isBlank()) return CourseItemsResult(emptyList())
@@ -126,6 +124,9 @@ class CommentTeacherApi @Inject constructor(
                 state = vs
             )
             html = htmlClient.postStringWithReferer(accessUrl, formBody, accessUrl)
+            if (CommentFormParser.selectedCourse(html) != pjkcValue) {
+                return CourseItemsResult(emptyList())
+            }
             android.util.Log.d("CommentApi", "Switch: response len=${html.length}")
         } else {
             val url = "${host}/(${token})/${coursePath}"
@@ -171,13 +172,15 @@ class CommentTeacherApi @Inject constructor(
                 "Button2" to "提  交",
                 state = vs
             )
-            val postHtml = htmlClient.postStringWithReferer(mainUrl, formBody, mainUrl)
-            val m = Regex("alert\\('(.*?)'\\)").find(postHtml)
-            return if (m != null && m.groupValues[1].contains("完成评价")) {
+            // 总表提交的成功响应本身就是顶层 alert("完成评价")：必须用 Raw 变体
+            // 取回原文判定，postStringWithReferer 会在网络层抛 AlertException，
+            // 上面的"完成评价即成功"分支不可达，实际成功被兜底成失败。
+            val postHtml = htmlClient.postStringRawWithReferer(mainUrl, formBody, mainUrl)
+            val alertMsg = htmlClient.checkAlert(postHtml)
+            return if (CommentFormParser.isFinalSuccessful(alertMsg?.message)) {
                 Response(true, 0, "评教完成")
             } else {
-                val alertMsg = htmlClient.checkAlert(postHtml)
-                Response(false, -1, alertMsg?.message ?: (m?.groupValues?.get(1) ?: "提交失败"))
+                Response(false, -1, alertMsg?.message ?: "提交失败")
             }
         } catch (e: CancellationException) {
             throw e
@@ -197,7 +200,7 @@ class CommentTeacherApi @Inject constructor(
             val postUrl: String
             if (coursePath.contains("_pjkc=")) {
                 val baseUrl = "${host}/(${token})/${coursePath.substringBefore("&_pjkc=")}"
-                val pjkcValue = coursePath.substringAfter("_pjkc=").substringBefore("&")
+                val pjkcValue = URLDecoder.decode(coursePath.substringAfter("_pjkc=").substringBefore("&"), "GBK")
                 val pageHtml = htmlClient.getStringWithReferer(baseUrl, mainUrl)
                 if (pageHtml.isBlank()) return Response(false, -1, "获取评教页面失败")
                 val vs = htmlClient.parseViewState(pageHtml)
@@ -208,6 +211,9 @@ class CommentTeacherApi @Inject constructor(
                     state = vs
                 )
                 html = htmlClient.postStringWithReferer(baseUrl, formBody, baseUrl)
+                if (CommentFormParser.selectedCourse(html) != pjkcValue) {
+                    return Response(false, -1, "课程切换未成功，请重新加载评价项")
+                }
                 postUrl = baseUrl
             } else {
                 postUrl = "${host}/(${token})/${coursePath}"
@@ -216,57 +222,35 @@ class CommentTeacherApi @Inject constructor(
             if (html.isBlank()) return Response(false, -1, "获取评教页面失败")
 
             val vs = htmlClient.parseViewState(html)
-            val fieldNames = parseEvalFieldNames(html)
+            val ratingFields = CommentFormParser.ratingFields(html)
+            val fieldNames = ratingFields.map { it.name }
+            if (fieldNames.isEmpty() || ratingFields.any { it.key !in selections }) {
+                return Response(false, -1, "评价项已变更，请重新加载后评分")
+            }
             val pjkcValue = selectedOptionValue(html) ?: ""
             android.util.Log.d("CommentApi", "Save: VS len=${vs.viewState.length}, pjkc='$pjkcValue', fields=${fieldNames.size}, commentLen=${commentText.length}")
 
-            // 构建 POST body 字符串，字段名和值都 URL 编码以匹配浏览器
-            fun enc(s: String) = java.net.URLEncoder.encode(s, "GBK")
-            val body = buildString {
-                append("__EVENTTARGET=")
-                append("&__EVENTARGUMENT=")
-                append("&__VIEWSTATE="); append(enc(vs.viewState))
-                if (pjkcValue.isNotEmpty()) { append("&pjkc="); append(enc(pjkcValue)) }
-                for (fieldName in fieldNames) {
-                    // 与 parseEvalFieldNames 同一正则提取表名/ctl 编号：旧版页面用
-                    // 下划线命名(DataGrid1__ctl2_JS1)，substringBefore(":_ctl") 对它
-                    // 落空返回整串，selections 的 key 永远匹配不上，用户手选的分数
-                    // 会被整体静默替换成默认"良好"
-                    val nameMatch = Regex("""([\w]+)[_:]+ctl(\d+)[_:]+(JS1|jc1)""").find(fieldName)
-                    val tableName = nameMatch?.groupValues?.get(1)
-                        ?: fieldName.substringBefore(":_ctl").substringBefore("__ctl")
-                    val ctlNum = nameMatch?.groupValues?.get(2)
-                        ?: Regex("""ctl(\d+)""").find(fieldName)?.groupValues?.get(1).orEmpty()
-                    val fieldKey = "$tableName:$ctlNum"
-                    val level = selections[fieldKey] ?: ScoreLevel.GOOD
-                    append("&"); append(enc(fieldName)); append("="); append(enc(level.gbkValue))
-                    val txtSuffix = if (fieldName.endsWith(":JS1")) "txtjs1" else if (fieldName.endsWith(":jc1")) "txtjc1" else null
-                    if (txtSuffix != null) {
-                        val txtField = fieldName.substringBeforeLast(":") + ":" + txtSuffix
-                        append("&"); append(enc(txtField)); append("=")
-                    }
-                }
-                append("&pjxx="); append(enc(commentText))
-                append("&txt1=")
-                append("&TextBox1=0")
-                append("&Button1="); append(enc("保" + "  " + "存"))
+            val form = htmlClient.buildViewStateFormBody(vs)
+                .add("__EVENTTARGET", "")
+                .add("__EVENTARGUMENT", "")
+            if (pjkcValue.isNotEmpty()) form.add("pjkc", pjkcValue)
+            ratingFields.forEach { field -> form.add(field.name, selections.getValue(field.key).gbkValue) }
+            // 以真实 name 保留页面要求的附加文本字段，不从 DOM id 猜测字段名。
+            Jsoup.parse(html).select("textarea[name], input[type=text][name]").forEach { input ->
+                val field = input.attr("name")
+                form.add(field, if (field == "pjxx") commentText else input.`val`())
             }
-            // 用 HtmlClient 直接发 raw POST 字节（携带正确 Cookie）
-            val rawBytes = body.toByteArray(charset("GBK"))
-            android.util.Log.d("CommentApi", "Save POST body: rawLen=${rawBytes.size}, first80=...${body.take(80).replace('\n',' ')}")
-            val postHtml = htmlClient.postRawBytesWithReferer(postUrl, rawBytes, postUrl)
+            if (Jsoup.parse(html).select("[name=pjxx]").isEmpty()) form.add("pjxx", commentText)
+            form.add("Button1", "保  存")
+            val postHtml = htmlClient.postStringRawWithReferer(postUrl, form.build(), postUrl)
             android.util.Log.d("CommentApi", "Save POST response: length=${postHtml.length}")
             // 教务系统保存成功后返回相同页面,无 alert。页面正常返回即视为保存成功
             val alertMsg = htmlClient.checkAlert(postHtml)
-            val isPageOk = postHtml.contains("现代教学管理信息系统") || postHtml.contains("DataGrid1") || postHtml.contains("DataGrid2")
-            val isKeyword = postHtml.contains("保存成功") || postHtml.contains("提交成功") || postHtml.contains("评价成功")
-            val isBlocked = alertMsg != null && !alertMsg.message.contains("禁止")
-            android.util.Log.d("CommentApi", "Save result: keyword=$isKeyword pageOk=$isPageOk blocked=$isBlocked alert=${alertMsg?.message}")
-            return if (isPageOk && !isBlocked) {
-                android.util.Log.d("CommentApi", "Save appears successful")
+            val successful = htmlClient.checkErrorPage(postHtml) == null &&
+                CommentFormParser.isSaveSuccessful(postHtml, alertMsg?.message, userApi.isSessionExpired(postHtml))
+            return if (successful) {
                 Response(true, 0, "保存成功")
             } else {
-                android.util.Log.w("CommentApi", "Save failed: blocked=$isBlocked pageOk=$isPageOk")
                 Response(false, -1, alertMsg?.message ?: "保存失败")
             }
         } catch (e: CancellationException) {
@@ -289,7 +273,7 @@ class CommentTeacherApi @Inject constructor(
             if (result.error != null) return result.error
             val html = result.html
                 ?: return result.error ?: Response(false, -1, "评价页面加载失败，请检查网络后重试")
-            return doComment(host, token, number, name, html, mode, commentText, onProgress)
+            return doComment(host, result.token ?: token, number, name, html, mode, commentText, onProgress)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -299,7 +283,7 @@ class CommentTeacherApi @Inject constructor(
 
     // ── 内部方法 ──
 
-    private data class FetchResult(val html: String?, val error: Response?)
+    private data class FetchResult(val html: String?, val error: Response?, val token: String? = null)
 
     /**
      * Simulate the full ZF browser navigation flow to bypass server-side anti-hotlinking:
@@ -327,6 +311,8 @@ class CommentTeacherApi @Inject constructor(
         try {
             html = htmlClient.getStringRawWithReferer(accessUrl, mainUrl)
             android.util.Log.d("CommentApi", "Response: length=${html.length}, first300=${html.take(300)}")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("CommentApi", "Request failed: ${e.message}")
             return FetchResult(null, Response(false, -1, e.message ?: "网络异常"))
@@ -336,11 +322,20 @@ class CommentTeacherApi @Inject constructor(
         val alertResp = htmlClient.checkAlert(html)
         if (alertResp != null) {
             android.util.Log.w("CommentApi", "Alert detected: ${alertResp.message}")
-            if (allowRelogin && alertResp.message.contains("过期")) {
-                val reloginResp = reloginHelper.relogin()
-                if (!reloginResp.success) return FetchResult(null, Response(false, -1, reloginResp.message))
-                val user = userRepository.getUser()
-                return fetchMainPageInternal(host, user.token, user.account, user.name, allowRelogin = false)
+            if (allowRelogin) {
+                // alert 型会话失效与其他主链路收敛到同一自救入口（ReloginHelper
+                // .reloginAndRetry）：正方对失效 session 直连功能页常以"禁止使用
+                // 此功能"等 alert 拦截、文案随部署而变，只认含"过期"会漏掉这类
+                // 场景。重登一次重取（自带账号/host 守卫），仍被拒才按原文返回。
+                try {
+                    return reloginHelper.reloginAndRetry(
+                        AlertException.fromAlert(alertResp.message), number, host
+                    ) { user ->
+                        fetchMainPageInternal(host, user.token, user.account, user.name, allowRelogin = false)
+                    }
+                } catch (e: AlertException) {
+                    return FetchResult(null, Response(false, -1, e.message ?: alertResp.message))
+                }
             }
             return FetchResult(null, alertResp)
         }
@@ -358,10 +353,13 @@ class CommentTeacherApi @Inject constructor(
             val reloginResp = reloginHelper.relogin()
             if (!reloginResp.success) return FetchResult(null, Response(false, -1, reloginResp.message))
             val user = userRepository.getUser()
+            if (user.account != number || userRepository.host != host) {
+                return FetchResult(null, Response(false, -1, "登录信息已变更，请刷新重试"))
+            }
             return fetchMainPageInternal(host, user.token, user.account, user.name, allowRelogin = false)
         }
 
-        return FetchResult(html, null)
+        return FetchResult(html, null, token)
     }
 
     private fun buildMainUrl(host: String, token: String, number: String, name: String): String {
@@ -398,9 +396,10 @@ class CommentTeacherApi @Inject constructor(
                 "Button2" to "提  交",
                 state = vs
             )
-            val postHtml = htmlClient.postStringWithReferer(mainUrl, formBody, mainUrl)
-            val m = Regex("alert\\('(.*?)'\\)").find(postHtml)
-            if (m != null && m.groupValues[1].contains("完成评价")) {
+            // 同 submitFinalTable：总表提交以 alert("完成评价") 返回成功，
+            // 必须用 Raw 变体才能让下方判定分支可达。
+            val postHtml = htmlClient.postStringRawWithReferer(mainUrl, formBody, mainUrl)
+            if (CommentFormParser.isFinalSuccessful(htmlClient.checkAlert(postHtml)?.message)) {
                 return Response(true, 0, "评教成功，共评价 ${successCount} 门课程")
             }
         }
@@ -425,12 +424,14 @@ class CommentTeacherApi @Inject constructor(
                 "Button2" to "提  交",
                 state = vs
             )
-            val postHtml = htmlClient.postStringWithReferer(mainUrl, formBody, mainUrl)
-            val m = Regex("alert\\('(.*?)'\\)").find(postHtml)
-            return if (m != null && m.groupValues[1].contains("完成评价")) {
+            // 同 submitFinalTable：总表提交以 alert("完成评价") 返回成功，
+            // 必须用 Raw 变体才能让下方判定分支可达。
+            val postHtml = htmlClient.postStringRawWithReferer(mainUrl, formBody, mainUrl)
+            val alert = htmlClient.checkAlert(postHtml)
+            return if (CommentFormParser.isFinalSuccessful(alert?.message)) {
                 Response(true, 0, "评教成功")
             } else {
-                Response(false, -3, m?.groupValues?.get(1) ?: "无需评教或评教已完成")
+                Response(false, -3, alert?.message ?: "无需评教或评教已完成")
             }
         } catch (e: CancellationException) {
             throw e
@@ -458,47 +459,23 @@ class CommentTeacherApi @Inject constructor(
     private fun parseEvalItems(html: String): List<EvalItem> {
         val items = mutableListOf<EvalItem>()
         val doc = Jsoup.parse(html)
-        // 从所有评教相关的表格中提取评价项（DataGrid1 是评教师，dgPjc 是评教材）
-        val tables = doc.select("table[id*=DataGrid], table[id*=dgPjc]")
-        android.util.Log.d("CommentApi", "parseEvalItems: found ${tables.size} eval tables")
-        for (t in tables) {
-            android.util.Log.d("CommentApi", "  table id='${t.attr("id")}' rows=${t.select("tr").size}")
-        }
-        val rows = doc.select("table[id*=DataGrid] tr, table[id*=dgPjc] tr")
-        for (row in rows) {
-            val cells = row.select("td")
-            if (cells.size < 3) continue
-            val htmlStr = row.html()
-            val table = row.closest("table[id*=DataGrid], table[id*=dgPjc]")
-            val dataGridName = table?.attr("id")?.trim() ?: "DataGrid1"
-            if (!htmlStr.contains("JS1") && !htmlStr.contains(":jc1")) {
-                // 记录没有 JS1/jc1 的行
-                val firstCell = cells.first()?.text()?.trim()?.take(20) ?: ""
-                if (firstCell.isNotEmpty()) android.util.Log.d("CommentApi", "  row [no JS1/jc1] in $dataGridName: '$firstCell' cells=${cells.size}")
-                continue
-            }
-            val ctlMatch = Regex("""ctl(\d+)""").find(htmlStr) ?: continue
-            val ctlIndex = ctlMatch.groupValues[1].toInt()
-            // 评价内容在倒数第二列
-            val desc = cells.getOrNull(cells.size - 2)?.text()?.trim() ?: ""
-            android.util.Log.d("CommentApi", "  row found: $dataGridName ctl=$ctlIndex desc='${desc.take(30)}' cells=${cells.size}")
+        for (field in CommentFormParser.ratingFields(html)) {
+            val control = doc.select("select[name], input[name]").firstOrNull { it.attr("name") == field.name }
+                ?: continue
+            val row = control.closest("tr") ?: continue
+            val cells = row.children().toList().filter { it.tagName() == "td" }
+            val desc = cells.getOrNull(cells.size - 2)?.text()?.trim().orEmpty()
             if (desc.isNotEmpty() && desc != "评价内容") {
-                items.add(EvalItem(dataGridName, ctlIndex, desc))
+                items.add(EvalItem(field.table, field.index, desc))
             }
         }
-        // 兜底：如果解析失败，返回 17 个默认项
-        if (items.isEmpty()) {
-            for (i in 2..18) {
-                items.add(EvalItem("DataGrid1", i, "评价项 $i"))
-            }
-        }
-        return items
+        // 无真实控件时返回失败，不能伪造评价项并让用户以为已保存。
+        return items.distinctBy { it.fieldKey }
     }
 
     /** 解析所有评价控件的完整字段名（如 DataGrid1:_ctl2:JS1, dgPjc:_ctl2:jc1） */
     private fun parseEvalFieldNames(html: String): List<String> {
-        val pattern = Regex("""([\w]+)[_:]+ctl(\d+)[_:]+(JS1|jc1)""")
-        return pattern.findAll(html).map { it.groupValues[0] }.distinct().sorted().toList()
+        return CommentFormParser.ratingFields(html).map { it.name }
     }
 
     /**
@@ -508,16 +485,7 @@ class CommentTeacherApi @Inject constructor(
      * 标签再分别提取属性（同 HtmlParser.parseOptionTags），兼容任意属性顺序。
      */
     private fun selectedOptionValue(html: String): String? {
-        val tagRegex = Regex("""<option\b([^>]*)>""")
-        val valueRegex = Regex("""value\s*=\s*"([^"]*)"""")
-        val selectedRegex = Regex("""\bselected\b""", RegexOption.IGNORE_CASE)
-        for (match in tagRegex.findAll(html)) {
-            val attrs = match.groupValues[1]
-            if (!selectedRegex.containsMatchIn(attrs)) continue
-            val value = valueRegex.find(attrs)?.groupValues?.get(1) ?: continue
-            return value
-        }
-        return null
+        return CommentFormParser.selectedCourse(html)
     }
 
     /** 解析所有 ctl 索引及 DataGrid 名（向后兼容，仅用于旧代码路径） */
@@ -616,14 +584,16 @@ class CommentTeacherApi @Inject constructor(
             formBuilder.add("pjxx", commentText)
             formBuilder.add("Button1", "保  存")
 
-            val postHtml = htmlClient.postStringWithReferer(url, formBuilder.build(), url)
+            // 保存的响应可能带顶层 alert（失败原因等），必须用 Raw 变体取回
+            // 原文，下方 checkAlert 才拿得到文案——postStringWithReferer 会直接
+            // 抛 AlertException，alertMsg 恒为 null 的兜底分支不可达。
+            val postHtml = htmlClient.postStringRawWithReferer(url, formBuilder.build(), url)
 
-            // postStringWithReferer already checks AlertException internally,
-            // but we also need the success keywords check
-            return if (postHtml.contains("保存成功") || postHtml.contains("提交成功") || postHtml.contains("评价成功")) {
+            val alertMsg = htmlClient.checkAlert(postHtml)
+            return if (htmlClient.checkErrorPage(postHtml) == null &&
+                CommentFormParser.isSaveSuccessful(postHtml, alertMsg?.message, userApi.isSessionExpired(postHtml))) {
                 Response(true, 0, link.label.ifEmpty { "评教成功" })
             } else {
-                val alertMsg = htmlClient.checkAlert(postHtml)
                 Response(false, -1, alertMsg?.message ?: "提交失败")
             }
         } catch (e: CancellationException) {

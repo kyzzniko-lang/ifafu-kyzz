@@ -1,6 +1,7 @@
 package com.ifafu.kyzz.ui.settings
 
 import android.app.DatePickerDialog
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.widget.Toast
 import android.text.method.LinkMovementMethod
@@ -25,11 +26,43 @@ import java.util.Locale
 import javax.inject.Inject
 
 @AndroidEntryPoint
-class SettingsFragment : PreferenceFragmentCompat() {
+class SettingsFragment : PreferenceFragmentCompat(), SharedPreferences.OnSharedPreferenceChangeListener {
 
     @Inject lateinit var userRepository: UserRepository
     @Inject lateinit var cacheManager: CacheManager
     @Inject lateinit var petRepository: PetRepository
+
+    override fun onStart() {
+        super.onStart()
+        preferenceManager.sharedPreferences?.registerOnSharedPreferenceChangeListener(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        UpdateChecker.resumePendingDownload(requireContext())
+    }
+
+    override fun onStop() {
+        preferenceManager.sharedPreferences?.unregisterOnSharedPreferenceChangeListener(this)
+        super.onStop()
+    }
+
+    override fun onSharedPreferenceChanged(sharedPreferences: SharedPreferences?, key: String?) {
+        val ctx = context ?: return
+        when (key) {
+            "notify_course", "notify_advance" -> {
+                // Listener runs after the preference is persisted, so the receiver reads the new value.
+                CourseReminderReceiver.cancel(ctx)
+                CourseReminderReceiver.ensureScheduled(ctx)
+                if (sharedPreferences?.getBoolean("notify_course", true) == true) {
+                    ctx.sendBroadcast(android.content.Intent(ctx, CourseReminderReceiver::class.java).apply {
+                        putExtra(CourseReminderReceiver.EXTRA_RESCHEDULE_ONLY, true)
+                    })
+                }
+            }
+            "notify_score" -> ScoreCheckReceiver.ensureScheduled(ctx)
+        }
+    }
 
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         setPreferencesFromResource(R.xml.preferences, rootKey)
@@ -82,7 +115,8 @@ class SettingsFragment : PreferenceFragmentCompat() {
                 val intent = requireActivity().packageManager.getLaunchIntentForPackage(requireActivity().packageName)
                 intent?.addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
                 if (intent != null) startActivity(intent)
-                Runtime.getRuntime().exit(0)
+                // CLEAR_TASK restarts the screen with the new preference. Killing this
+                // process immediately can also kill the just-started Activity and services.
             }.show()
             true
         }
@@ -235,7 +269,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         val existing = userRepository.termFirstDay
         pref.summary = if (existing.isNotEmpty()) {
             try {
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
                 val date = sdf.parse(existing)
                 SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(date!!)
             } catch (_: Exception) { "已设置" }
@@ -249,7 +283,7 @@ class SettingsFragment : PreferenceFragmentCompat() {
         val existing = userRepository.termFirstDay
         if (existing.isNotEmpty()) {
             try {
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
                 sdf.parse(existing)?.let { cal.time = it }
             } catch (_: Exception) {}
         }
@@ -264,12 +298,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
                     val dow = get(Calendar.DAY_OF_WEEK)
                     add(Calendar.DAY_OF_YEAR, -(if (dow == Calendar.SUNDAY) 6 else dow - Calendar.MONDAY))
                 }
-                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
+                val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
                 val newDate = sdf.format(selected.time)
                 val oldDate = userRepository.termFirstDay
                 val changed = oldDate.isNotEmpty() && newDate != oldDate
-                userRepository.termFirstDay = newDate
-                userRepository.termFirstDayManual = true
+                userRepository.setManualTermFirstDay(newDate)
                 // 学期首日变化只影响周次推算：仅让课表缓存失效按新周次重拉，
                 // 不能全量 clearCache 把成绩/考试等无关缓存一并清掉
                 if (changed) {
@@ -409,6 +442,11 @@ class SettingsFragment : PreferenceFragmentCompat() {
     private fun performLogout() {
         val ctx = requireContext()
         val account = userRepository.getUser().account
+        // Invalidate the session before deleting data: otherwise an in-flight worker
+        // can write the just-deleted cache again while logout waits for its session lock.
+        userRepository.clearUser()
+        CourseReminderReceiver.cancel(ctx)
+        ScoreCheckReceiver.cancel(ctx)
         if (account.isNotEmpty()) {
             cacheManager.clearCache(account)
             cacheManager.clearChatHistory(account)
@@ -416,9 +454,6 @@ class SettingsFragment : PreferenceFragmentCompat() {
             // 隐私清理路径须单独清掉
             cacheManager.clearScoreFirstSeen(account)
         }
-        CourseReminderReceiver.cancel(ctx)
-        ScoreCheckReceiver.cancel(ctx)
-        userRepository.clearUser()
         // clearWidgetData 内部发 WIDGET_UPDATE 显式广播，让桌面 Widget 立即
         // 重绘为"未登录"占位，而不是最长等 30 分钟的下一次定时刷新
         com.ifafu.kyzz.widget.iFAFUWidget.clearWidgetData(ctx)

@@ -17,9 +17,21 @@ object GpaCalculator {
      * 学分为 0 的课也不参与统计。此前依赖调用方自觉过滤，成绩单等页面漏过滤
      * 会导致平均分/绩点被拉成负数，这里统一强制执行。
      * score==0 但有补考分的真实 0 分挂科保留（进入 [normalize] 后按补考分归一）。
+     *
+     * 公共口径：调用方（成绩页统计/趋势图）需要预过滤时必须复用本函数，
+     * 不要自建 `score > 0` 之类的过滤——那会把"0 分挂科+补考及格"的课在进
+     * 本计算器之前删掉，与成绩单页（直接交原始列表）的数字互相矛盾。
      */
-    private fun valid(scores: List<Score>): List<Score> =
+    fun valid(scores: List<Score>): List<Score> =
         scores.filter { (it.score > 0f || (it.score == 0f && it.makeupScore > 0f)) && it.studyScore > 0f }
+
+    /**
+     * 课程是否已获得学分：直接及格（score>=60），或挂科后补考及格
+     * （与 [normalize] 的补考归一分支同口径）。供"已获选修学分"等调用方
+     * 复用，避免各自写 `score >= 60` 把补考及格的课漏掉。
+     */
+    fun isPassed(s: Score): Boolean =
+        s.score >= 60f || (s.score >= 0f && s.score < 60f && s.makeupScore >= 60f)
 
     /**
      * 统计前的口径归一，解决四年使用中必然出现的两类偏差：

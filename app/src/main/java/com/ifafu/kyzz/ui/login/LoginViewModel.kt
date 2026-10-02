@@ -32,6 +32,7 @@ class LoginViewModel @Inject constructor(
     private var autoCaptcha: String = ""
     private var loginChallenge: UserApi.LoginChallenge? = null
     private var isLoadingCaptcha = false
+    private var isLoggingIn = false
     private var pendingErrorMessage: String? = null
 
     companion object {
@@ -49,7 +50,7 @@ class LoginViewModel @Inject constructor(
     }
 
     fun loadCaptcha() {
-        if (isLoadingCaptcha) return
+        if (isLoadingCaptcha || isLoggingIn) return
         isLoadingCaptcha = true
         viewModelScope.launch {
             try {
@@ -89,6 +90,7 @@ class LoginViewModel @Inject constructor(
     }
 
     fun login(account: String, password: String, manualCaptcha: String? = null) {
+        if (isLoggingIn) return
         if (account.isBlank() || password.isBlank()) {
             _loginState.value = LoginState.Error("请输入学号和密码")
             return
@@ -98,6 +100,7 @@ class LoginViewModel @Inject constructor(
             return
         }
         var captcha = manualCaptcha ?: autoCaptcha
+        isLoggingIn = true
         viewModelScope.launch {
             _loginState.value = LoginState.Loading
             try {
@@ -115,6 +118,7 @@ class LoginViewModel @Inject constructor(
                     return@launch
                 }
                 var user = User()
+                var attemptedChallenge: UserApi.LoginChallenge = challenge
                 var response = attemptLogin(account, password, captcha, user, challenge)
 
                 // 自动识别失败或服务端判定验证码错误时，必须获取全新的图片再提交，不能复用旧验证码。
@@ -124,23 +128,30 @@ class LoginViewModel @Inject constructor(
                         val freshCaptcha = refreshCaptchaForRetry(MAX_RECOGNITION_RETRIES)
                             ?: return@repeat
                         val freshChallenge = loginChallenge ?: return@repeat
+                        attemptedChallenge = freshChallenge
                         user = User()
                         response = attemptLogin(account, password, freshCaptcha, user, freshChallenge)
                     }
                 }
 
                 if (response.success) {
-                    userRepository.saveAuthenticatedUser(user, password)
+                    if (!userRepository.saveAuthenticatedUserIfUnchanged(user, password, attemptedChallenge.authSnapshot)) {
+                        _loginState.value = LoginState.Error("账号或教务地址已变更，请重新登录")
+                        return@launch
+                    }
                     _loginState.value = LoginState.Success(user)
                 } else {
                     // 登录失败时保存错误消息，刷新验证码后重新显示
                     pendingErrorMessage = response.message
+                    isLoggingIn = false
                     loadCaptcha()
                 }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 _loginState.value = LoginState.Error(e.message ?: "登录失败")
+            } finally {
+                isLoggingIn = false
             }
         }
     }

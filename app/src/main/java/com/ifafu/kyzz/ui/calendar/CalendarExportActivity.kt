@@ -4,16 +4,12 @@ import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.core.content.FileProvider
-import com.ifafu.kyzz.R
 import com.ifafu.kyzz.data.model.Syllabus
-import com.ifafu.kyzz.data.model.hasIrregularWeeks
+import com.ifafu.kyzz.data.util.SyllabusCalendarExporter
 import com.ifafu.kyzz.data.model.scheduleIdentity
 import com.ifafu.kyzz.databinding.ActivityCalendarExportBinding
 import com.ifafu.kyzz.ui.base.BaseActivity
 import java.io.File
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
 
 class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
 
@@ -55,92 +51,9 @@ class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
             return
         }
 
-        val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault())
-        val parsed = sdf.parse(termFirstDay)
-        if (parsed == null) {
-            Toast.makeText(this, "学期首日格式错误", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val start = Calendar.getInstance().apply { time = parsed }
-
-        // 与 HomeFragment 保持一致的课程时间表
-        val timeMap = mapOf(
-            1 to Pair("0800", "0845"), 2 to Pair("0850", "0935"), 3 to Pair("0955", "1040"),
-            4 to Pair("1045", "1130"), 5 to Pair("1135", "1220"), 6 to Pair("1400", "1445"),
-            7 to Pair("1450", "1535"), 8 to Pair("1550", "1635"), 9 to Pair("1640", "1725"),
-            10 to Pair("1825", "1910"), 11 to Pair("1915", "2000"), 12 to Pair("2005", "2050")
-        )
-        val weekDays = arrayOf("", "MO", "TU", "WE", "TH", "FR", "SA", "SU")
-
-        val sb = StringBuilder()
-        sb.appendLine("BEGIN:VCALENDAR")
-        sb.appendLine("VERSION:2.0")
-        sb.appendLine("PRODID:-//iFAFU//KYZZ//CN")
-
-        for (course in syllabus.courses.distinctBy { it.scheduleIdentity() }) {
-            val dayOffset = course.weekDay - 1
-            val times = timeMap[course.begin] ?: timeMap[1]!!
-            val endTime = timeMap[course.end.coerceAtMost(12)]?.second ?: times.second
-
-            fun parityMatches(w: Int) = course.oddOrTwice == 0 ||
-                (course.oddOrTwice == 1 && w % 2 == 1) ||
-                (course.oddOrTwice == 2 && w % 2 == 0)
-
-            fun writeEvent(week: Int, rrule: String?) {
-                val eventCal = start.clone() as Calendar
-                eventCal.add(Calendar.DAY_OF_YEAR, (week - 1) * 7 + dayOffset)
-                val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
-                sb.appendLine("BEGIN:VEVENT")
-                sb.appendLine("DTSTART:${dateStr}T${times.first}00")
-                sb.appendLine("DTEND:${dateStr}T${endTime}00")
-                if (rrule != null) sb.appendLine("RRULE:$rrule")
-                sb.appendLine("SUMMARY:${escapeIcs(course.name)}")
-                sb.appendLine("LOCATION:${escapeIcs(course.address)}")
-                sb.appendLine("DESCRIPTION:${escapeIcs(course.teacher)}")
-                sb.appendLine("END:VEVENT")
-            }
-
-            if (course.hasIrregularWeeks) {
-                // 非连续周（如"第1-8,10,12-16周"）无法用单条 RRULE 表达，逐周生成单次事件
-                for (w in course.activeWeeks().filter(::parityMatches)) {
-                    writeEvent(w, null)
-                }
-                continue
-            }
-
-            val eventCal = start.clone() as Calendar
-            val firstActiveWeek = when (course.oddOrTwice) {
-                1 -> if (course.weekBegin % 2 == 0) course.weekBegin + 1 else course.weekBegin
-                2 -> if (course.weekBegin % 2 == 1) course.weekBegin + 1 else course.weekBegin
-                else -> course.weekBegin
-            }
-            if (firstActiveWeek > course.weekEnd) continue
-            eventCal.add(Calendar.DAY_OF_YEAR, (firstActiveWeek - 1) * 7 + dayOffset)
-            val dateStr = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(eventCal.time)
-            val byDay = weekDays.getOrElse(course.weekDay) { "MO" }
-            val actualCount = when (course.oddOrTwice) {
-                1, 2 -> ((firstActiveWeek..course.weekEnd step 2).count())
-                else -> course.weekEnd - course.weekBegin + 1
-            }
-            if (actualCount <= 0) continue
-            val rrule = when (course.oddOrTwice) {
-                1, 2 -> "FREQ=WEEKLY;INTERVAL=2;COUNT=$actualCount;BYDAY=$byDay"
-                else -> "FREQ=WEEKLY;COUNT=$actualCount;BYDAY=$byDay"
-            }
-            sb.appendLine("BEGIN:VEVENT")
-            sb.appendLine("DTSTART:${dateStr}T${times.first}00")
-            sb.appendLine("DTEND:${dateStr}T${endTime}00")
-            sb.appendLine("RRULE:$rrule")
-            sb.appendLine("SUMMARY:${escapeIcs(course.name)}")
-            sb.appendLine("LOCATION:${escapeIcs(course.address)}")
-            sb.appendLine("DESCRIPTION:${escapeIcs(course.teacher)}")
-            sb.appendLine("END:VEVENT")
-        }
-        sb.appendLine("END:VCALENDAR")
-
         try {
             val file = File(cacheDir, "schedule.ics")
-            file.writeText(sb.toString())
+            file.writeText(SyllabusCalendarExporter.export(syllabus, termFirstDay))
 
             if (openCalendar) {
                 val uri = FileProvider.getUriForFile(this, "${packageName}.fileprovider", file)
@@ -163,12 +76,4 @@ class CalendarExportActivity : BaseActivity<ActivityCalendarExportBinding>() {
         }
     }
 
-    /** RFC 5545 text escaping; commas/semicolons/newlines otherwise break ICS fields. */
-    private fun escapeIcs(value: String): String = value
-        .replace("\\", "\\\\")
-        .replace(";", "\\;")
-        .replace(",", "\\,")
-        .replace("\r\n", "\\n")
-        .replace("\n", "\\n")
-        .replace("\r", "\\n")
 }

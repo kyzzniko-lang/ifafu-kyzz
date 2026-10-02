@@ -69,7 +69,13 @@ class ExamViewModel @Inject constructor(
             }
         }
 
-        if (loadJob?.isActive == true) return
+        // 平移 ScoreViewModel 的同型修复：用户手动下拉刷新（forceRefresh）时若
+        // 上次 stale-while-revalidate 加载还没结束，直接 return 会把这次刷新
+        // 静默丢弃（用户看到转圈以为刷新了其实没执行）。强制刷新取消在途任务后
+        // 重新发起；非强制维持守卫。
+        if (loadJob?.isActive == true) {
+            if (forceRefresh) loadJob?.cancel() else return
+        }
         loadJob = viewModelScope.launch {
             if (_state.value !is UiState.Success && _state.value !is UiState.Cached) {
                 _state.value = UiState.Loading
@@ -124,16 +130,7 @@ class ExamViewModel @Inject constructor(
      * "已过期"的证据：一条脏数据就让判定为真，每次进考试页都会强制网络刷新。
      */
     private fun isAllExamsExpired(exams: List<com.ifafu.kyzz.data.model.Exam>): Boolean {
-        if (exams.isEmpty()) return true
-        var parsedCount = 0
-        for (exam in exams) {
-            val days = ExamDates.daysUntilNearest(exam.datetime)
-            if (days == Int.MAX_VALUE) continue
-            parsedCount++
-            if (days < 3) return false
-        }
-        // 一条都解析不出来时无法判断，宁可信任缓存（时间戳限频仍在）
-        return parsedCount > 0
+        return ExamDates.areAllExamsExpired(exams)
     }
 
     private fun belongsToDifferentTerm(table: ExamTable): Boolean {
