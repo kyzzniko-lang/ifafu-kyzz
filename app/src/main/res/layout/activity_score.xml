@@ -43,7 +43,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnTerm1"
-                style="@style/ClaudeButton.Outlined"
+                style="@style/ClaudeSegmentButton"
                 android:layout_width="wrap_content"
                 android:layout_height="40dp"
                 android:minWidth="72dp"
@@ -57,7 +57,7 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnTerm2"
-                style="@style/ClaudeButton.Outlined"
+                style="@style/ClaudeSegmentButton"
                 android:layout_width="wrap_content"
                 android:layout_height="40dp"
                 android:minWidth="72dp"

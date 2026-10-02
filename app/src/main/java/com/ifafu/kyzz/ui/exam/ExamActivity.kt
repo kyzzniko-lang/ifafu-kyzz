@@ -107,9 +107,9 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
                         FrameLayout.LayoutParams.WRAP_CONTENT
                     ).apply { bottomMargin = 10 }
                     radius = 14f; cardElevation = 0f
-                    strokeColor = 0xFFFFAB91.toInt()
+                    strokeColor = resources.getColor(R.color.claude_terracotta_200, null)
                     strokeWidth = 2
-                    setCardBackgroundColor(0x1AFFAB91.toInt())
+                    setCardBackgroundColor(resources.getColor(R.color.claude_terracotta_50, null))
                 }
                 val content = LinearLayout(parent.context).apply {
                     orientation = LinearLayout.VERTICAL; setPadding(20, 16, 20, 16)
@@ -139,9 +139,9 @@ class ExamActivity : BaseActivity<ActivityExamBinding>() {
                 val warning = items[position] as ConflictWarning
                 holder.content.removeAllViews()
                 val title = TextView(this@ExamActivity).apply {
-                    text = "⚠ 考试冲突提醒"
+                    text = "考试时间冲突"
                     setTextAppearance(R.style.ClaudeBody)
-                    setTextColor(0xFFFF6D00.toInt())
+                    setTextColor(resources.getColor(R.color.claude_terracotta_700, null))
                     typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     textSize = 15f
                 }

@@ -1,52 +1,52 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/claude_bg"
     android:orientation="vertical">
 
     <TextView
+        style="@style/ClaudeTitle"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginStart="20dp"
         android:layout_marginTop="16dp"
-        android:layout_marginBottom="8dp"
-        style="@style/ClaudeTitle"
+        android:layout_marginBottom="4dp"
         android:text="工具箱" />
 
-    <com.google.android.material.card.MaterialCardView
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginStart="20dp"
-        android:layout_marginEnd="20dp"
-        android:layout_marginBottom="8dp"
-        app:cardCornerRadius="12dp"
-        app:cardElevation="0dp"
-        app:strokeColor="@color/claude_terracotta_300"
-        app:strokeWidth="1dp"
-        app:cardBackgroundColor="@color/claude_bg_elevated">
-
-        <TextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="14dp"
-            android:paddingVertical="10dp"
-            android:text="需要增加什么功能可以在意见箱里面反馈，会尽力更新创建。"
-            android:textColor="@color/claude_text_secondary"
-            android:textSize="13sp"
-            android:lineSpacingMultiplier="1.4"
-            android:fontFamily="sans-serif" />
-
-    </com.google.android.material.card.MaterialCardView>
-
-    <androidx.recyclerview.widget.RecyclerView
-        android:id="@+id/recyclerView"
+    <androidx.core.widget.NestedScrollView
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:paddingStart="20dp"
-        android:paddingEnd="20dp"
-        android:paddingBottom="16dp"
-        android:clipToPadding="false" />
+        android:clipToPadding="false"
+        android:scrollbars="none">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:paddingHorizontal="20dp"
+            android:paddingBottom="28dp">
+
+            <!-- Grouped entry cards are built in ToolboxFragment -->
+            <LinearLayout
+                android:id="@+id/groupContainer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="24dp"
+                android:fontFamily="@font/claude_serif"
+                android:gravity="center"
+                android:lineSpacingMultiplier="1.3"
+                android:text="需要增加什么功能，可以在意见箱里反馈，会尽力更新。"
+                android:textColor="@color/claude_text_tertiary"
+                android:textSize="12sp" />
+
+        </LinearLayout>
+
+    </androidx.core.widget.NestedScrollView>
 
 </LinearLayout>

@@ -39,11 +39,11 @@ class CourseDetailBottomSheet : BottomSheetDialogFragment() {
     )
 
     private val colorPalette = listOf(
-        "#D4724A", "#2D7A4F", "#B7791F", "#C53030", "#4A6FA5",
-        "#6B4C9A", "#2B8A8A", "#8B5A2B", "#5B6BBF", "#CC5577",
-        "#7B68EE", "#20B2AA", "#CD853F", "#708090", "#DA70D6",
-        "#E74C3C", "#3498DB", "#2ECC71", "#F39C12", "#9B59B6",
-        "#1ABC9C", "#E67E22", "#34495E", "#16A085"
+        "#B65D3A", "#5B7A5E", "#8A6A3D", "#4F6B87", "#8C5267",
+        "#3F7472", "#975A3E", "#665E8C", "#6E7340", "#9C5450",
+        "#4E6A5B", "#7A6250", "#566F8E", "#8F6638", "#6E5A78",
+        "#C4693F", "#3E5F75", "#7D4F5E", "#5F7A4A", "#A0663F",
+        "#4A5568", "#85574A", "#5A7D7C", "#6B5B4B"
     )
 
     override fun onAttach(context: android.content.Context) {

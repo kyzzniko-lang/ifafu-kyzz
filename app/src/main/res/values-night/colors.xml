@@ -43,7 +43,8 @@
     <color name="claude_offline_banner_bg">#3A2A20</color>
     <color name="claude_offline_banner_text">#E8A07A</color>
 
-    <color name="claude_ink">#1A1715</color>
+    <!-- Solid CTA on dark pages: lifted warm terracotta, white label stays readable -->
+    <color name="claude_ink">#B85A38</color>
     <color name="claude_ink_ripple">#33E8A07A</color>
     <color name="claude_ink_disabled">#605A52</color>
 

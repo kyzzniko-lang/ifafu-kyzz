@@ -1798,8 +1798,8 @@ class HomeFragment : Fragment() {
                     tvCourseStatus.setTextColor(resources.getColor(R.color.claude_text_hint, null))
                     timelineDot.setBackgroundResource(R.drawable.timeline_dot_inactive)
                     courseStatusStripe.visibility = View.GONE
-                    itemView.alpha = 0.65f
-                    tvCourseName.alpha = 0.6f
+                    // 已结束只做轻度弱化：课程名仍需一眼可读（原 0.65×0.6≈0.4 透明度几乎看不清）
+                    itemView.alpha = 0.72f
                 }
                 nowMinutes >= (courseStartMin ?: Int.MAX_VALUE) -> {
                     // A3: In progress — show orange stripe + warm card stroke + pulse dot

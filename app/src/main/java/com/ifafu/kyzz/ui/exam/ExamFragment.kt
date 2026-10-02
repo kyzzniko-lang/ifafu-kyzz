@@ -151,6 +151,8 @@ class ExamFragment : Fragment() {
         adapter.updateData(allItems, progressMap.toMutableMap())
     }
 
+    private fun dp(value: Float): Int = (value * resources.displayMetrics.density).toInt()
+
     private fun findConflicts(exams: List<Exam>): List<List<Exam>> =
         // 两两重叠判定 + 连通分量合并：跨天考试第二天、多时段第二场也能检出
         ExamDates.findConflictGroups(exams)
@@ -231,14 +233,14 @@ class ExamFragment : Fragment() {
                     layoutParams = FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = 10 }
-                    radius = 14f; cardElevation = 0f
-                    strokeColor = 0xFFFFAB91.toInt()
-                    strokeWidth = 2
-                    setCardBackgroundColor(0x1AFFAB91.toInt())
+                    ).apply { bottomMargin = dp(10f) }
+                    radius = dp(14f).toFloat(); cardElevation = 0f
+                    strokeColor = resources.getColor(R.color.claude_terracotta_200, null)
+                    strokeWidth = dp(1f)
+                    setCardBackgroundColor(resources.getColor(R.color.claude_terracotta_50, null))
                 }
                 val content = LinearLayout(parent.context).apply {
-                    orientation = LinearLayout.VERTICAL; setPadding(20, 16, 20, 16)
+                    orientation = LinearLayout.VERTICAL; setPadding(dp(16f), dp(14f), dp(16f), dp(14f))
                 }
                 card.addView(content)
                 return WarningVH(card, content)
@@ -247,14 +249,14 @@ class ExamFragment : Fragment() {
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = 10 }
-                radius = 14f; cardElevation = 0f
-                strokeColor = resources.getColor(R.color.claude_border, null)
-                strokeWidth = 1
+                ).apply { bottomMargin = dp(10f) }
+                radius = dp(14f).toFloat(); cardElevation = 0f
+                strokeColor = resources.getColor(R.color.claude_border_light, null)
+                strokeWidth = dp(1f)
                 setCardBackgroundColor(resources.getColor(R.color.claude_bg_elevated, null))
             }
             val content = LinearLayout(parent.context).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(20, 16, 20, 16)
+                orientation = LinearLayout.VERTICAL; setPadding(dp(16f), dp(14f), dp(14f), dp(16f))
             }
             card.addView(content)
             return ExamVH(card, content)
@@ -265,9 +267,9 @@ class ExamFragment : Fragment() {
                 val warning = items[position] as ConflictWarning
                 holder.content.removeAllViews()
                 holder.content.addView(TextView(holder.itemView.context).apply {
-                    text = "⚠ 考试冲突提醒"
+                    text = "考试时间冲突"
                     setTextAppearance(R.style.ClaudeBody)
-                    setTextColor(0xFFFF6D00.toInt())
+                    setTextColor(resources.getColor(R.color.claude_terracotta_700, null))
                     typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     textSize = 15f
                 })
@@ -277,7 +279,8 @@ class ExamFragment : Fragment() {
                     holder.content.addView(TextView(holder.itemView.context).apply {
                         text = "${dateStr}: $names"
                         setTextAppearance(R.style.ClaudeCaption)
-                        setPadding(0, 6, 0, 0)
+                        setTextColor(resources.getColor(R.color.claude_text_secondary, null))
+                        setPadding(0, dp(4f), 0, 0)
                         typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     })
                 }
@@ -293,7 +296,8 @@ class ExamFragment : Fragment() {
                 }
                 titleRow.addView(TextView(ctx).apply {
                     text = exam.name; setTextAppearance(R.style.ClaudeBody)
-                    setTextColor(resources.getColor(R.color.claude_terracotta, null))
+                    textSize = 16f
+                    setTextColor(resources.getColor(R.color.claude_text_primary, null))
                     typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                     layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
                 })
@@ -387,22 +391,29 @@ class ExamFragment : Fragment() {
                 }
                 holder.content.addView(titleRow)
 
-                holder.content.addView(TextView(holder.itemView.context).apply {
-                    text = "时间: ${exam.datetime}"; setTextAppearance(R.style.ClaudeCaption)
+                // 时间单独一行作为主信息；地点/座位/校区合并为一行次要信息，
+                // 不再用四行"标签: 值"把卡片拉得很长
+                holder.content.addView(TextView(ctx).apply {
+                    text = exam.datetime.ifBlank { "时间待定" }
+                    setTextAppearance(R.style.ClaudeBody)
+                    textSize = 14f
+                    setTextColor(resources.getColor(R.color.claude_text_secondary, null))
                     typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
+                    setPadding(0, dp(8f), 0, 0)
                 })
-                holder.content.addView(TextView(holder.itemView.context).apply {
-                    text = "地点: ${exam.address}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
-                })
-                holder.content.addView(TextView(holder.itemView.context).apply {
-                    text = "座位号: ${exam.seatNumber}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
-                })
-                holder.content.addView(TextView(holder.itemView.context).apply {
-                    text = "校区: ${exam.campus}"; setTextAppearance(R.style.ClaudeCaption)
-                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
-                })
+                val meta = listOf(
+                    exam.address,
+                    exam.seatNumber.takeIf { it.isNotBlank() }?.let { "座位 $it" }.orEmpty(),
+                    exam.campus
+                ).filter { it.isNotBlank() }.joinToString("  ·  ")
+                if (meta.isNotEmpty()) {
+                    holder.content.addView(TextView(ctx).apply {
+                        text = meta
+                        setTextAppearance(R.style.ClaudeCaption)
+                        typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
+                        setPadding(0, dp(4f), 0, 0)
+                    })
+                }
 
                 // 点击卡片打开考试详情弹层（复习状态标签自带点击，不会冒泡到这）
                 holder.content.setOnClickListener {

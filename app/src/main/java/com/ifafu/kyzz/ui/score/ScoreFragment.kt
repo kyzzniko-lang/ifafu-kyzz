@@ -289,14 +289,14 @@ class ScoreFragment : Fragment() {
                     layoutParams = FrameLayout.LayoutParams(
                         FrameLayout.LayoutParams.MATCH_PARENT,
                         FrameLayout.LayoutParams.WRAP_CONTENT
-                    ).apply { bottomMargin = 10 }
-                    radius = 14f; cardElevation = 0f
-                    strokeColor = resources.getColor(R.color.claude_border, null)
-                    strokeWidth = 1
+                    ).apply { bottomMargin = dpi(10f) }
+                    radius = dpi(14f).toFloat(); cardElevation = 0f
+                    strokeColor = resources.getColor(R.color.claude_border_light, null)
+                    strokeWidth = dpi(1f)
                     setCardBackgroundColor(resources.getColor(R.color.claude_bg_elevated, null))
                 }
                 val content = LinearLayout(parent.context).apply {
-                    orientation = LinearLayout.VERTICAL; setPadding(16, 16, 16, 16)
+                    orientation = LinearLayout.VERTICAL; setPadding(dpi(16f), dpi(14f), dpi(16f), dpi(14f))
                 }
                 card.addView(content)
                 return TrendVH(card, content)
@@ -305,14 +305,14 @@ class ScoreFragment : Fragment() {
                 layoutParams = FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT,
                     FrameLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = 10 }
-                radius = 14f; cardElevation = 0f
-                strokeColor = resources.getColor(R.color.claude_border, null)
-                strokeWidth = 1
+                ).apply { bottomMargin = dpi(10f) }
+                radius = dpi(14f).toFloat(); cardElevation = 0f
+                strokeColor = resources.getColor(R.color.claude_border_light, null)
+                strokeWidth = dpi(1f)
                 setCardBackgroundColor(resources.getColor(R.color.claude_bg_elevated, null))
             }
             val content = LinearLayout(parent.context).apply {
-                orientation = LinearLayout.VERTICAL; setPadding(20, 16, 20, 16)
+                orientation = LinearLayout.VERTICAL; setPadding(dpi(16f), dpi(14f), dpi(16f), dpi(14f))
             }
             card.addView(content)
             return ScoreVH(card, content)
@@ -368,21 +368,26 @@ class ScoreFragment : Fragment() {
                     })
                 }
                 topRow.addView(TextView(requireContext()).apply {
-                    text = if (score.score > 0) "${score.score}" else "--"
-                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif); textSize = 22f
-                    // 分数着色：及格（>=60）绿色，不及格（<60）红色，未出分灰色
+                    text = if (score.score > 0) formatScore(score.score) else "--"
+                    typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_display); textSize = 24f
+                    fontFeatureSettings = "lnum"
+                    // 分数着色只强调两端：优秀（>=90）绿色、不及格（<60）红色，其余用正文墨色，
+                    // 避免整列满屏绿色抢走课程名的注意力；未出分灰色
                     val scoreColor = when {
                         score.score <= 0 -> R.color.claude_text_hint
                         score.score < 60 -> R.color.claude_error
-                        else -> R.color.claude_success
+                        score.score >= 90 -> R.color.claude_success
+                        else -> R.color.claude_text_primary
                     }
                     setTextColor(resources.getColor(scoreColor, null))
                 })
                 holder.content.addView(topRow)
-                val infoParts = mutableListOf("${score.year} 第${score.term}学期", score.courseType, "学分: ${score.studyScore}")
-                if (score.makeupScore > 0) infoParts.add("补考: ${score.makeupScore}")
+                val infoParts = mutableListOf(score.courseType, "${formatScore(score.studyScore)} 学分", "${score.year} 第${score.term}学期")
+                    .filter { it.isNotBlank() }.toMutableList()
+                if (score.makeupScore > 0) infoParts.add("补考 ${formatScore(score.makeupScore)}")
                 holder.content.addView(TextView(requireContext()).apply {
-                    text = infoParts.joinToString(" | "); setTextAppearance(R.style.ClaudeCaption)
+                    text = infoParts.joinToString("  ·  "); setTextAppearance(R.style.ClaudeCaption)
+                    setPadding(0, dpi(4f), 0, 0)
                     typeface = androidx.core.content.res.ResourcesCompat.getFont(context, R.font.claude_serif)
                 })
 
@@ -401,6 +406,12 @@ class ScoreFragment : Fragment() {
         inner class TrendVH(itemView: View, val content: LinearLayout) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView)
         inner class ScoreVH(itemView: View, val content: LinearLayout) : androidx.recyclerview.widget.RecyclerView.ViewHolder(itemView)
     }
+
+    private fun dpi(value: Float): Int = (value * resources.displayMetrics.density).toInt()
+
+    /** 95.0 → "95"，88.5 → "88.5"：整数分不再拖一个 ".0" */
+    private fun formatScore(value: Float): String =
+        if (value % 1f == 0f) value.toInt().toString() else value.toString()
 
     override fun onDestroyView() {
         super.onDestroyView()

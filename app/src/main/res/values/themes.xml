@@ -18,6 +18,25 @@
         <item name="android:textColorHint">@color/claude_text_hint</item>
         <item name="android:windowAnimationStyle">@style/ClaudeWindowAnimation</item>
         <item name="android:fontFamily">@font/claude_serif</item>
+        <!-- Map Material 3 color roles to the Claude palette so stock widgets
+             (toggle groups, dialogs, switches, chips) never fall back to M3 lavender. -->
+        <item name="colorPrimaryContainer">@color/claude_terracotta_100</item>
+        <item name="colorOnPrimaryContainer">@color/claude_terracotta_800</item>
+        <item name="colorSecondaryContainer">@color/claude_terracotta_100</item>
+        <item name="colorOnSecondaryContainer">@color/claude_terracotta_800</item>
+        <item name="colorTertiary">@color/claude_success</item>
+        <item name="colorSurface">@color/claude_bg_elevated</item>
+        <item name="colorOnSurface">@color/claude_text_primary</item>
+        <item name="colorSurfaceVariant">@color/claude_bg_subtle</item>
+        <item name="colorOnSurfaceVariant">@color/claude_text_secondary</item>
+        <item name="colorSurfaceContainer">@color/claude_bg_elevated</item>
+        <item name="colorSurfaceContainerLow">@color/claude_bg_elevated</item>
+        <item name="colorSurfaceContainerHigh">@color/claude_bg_elevated</item>
+        <item name="colorSurfaceContainerHighest">@color/claude_bg_subtle</item>
+        <item name="colorOutline">@color/claude_border</item>
+        <item name="colorOutlineVariant">@color/claude_border_light</item>
+        <item name="colorError">@color/claude_error</item>
+        <item name="elevationOverlayEnabled">false</item>
     </style>
 
     <style name="ClaudeWindowAnimation" parent="@android:style/Animation.Activity">
@@ -30,6 +49,7 @@
     <!-- Display: serif italic, hero sizes (greetings, app title, big numbers) -->
     <style name="ClaudeDisplay">
         <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:fontFeatureSettings">lnum</item>
         <item name="android:textSize">32sp</item>
         <item name="android:textColor">@color/claude_text_primary</item>
         <item name="android:textStyle">italic</item>
@@ -147,6 +167,27 @@
         <item name="strokeWidth">1dp</item>
         <item name="cornerRadius">100dp</item>
         <item name="android:minHeight">44dp</item>
+        <item name="elevation">0dp</item>
+    </style>
+
+    <!-- Segmented control button (term switch): quiet outline, warm fill when checked -->
+    <style name="ClaudeSegmentButton" parent="Widget.Material3.Button.OutlinedButton">
+        <item name="android:fontFamily">@font/claude_serif</item>
+        <item name="android:textSize">13sp</item>
+        <item name="android:textAllCaps">false</item>
+        <item name="android:letterSpacing">0</item>
+        <item name="android:textColor">@color/segment_text</item>
+        <item name="backgroundTint">@color/segment_bg</item>
+        <item name="strokeColor">@color/claude_border</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="cornerRadius">10dp</item>
+        <item name="rippleColor">@color/claude_ink_ripple</item>
+        <item name="android:minWidth">0dp</item>
+        <item name="android:minHeight">0dp</item>
+        <item name="android:insetTop">0dp</item>
+        <item name="android:insetBottom">0dp</item>
+        <item name="android:paddingStart">14dp</item>
+        <item name="android:paddingEnd">14dp</item>
         <item name="elevation">0dp</item>
     </style>
 
@@ -274,6 +315,7 @@
     -->
     <style name="ClaudeGreeting" parent="TextAppearance.Material3.DisplaySmall">
         <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:fontFeatureSettings">lnum</item>
         <item name="android:textSize">46sp</item>
         <item name="android:textColor">@color/claude_text_primary</item>
         <item name="android:textStyle">italic</item>
@@ -283,6 +325,7 @@
 
     <style name="ClaudeAppTitle" parent="TextAppearance.Material3.HeadlineLarge">
         <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:fontFeatureSettings">lnum</item>
         <item name="android:textSize">42sp</item>
         <item name="android:textColor">@color/claude_text_primary</item>
         <item name="android:textStyle">italic</item>
@@ -293,6 +336,7 @@
     <!-- Wordmark: small uppercase brand label "iFAFU" with wide tracking -->
     <style name="ClaudeWordmark">
         <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:fontFeatureSettings">lnum</item>
         <item name="android:textSize">11sp</item>
         <item name="android:textColor">@color/claude_text_tertiary</item>
         <item name="android:textAllCaps">true</item>
@@ -312,6 +356,7 @@
     <!-- Decorative drop-cap for serif body openings -->
     <style name="ClaudeDropCap">
         <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:fontFeatureSettings">lnum</item>
         <item name="android:textSize">56sp</item>
         <item name="android:textColor">@color/claude_terracotta</item>
         <item name="android:textStyle">italic</item>
@@ -329,6 +374,7 @@
 
     <style name="ClaudeTimelineNumber" parent="TextAppearance.Material3.HeadlineMedium">
         <item name="android:fontFamily">@font/claude_display</item>
+        <item name="android:fontFeatureSettings">lnum</item>
         <item name="android:textSize">30sp</item>
         <item name="android:textColor">@color/claude_terracotta</item>
         <item name="android:textStyle">italic</item>

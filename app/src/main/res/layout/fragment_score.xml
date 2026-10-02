@@ -62,9 +62,9 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnTerm1"
-                style="@style/ClaudeButton.Outlined"
+                style="@style/ClaudeSegmentButton"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="34dp"
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:insetTop="0dp"
@@ -76,9 +76,9 @@
 
             <com.google.android.material.button.MaterialButton
                 android:id="@+id/btnTerm2"
-                style="@style/ClaudeButton.Outlined"
+                style="@style/ClaudeSegmentButton"
                 android:layout_width="wrap_content"
-                android:layout_height="36dp"
+                android:layout_height="34dp"
                 android:minWidth="0dp"
                 android:minHeight="0dp"
                 android:insetTop="0dp"
@@ -148,11 +148,11 @@
                         android:id="@+id/tvWeightedAvg"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif"
+                        android:fontFamily="@font/claude_display"
+                        android:fontFeatureSettings="lnum"
                         android:text="—"
                         android:textColor="@color/claude_text_primary"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
+                        android:textSize="20sp"/>
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -171,11 +171,11 @@
                         android:id="@+id/tvTotalCredits"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif"
+                        android:fontFamily="@font/claude_display"
+                        android:fontFeatureSettings="lnum"
                         android:text="—"
                         android:textColor="@color/claude_text_primary"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
+                        android:textSize="20sp"/>
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -199,11 +199,11 @@
                         android:id="@+id/tvAvgScore"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif"
+                        android:fontFamily="@font/claude_display"
+                        android:fontFeatureSettings="lnum"
                         android:text="—"
                         android:textColor="@color/claude_text_primary"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
+                        android:textSize="20sp"/>
 
                     <TextView
                         android:layout_width="wrap_content"
@@ -222,11 +222,11 @@
                         android:id="@+id/tvSubjectCount"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:fontFamily="sans-serif"
+                        android:fontFamily="@font/claude_display"
+                        android:fontFeatureSettings="lnum"
                         android:text="—"
                         android:textColor="@color/claude_text_primary"
-                        android:textSize="20sp"
-                        android:textStyle="bold" />
+                        android:textSize="20sp"/>
 
                     <TextView
                         android:layout_width="wrap_content"

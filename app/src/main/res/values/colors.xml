@@ -48,8 +48,8 @@
     <color name="black">#000000</color>
     <color name="transparent">#00000000</color>
 
-    <color name="claude_offline_banner_bg">#FFF3E0</color>
-    <color name="claude_offline_banner_text">#E65100</color>
+    <color name="claude_offline_banner_bg">#F9EFE8</color>
+    <color name="claude_offline_banner_text">#A44D2C</color>
 
     <!-- Login screen: cool neutral surfaces with a restrained warm brand accent. -->
     <color name="login_page_bg">#FAF9F7</color>

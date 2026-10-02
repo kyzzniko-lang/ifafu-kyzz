@@ -63,10 +63,12 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>(),
         10 to Pair("18:25", "19:10"), 11 to Pair("19:15", "20:00"), 12 to Pair("20:05", "20:50")
     )
 
+    // 低饱和大地色系：与陶土主色同一色温，白字对比度均 ≥ 4.5:1，
+    // 避免高饱和"扁平 UI"色（亮青、艳紫、正红）互相抢眼。
     private val courseColors = listOf(
-        "#D4724A", "#2D7A4F", "#B7791F", "#C53030", "#4A6FA5",
-        "#6B4C9A", "#2B8A8A", "#8B5A2B", "#5B6BBF", "#CC5577",
-        "#7B68EE", "#20B2AA", "#CD853F", "#708090", "#DA70D6"
+        "#B65D3A", "#5B7A5E", "#8A6A3D", "#4F6B87", "#8C5267",
+        "#3F7472", "#975A3E", "#665E8C", "#6E7340", "#9C5450",
+        "#4E6A5B", "#7A6250", "#566F8E", "#8F6638", "#6E5A78"
     )
 
     private val customColors by lazy { loadCustomColors() }
@@ -651,7 +653,10 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>(),
                 val color = getCourseColor(course.name)
 
                 val cellView = LayoutInflater.from(this).inflate(R.layout.grid_syllabus_cell, null)
-                cellView.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(cellHeight))
+                // 四周留 1.5dp 缝隙 + 小圆角：相邻课程块不再连成一整片色墙；总高度不变，节次仍对齐
+                val gap = (1.5f * resources.displayMetrics.density).toInt()
+                cellView.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dpToPx(cellHeight) - 2 * gap)
+                    .apply { setMargins(gap, gap, gap, gap) }
                 cellView.findViewById<TextView>(R.id.tvCourseName).apply { text = course.name; visibility = View.VISIBLE }
                 val infoParts = mutableListOf<String>()
                 fun compactTime(t: String): String =
@@ -666,7 +671,10 @@ class GridSyllabusActivity : BaseActivity<ActivityGridSyllabusBinding>(),
                 if (course.teacher.isNotEmpty()) infoParts.add(course.teacher)
                 if (course.address.isNotEmpty()) infoParts.add(course.address)
                 cellView.findViewById<TextView>(R.id.tvCourseInfo).apply { text = infoParts.joinToString("\n"); visibility = View.VISIBLE }
-                cellView.setBackgroundColor(color)
+                cellView.background = android.graphics.drawable.GradientDrawable().apply {
+                    cornerRadius = 6f * resources.displayMetrics.density
+                    setColor(color)
+                }
                 cellView.setOnClickListener {
                     showCourseDetailBottomSheet(courseList)
                 }

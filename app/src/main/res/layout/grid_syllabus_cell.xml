@@ -1,55 +1,48 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/courseCell"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/claude_bg_elevated"
-    android:gravity="center"
+    android:gravity="top"
     android:orientation="vertical"
-    android:paddingTop="4dp"
-    android:paddingBottom="4dp"
-    android:paddingStart="2dp"
-    android:paddingEnd="2dp">
+    android:paddingStart="4dp"
+    android:paddingTop="5dp"
+    android:paddingEnd="3dp"
+    android:paddingBottom="4dp">
 
-    <!-- 二维课表格子宽度只有约 47dp（7 列平分），固定字号 + maxLines 会让
-         "08:00-09:35" 折行成 "08:00-09:3/5"，教师/教室被 … 截断。
-         改用自动缩字：文字整体等比缩小到恰好放进格子，时间/教师/教室完整可见。 -->
+    <!-- 格子宽度只有约 47dp：课程名与信息按内容自然向下排列（不再上下各占一半、
+         中间留大块空白），固定小字号保证可读，超出部分省略，点按查看完整详情。 -->
     <TextView
         android:id="@+id/tvCourseName"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:fontFamily="sans-serif"
-        android:gravity="center"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:fontFamily="sans-serif-medium"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="1dp"
+        android:maxLines="3"
         android:textColor="@color/white"
-        android:textStyle="bold"
-        app:autoSizeTextType="uniform"
-        app:autoSizeMinTextSize="6sp"
-        app:autoSizeMaxTextSize="9sp"
-        app:autoSizeStepGranularity="0.5sp" />
+        android:textSize="10sp" />
 
     <View
         android:id="@+id/divider"
-        android:layout_width="24dp"
-        android:layout_height="0.5dp"
-        android:layout_gravity="center_horizontal"
-        android:background="#88FFFFFF"
-        android:layout_marginTop="2dp"
-        android:layout_marginBottom="2dp" />
+        android:layout_width="12dp"
+        android:layout_height="1dp"
+        android:layout_marginTop="4dp"
+        android:layout_marginBottom="4dp"
+        android:background="#66FFFFFF" />
 
     <TextView
         android:id="@+id/tvCourseInfo"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1.2"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
         android:fontFamily="sans-serif"
-        android:gravity="center"
-        android:lineSpacingMultiplier="1.0"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="1dp"
+        android:maxLines="6"
         android:textColor="#E6FFFFFF"
-        app:autoSizeTextType="uniform"
-        app:autoSizeMinTextSize="6sp"
-        app:autoSizeMaxTextSize="8sp"
-        app:autoSizeStepGranularity="0.5sp" />
+        android:textSize="8.5sp" />
 
 </LinearLayout>

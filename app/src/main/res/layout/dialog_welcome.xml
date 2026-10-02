@@ -19,6 +19,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:fontFamily="@font/claude_display"
+            android:fontFeatureSettings="lnum"
             android:letterSpacing="-0.03"
             android:text="iFAFU"
             android:textColor="@color/claude_terracotta"

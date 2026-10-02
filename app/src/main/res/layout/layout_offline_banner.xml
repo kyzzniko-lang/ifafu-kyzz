@@ -5,7 +5,8 @@
     android:background="@color/claude_offline_banner_bg"
     android:gravity="center"
     android:orientation="horizontal"
-    android:padding="8dp"
+    android:paddingHorizontal="20dp"
+    android:paddingVertical="7dp"
     android:visibility="gone">
 
     <TextView
@@ -14,7 +15,8 @@
         android:layout_height="wrap_content"
         android:text="当前显示缓存数据"
         android:textColor="@color/claude_offline_banner_text"
-        android:textSize="13sp"
-        android:fontFamily="sans-serif" />
+        android:textSize="12sp"
+        android:letterSpacing="0.02"
+        android:fontFamily="@font/claude_serif" />
 
 </LinearLayout>

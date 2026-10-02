@@ -60,6 +60,7 @@
                     android:layout_height="wrap_content"
                     android:alpha="0"
                     android:fontFamily="@font/claude_display"
+                    android:fontFeatureSettings="lnum"
                     android:includeFontPadding="false"
                     android:letterSpacing="-0.02"
                     android:text="iFAFU"
