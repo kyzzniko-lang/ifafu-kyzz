@@ -22,6 +22,14 @@
     <uses-permission android:name="android.permission.ACCESS_MOCK_LOCATION"
         tools:ignore="ProtectedPermissions" />
 
+    <!-- Resolve installed launcher apps for auto_pkg on Android 11–12. No QUERY_ALL_PACKAGES. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
+
     <application
         android:name=".MainApplication"
         android:allowBackup="false"
@@ -74,7 +82,7 @@
         <activity android:name=".ui.calendar.CalendarExportActivity" />
         <activity android:name=".ui.note.NoteListActivity" />
         <activity android:name=".ui.note.NoteEditActivity" />
-        <activity android:name=".ui.toolbox.MockLocationActivity" />
+        <activity android:name=".ui.toolbox.MockLocationActivity" android:launchMode="singleTop" />
         <activity android:name=".ui.feedback.CrashFeedbackActivity" />
 
         <service

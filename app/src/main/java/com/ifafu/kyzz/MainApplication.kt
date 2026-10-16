@@ -1,14 +1,17 @@
 package com.ifafu.kyzz
 
 import android.app.Application
+import android.app.Activity
 import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import android.os.Looper
 import android.os.StrictMode
 import androidx.appcompat.app.AppCompatDelegate
 import com.ifafu.kyzz.core.anr.AnrWatchdog
 import com.ifafu.kyzz.core.crash.CrashReporter
 import com.ifafu.kyzz.service.MockLocationService
+import com.ifafu.kyzz.service.MockLocationAuthorization
 import com.ifafu.kyzz.ui.main.MainActivity
 import com.ifafu.kyzz.util.Logger
 import dagger.hilt.android.HiltAndroidApp
@@ -33,6 +36,28 @@ class MainApplication : Application() {
         // 导致应用第一次启动直接进入黑色 UI；用户手动切换后仍使用已保存的值。
         val darkMode = prefs.getInt("dark_mode", AppCompatDelegate.MODE_NIGHT_NO)
         AppCompatDelegate.setDefaultNightMode(darkMode)
+
+        // Process death never restarts injection. Keep the durable ownership visible, then
+        // attempt cleanup once an Activity is foreground (ordinary services may be restricted
+        // during Application startup, and cleanup does not need real-location permission).
+        MockLocationService.refreshCleanupState(this)
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            private var attemptedRecovery = false
+            override fun onActivityResumed(activity: Activity) {
+                if (attemptedRecovery || !MockLocationService.state.value.cleanupPending || MockLocationService.state.value.isBusy) return
+                val authorized = try { MockLocationAuthorization.isAllowed(activity) } catch (_: Exception) { false }
+                if (authorized) {
+                    attemptedRecovery = true
+                    MockLocationService.recoverRealLocation(activity)
+                }
+            }
+            override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) = Unit
+            override fun onActivityStarted(activity: Activity) = Unit
+            override fun onActivityPaused(activity: Activity) = Unit
+            override fun onActivityStopped(activity: Activity) = Unit
+            override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+            override fun onActivityDestroyed(activity: Activity) = Unit
+        })
 
         // 4. 轻量 ANR 监测（主线程阻塞 > 5s 时记录日志）
         anrWatchdog.start()
@@ -83,9 +108,8 @@ class MainApplication : Application() {
             // 2. 崩溃循环保护：停掉模拟定位服务，重置计数
             if (inCrashLoop) {
                 try {
-                    app.getSharedPreferences("ifafu_user", MODE_PRIVATE).edit()
-                        .putBoolean("mock_location_running", false)
-                        .commit()
+                    // Never erase ownership here: crash termination can skip onDestroy.
+                    // The next foreground startup will clean the committed provider ledger.
                     app.stopService(Intent(app, MockLocationService::class.java))
                 } catch (_: Exception) {}
                 try {

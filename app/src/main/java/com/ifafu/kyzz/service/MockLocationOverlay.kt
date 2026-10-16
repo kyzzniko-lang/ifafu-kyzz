@@ -1,452 +1,586 @@
 package com.ifafu.kyzz.service
 
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.LinearLayout
 import android.widget.TextView
-import kotlin.math.cos
-import kotlin.math.sin
+import java.util.Locale
+import java.util.concurrent.atomic.AtomicLong
+import kotlin.math.roundToInt
 
-@SuppressLint("ClickableViewAccessibility")
+/** Displays state and sends movement commands; the service owns position and timing. */
+@SuppressLint("ClickableViewAccessibility", "RtlHardcoded")
 class MockLocationOverlay(private val context: Context) {
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val updateToken = Any()
+    private val generation = AtomicLong()
+
+    // All view/window/movement fields below are accessed on the main thread only.
     private var windowManager: WindowManager? = null
     private var layoutParams: WindowManager.LayoutParams? = null
-    private var rootView: View? = null
+    private var rootView: LinearLayout? = null
+    private var expandedView: View? = null
+    private var compactView: View? = null
+    private var manualControls: View? = null
+    private var trajectoryHint: TextView? = null
     private var tvCoords: TextView? = null
     private var tvProgress: TextView? = null
     private var isShowing = false
-    private var touchPassthrough = false
+    private var isCollapsed = false
+    private var isTrajectoryMode = false
+    private var configurationReceiverRegistered = false
+    private var movementListener: ((Double, Float) -> Unit)? = null
+    private var stopListener: (() -> Unit)? = null
+    private var moveSpeed = WALK_SPEED
+    private var moveBearing = 0f
+    private var activeDirection: View? = null
+    private var activePointerId = MotionEvent.INVALID_POINTER_ID
+    private var appliedX = Int.MIN_VALUE
+    private var appliedY = Int.MIN_VALUE
+    private var appliedWidth = Int.MIN_VALUE
 
-    private companion object {
-        private const val BASE_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-        private const val PASSTHROUGH_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+    private val configurationReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_CONFIGURATION_CHANGED) updateWindowPosition()
+        }
     }
 
-    // Movement
-    private var moveAngle = 0.0
-    private var moveSpeed = 1.2
-    private var isMoving = false
-    private val moveHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val mainHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private var moveRunnable: Runnable? = null
-    private var positionListener: ((Double, Double) -> Unit)? = null
-    private var currentLat = 0.0
-    private var currentLng = 0.0
+    private companion object {
+        private const val WALK_SPEED = 1.2
+        private const val BASE_FLAGS = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
+    }
 
-    fun show(lat: Double, lng: Double) {
+    fun show(lat: Double, lng: Double) = onMain {
+        if (!lat.isFinite() || !lng.isFinite()) return@onMain
         if (isShowing) {
-            updateCoords(lat, lng)
-            return
+            tvCoords?.text = formatCoords(lat, lng)
+            updateWindowPosition()
+            return@onMain
         }
-        if (!Settings.canDrawOverlays(context)) return
-
-        currentLat = lat
-        currentLng = lng
-        windowManager = context.getSystemService(Context.WINDOW_SERVICE) as WindowManager
-
+        if (!Settings.canDrawOverlays(context)) return@onMain
+        val manager = context.getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+            ?: return@onMain
+        windowManager = manager
         layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+            dp(180), WindowManager.LayoutParams.WRAP_CONTENT,
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
+            } else {
                 @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
-            BASE_FLAGS,
-            PixelFormat.TRANSLUCENT
+                WindowManager.LayoutParams.TYPE_PHONE
+            },
+            BASE_FLAGS, PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            x = 20
-            y = 200
+            gravity = Gravity.TOP or Gravity.LEFT
+            x = dp(20)
+            y = dp(200)
         }
-
-        rootView = createFloatingView(lat, lng)
-
+        val view = createFloatingView(lat, lng)
+        rootView = view
         try {
-            windowManager?.addView(rootView, layoutParams)
+            manager.addView(view, layoutParams)
             isShowing = true
-            setupDrag(rootView!!, layoutParams!!)
-        } catch (e: Exception) {
-            e.printStackTrace()
+            registerConfigurationReceiver()
+            view.addOnLayoutChangeListener { _, _, _, _, _, _, _, _, _ ->
+                if (isShowing) updateWindowPosition()
+            }
+            updateModeViews()
+            updateWindowPosition()
+        } catch (_: RuntimeException) {
+            // Permission can be revoked between checking it and adding the window.
+            cleanupWindow()
         }
+    }
+
+    fun setMovementListener(listener: (Double, Float) -> Unit) = onMain {
+        movementListener = listener
+    }
+
+    fun setStopListener(listener: () -> Unit) = onMain {
+        stopListener = listener
+    }
+
+    fun setTrajectoryMode(isTrajectory: Boolean) = onMain {
+        if (isTrajectoryMode != isTrajectory) {
+            // The service has already changed mode. A late zero-speed command must not
+            // overwrite the new trajectory's movement state.
+            stopMoving(notify = false)
+            isTrajectoryMode = isTrajectory
+        }
+        updateModeViews()
     }
 
     fun updateCoords(lat: Double, lng: Double) {
-        currentLat = lat
-        currentLng = lng
-        // 该方法会被定位后台线程（MockLocationThread）调用；悬浮窗视图在主线程
-        // addView，跨线程直接 setText 会抛 CalledFromWrongThreadException，
-        // 且异常会被服务线程的空 catch 吞掉，导致后续 setLocationGPS/Network
-        // 全部被跳过——轨迹模式下不再注入任何定位。必须切回主线程更新 UI。
-        mainHandler.post {
-            tvCoords?.text = "%.5f, %.5f".format(lat, lng)
-        }
+        if (!lat.isFinite() || !lng.isFinite()) return
+        postDisplayUpdate { tvCoords?.text = formatCoords(lat, lng) }
     }
 
-    fun updateTrajectoryProgress(progress: String?, speed: Double, isTrajectory: Boolean, isLoop: Boolean = false, completedLaps: Int = 0, targetLaps: Int = 0) {
-        mainHandler.post {
-            if (isTrajectory && progress != null) {
-                val text = if (isLoop) {
-                    val lapInfo = if (targetLaps > 0) "${completedLaps + 1}/$targetLaps" else "${completedLaps + 1}/∞"
-                    "校园跑: $progress  圈: $lapInfo  ${speed} m/s"
-                } else {
-                    "路径: $progress  ${speed} m/s"
-                }
-                tvProgress?.text = text
-                tvProgress?.visibility = View.VISIBLE
-            } else if (!isTrajectory) {
-                tvProgress?.visibility = View.GONE
+    fun updateTrajectoryProgress(
+        progress: String?, speed: Double, isTrajectory: Boolean,
+        isLoop: Boolean = false, completedLaps: Int = 0, targetLaps: Int = 0
+    ) {
+        postDisplayUpdate {
+            // Completion hides progress but the run remains a trajectory until it
+            // stops. Only setTrajectoryMode may enable manual movement controls.
+            trajectoryHint?.text = if (isTrajectoryMode && !isTrajectory) {
+                "轨迹已完成，点击停止恢复真实定位"
+            } else "轨迹按设定自动运行"
+            tvProgress?.apply {
+                visibility = if (isTrajectory && !progress.isNullOrBlank()) View.VISIBLE else View.GONE
+                text = if (isTrajectory && !progress.isNullOrBlank()) {
+                    val safeSpeed = if (speed.isFinite() && speed >= 0) speed else 0.0
+                    val speedText = String.format(Locale.ROOT, "%.1f m/s", safeSpeed)
+                    if (isLoop) {
+                        val lap = (completedLaps.coerceAtLeast(0).toLong() + 1)
+                        val lapInfo = if (targetLaps > 0) "$lap/$targetLaps" else "$lap/∞"
+                        "校园跑: $progress  圈: $lapInfo\n$speedText"
+                    } else "路径: $progress\n$speedText"
+                } else ""
             }
         }
     }
 
-    fun setPositionListener(listener: (Double, Double) -> Unit) {
-        positionListener = listener
-    }
-
     fun dismiss() {
+        // Invalidates already queued updates immediately, even when called by a worker.
+        generation.incrementAndGet()
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            cleanupWindow()
+        } else {
+            // Control operations remain FIFO; a subsequent show can create a new window.
+            mainHandler.post { cleanupWindow() }
+        }
+    }
+
+    private fun onMain(action: () -> Unit) {
+        val expectedGeneration = generation.get()
+        if (Looper.myLooper() == Looper.getMainLooper()) {
+            action()
+        } else {
+            mainHandler.post {
+                if (generation.get() == expectedGeneration) action()
+            }
+        }
+    }
+
+    private fun postDisplayUpdate(action: () -> Unit) {
+        val expectedGeneration = generation.get()
+        mainHandler.postAtTime({
+            if (generation.get() == expectedGeneration && isShowing) action()
+        }, updateToken, SystemClock.uptimeMillis())
+    }
+
+    private fun cleanupWindow() {
+        mainHandler.removeCallbacksAndMessages(updateToken)
+        // Permission loss or dismissal during a held direction must stop movement.
+        // The service guards callbacks from obsolete overlay instances/run generations.
         stopMoving()
-        if (!isShowing) return
-        try {
-            windowManager?.removeView(rootView)
-        } catch (_: Exception) {}
-        rootView = null
-        tvCoords = null
+        // Clear callbacks before removing the view: detach may dispatch ACTION_CANCEL.
+        movementListener = null
+        stopListener = null
         isShowing = false
+        rootView?.let { view ->
+            try {
+                windowManager?.removeViewImmediate(view)
+            } catch (_: RuntimeException) {
+                // Safe when the system already removed the window after permission loss.
+            }
+        }
+        if (configurationReceiverRegistered) {
+            try {
+                context.unregisterReceiver(configurationReceiver)
+            } catch (_: IllegalArgumentException) {
+                // Registration may have been lost during context teardown.
+            }
+            configurationReceiverRegistered = false
+        }
+        rootView = null
+        expandedView = null
+        compactView = null
+        manualControls = null
+        trajectoryHint = null
+        tvCoords = null
+        tvProgress = null
+        layoutParams = null
+        windowManager = null
+        isCollapsed = false
+        isTrajectoryMode = false
+        moveSpeed = WALK_SPEED
+        appliedX = Int.MIN_VALUE
+        appliedY = Int.MIN_VALUE
+        appliedWidth = Int.MIN_VALUE
     }
 
-    private fun togglePassthrough() {
-        touchPassthrough = !touchPassthrough
-        val params = layoutParams ?: return
-        params.flags = if (touchPassthrough) PASSTHROUGH_FLAGS else BASE_FLAGS
+    private fun registerConfigurationReceiver() {
+        if (configurationReceiverRegistered) return
         try {
-            windowManager?.updateViewLayout(rootView, params)
-        } catch (_: Exception) {}
+            val filter = IntentFilter(Intent.ACTION_CONFIGURATION_CHANGED)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(configurationReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+            } else {
+                @Suppress("DEPRECATION")
+                context.registerReceiver(configurationReceiver, filter)
+            }
+            configurationReceiverRegistered = true
+        } catch (_: RuntimeException) {
+            // Layout changes still clamp the window if a receiver cannot be registered.
+        }
     }
 
-    private fun createFloatingView(lat: Double, lng: Double): View {
-        val dp = context.resources.displayMetrics.density
-
+    private fun createFloatingView(lat: Double, lng: Double): LinearLayout {
         val container = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
-            background = createBackground(dp)
-            setPadding((6 * dp).toInt(), (4 * dp).toInt(), (6 * dp).toInt(), (4 * dp).toInt())
+            background = background(Color.parseColor("#E6333333"), 8)
+            setPadding(dp(6), dp(4), dp(6), dp(4))
         }
-
-        // Title row
+        val expanded = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        expandedView = expanded
         val titleRow = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-        val dot = View(context).apply {
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.OVAL
-                setColor(Color.parseColor("#4CAF50"))
-            }
-            layoutParams = LinearLayout.LayoutParams((5 * dp).toInt(), (5 * dp).toInt()).apply {
-                marginEnd = (4 * dp).toInt()
-            }
-        }
-        titleRow.addView(dot)
-        titleRow.addView(TextView(context).apply {
-            text = "虚拟定位"
+        val title = TextView(context).apply {
+            text = "● 虚拟定位"
             setTextColor(Color.WHITE)
-            textSize = 10f
-            setTypeface(null, android.graphics.Typeface.BOLD)
-            layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            textSize = 12f
+            gravity = Gravity.CENTER_VERTICAL
+            contentDescription = "拖动虚拟定位悬浮窗"
+            layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f)
+        }
+        setupDrag(title)
+        titleRow.addView(title)
+        titleRow.addView(button("收起", Color.parseColor("#44555555")).apply {
+            contentDescription = "收起悬浮窗，保留展开和停止入口"
+            layoutParams = LinearLayout.LayoutParams(dp(48), dp(40))
+            setOnClickListener { setCollapsed(true) }
         })
-
-        // Touch passthrough toggle
-        val btnPassthrough = TextView(context).apply {
-            text = "⛶"
-            setTextColor(Color.parseColor("#88FFFFFF"))
-            textSize = 10f
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 3 * dp
-                setColor(Color.parseColor("#33FFFFFF"))
-            }
-            layoutParams = LinearLayout.LayoutParams((18 * dp).toInt(), (18 * dp).toInt())
-            setOnClickListener {
-                togglePassthrough()
-                text = if (touchPassthrough) "⛶" else "⛶"
-                alpha = if (touchPassthrough) 0.3f else 1f
-            }
-        }
-        titleRow.addView(btnPassthrough)
-        container.addView(titleRow)
-
-        // Coordinates
+        expanded.addView(titleRow)
         tvCoords = TextView(context).apply {
-            text = "%.5f, %.5f".format(lat, lng)
+            text = formatCoords(lat, lng)
             setTextColor(Color.parseColor("#DDFFFFFF"))
-            textSize = 9f
-            setPadding(0, (2 * dp).toInt(), 0, 0)
+            textSize = 10f
+            setPadding(0, dp(2), 0, dp(2))
         }
-        container.addView(tvCoords)
-
-        // Trajectory progress (hidden by default)
+        expanded.addView(tvCoords)
         tvProgress = TextView(context).apply {
-            text = ""
-            setTextColor(Color.parseColor("#88D4724A"))
-            textSize = 9f
-            setPadding(0, 0, 0, 0)
+            setTextColor(Color.parseColor("#FFD4724A"))
+            textSize = 10f
             visibility = View.GONE
         }
-        container.addView(tvProgress)
+        expanded.addView(tvProgress)
+        trajectoryHint = TextView(context).apply {
+            text = "轨迹按设定自动运行"
+            textSize = 11f
+            setTextColor(Color.parseColor("#DDFFFFFF"))
+            setPadding(0, dp(8), 0, dp(8))
+            visibility = View.GONE
+        }
+        expanded.addView(trajectoryHint)
+        val manual = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
+        manualControls = manual
+        manual.addView(createSpeedRow())
+        manual.addView(createDirectionPad())
+        expanded.addView(manual)
+        expanded.addView(button("停止定位", Color.parseColor("#E53935")).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, dp(40)
+            ).apply { topMargin = dp(4) }
+            setOnClickListener { requestStop() }
+        })
+        container.addView(expanded)
 
-        // Speed row
-        val speedRow = LinearLayout(context).apply {
+        // A compact, touchable window leaves the rest of the screen usable. Keeping
+        // recovery and stop controls touchable avoids the former passthrough deadlock.
+        val compact = LinearLayout(context).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(0, (3 * dp).toInt(), 0, (2 * dp).toInt())
+            visibility = View.GONE
         }
-        val tvWalk = createSpeedBtn(dp, "步行", true)
-        val tvRun = createSpeedBtn(dp, "跑步", false)
-        val tvBike = createSpeedBtn(dp, "骑车", false)
-        val speedBtns = mutableListOf(tvWalk, tvRun, tvBike)
-        val speeds = doubleArrayOf(1.2, 3.6, 10.0)
-        speedBtns.forEachIndexed { index, btn ->
-            btn.setOnClickListener {
-                moveSpeed = speeds[index]
-                speedBtns.forEach { b ->
-                    (b as TextView).setTextColor(Color.parseColor("#88FFFFFF"))
-                    (b.background as? GradientDrawable)?.setStroke(
-                        (1 * dp).toInt(), Color.parseColor("#44FFFFFF")
-                    )
+        compactView = compact
+        compact.addView(TextView(context).apply {
+            text = "定位"
+            textSize = 11f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            contentDescription = "拖动收起的定位悬浮窗"
+            layoutParams = LinearLayout.LayoutParams(0, dp(44), 1f)
+            setupDrag(this)
+        })
+        compact.addView(button("展开", Color.parseColor("#66555555")).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(52), dp(44)).apply { marginEnd = dp(4) }
+            setOnClickListener { setCollapsed(false) }
+        })
+        compact.addView(button("停止", Color.parseColor("#E53935")).apply {
+            layoutParams = LinearLayout.LayoutParams(dp(52), dp(44))
+            setOnClickListener { requestStop() }
+        })
+        container.addView(compact)
+        return container
+    }
+
+    private fun createSpeedRow(): View {
+        val row = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(4), 0, dp(4))
+        }
+        val labels = arrayOf("步行", "跑步", "骑车")
+        val speeds = doubleArrayOf(WALK_SPEED, 3.6, 10.0)
+        val buttons = labels.map { label ->
+            button(label, Color.parseColor("#44555555")).apply {
+                layoutParams = LinearLayout.LayoutParams(0, dp(40), 1f).apply {
+                    setMargins(dp(1), 0, dp(1), 0)
                 }
-                btn.setTextColor(Color.WHITE)
-                (btn.background as? GradientDrawable)?.setStroke(
-                    (1 * dp).toInt(), Color.parseColor("#D4724A")
-                )
             }
         }
-        speedRow.addView(tvWalk)
-        speedRow.addView(tvRun)
-        speedRow.addView(tvBike)
-        container.addView(speedRow)
+        buttons.forEachIndexed { index, view ->
+            view.isSelected = speeds[index] == moveSpeed
+            view.setOnClickListener {
+                if (isTrajectoryMode || !isShowing) return@setOnClickListener
+                moveSpeed = speeds[index]
+                buttons.forEach { it.isSelected = it === view }
+                if (activeDirection != null) movementListener?.invoke(moveSpeed, moveBearing)
+            }
+            row.addView(view)
+        }
+        return row
+    }
 
-        // Direction pad (3x3 grid)
+    private fun createDirectionPad(): View {
         val grid = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        val directions = arrayOf(
-            doubleArrayOf(135.0, 90.0, 45.0),
-            doubleArrayOf(180.0, -1.0, 0.0),
-            doubleArrayOf(225.0, 270.0, 315.0)
+        val bearings = arrayOf(
+            floatArrayOf(315f, 0f, 45f),
+            floatArrayOf(270f, -1f, 90f),
+            floatArrayOf(225f, 180f, 135f)
         )
         val labels = arrayOf(
             arrayOf("↖", "↑", "↗"),
             arrayOf("←", "■", "→"),
             arrayOf("↙", "↓", "↘")
         )
-        for (row in 0..2) {
-            val rowLayout = LinearLayout(context).apply {
+        val descriptions = arrayOf(
+            arrayOf("向西北移动", "向北移动", "向东北移动"),
+            arrayOf("向西移动", "停止移动", "向东移动"),
+            arrayOf("向西南移动", "向南移动", "向东南移动")
+        )
+        for (rowIndex in 0..2) {
+            val row = LinearLayout(context).apply {
                 orientation = LinearLayout.HORIZONTAL
                 gravity = Gravity.CENTER
             }
-            for (col in 0..2) {
-                val angle = directions[row][col]
-                val label = labels[row][col]
-                val btn = TextView(context).apply {
-                    text = label
-                    setTextColor(Color.WHITE)
-                    textSize = 12f
-                    gravity = Gravity.CENTER
-                    layoutParams = LinearLayout.LayoutParams(
-                        (26 * dp).toInt(), (26 * dp).toInt()
-                    ).apply {
-                        setMargins(
-                            (1 * dp).toInt(), (1 * dp).toInt(),
-                            (1 * dp).toInt(), (1 * dp).toInt()
-                        )
-                    }
-                    background = GradientDrawable().apply {
-                        shape = GradientDrawable.RECTANGLE
-                        cornerRadius = 4 * dp
-                        setColor(Color.parseColor("#44FFFFFF"))
+            for (column in 0..2) {
+                val bearing = bearings[rowIndex][column]
+                val view = button(labels[rowIndex][column], Color.parseColor("#44555555")).apply {
+                    contentDescription = descriptions[rowIndex][column]
+                    layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply {
+                        setMargins(dp(1), dp(1), dp(1), dp(1))
                     }
                 }
-                if (angle < 0) {
-                    btn.setOnClickListener { stopMoving() }
-                    btn.textSize = 11f
+                if (bearing < 0) {
+                    view.setOnClickListener {
+                        if (!isTrajectoryMode && isShowing) stopMoving(forceNotify = true)
+                    }
                 } else {
-                    val a = angle
-                    btn.setOnTouchListener { _, event ->
-                        when (event.action) {
-                            MotionEvent.ACTION_DOWN -> {
-                                startMoving(a)
-                                btn.background = GradientDrawable().apply {
-                                    shape = GradientDrawable.RECTANGLE
-                                    cornerRadius = 4 * dp
-                                    setColor(Color.parseColor("#66D4724A"))
-                                }
-                                true
-                            }
-                            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                stopMoving()
-                                btn.background = GradientDrawable().apply {
-                                    shape = GradientDrawable.RECTANGLE
-                                    cornerRadius = 4 * dp
-                                    setColor(Color.parseColor("#44FFFFFF"))
-                                }
-                                true
-                            }
-                            else -> false
-                        }
-                    }
+                    view.setOnTouchListener { _, event -> handleDirectionTouch(view, bearing, event) }
                 }
-                rowLayout.addView(btn)
+                row.addView(view)
             }
-            grid.addView(rowLayout)
+            grid.addView(row)
         }
-        container.addView(grid)
-
-        // Stop service button
-        val btnStop = TextView(context).apply {
-            text = "停止"
-            setTextColor(Color.WHITE)
-            textSize = 10f
-            gravity = Gravity.CENTER
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 4 * dp
-                setColor(Color.parseColor("#E53935"))
-            }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                (20 * dp).toInt()
-            ).apply {
-                topMargin = (4 * dp).toInt()
-            }
-            setOnClickListener {
-                val intent = android.content.Intent(context, MockLocationService::class.java).apply {
-                    action = MockLocationService.ACTION_STOP
-                }
-                try {
-                    context.startService(intent)
-                } catch (_: Exception) {
-                    // 停止指令与 Service 销毁竞态时可能触发后台启动限制，忽略即可
-                }
-            }
-        }
-        container.addView(btnStop)
-
-        return container
+        return grid
     }
 
-    private fun createSpeedBtn(dp: Float, text: String, selected: Boolean): TextView {
-        return TextView(context).apply {
-            this.text = text
-            textSize = 9f
-            gravity = Gravity.CENTER
-            setTextColor(if (selected) Color.WHITE else Color.parseColor("#88FFFFFF"))
-            background = GradientDrawable().apply {
-                shape = GradientDrawable.RECTANGLE
-                cornerRadius = 3 * dp
-                setColor(Color.parseColor("#33FFFFFF"))
-                setStroke(
-                    (1 * dp).toInt(),
-                    if (selected) Color.parseColor("#D4724A") else Color.parseColor("#44FFFFFF")
-                )
+    private fun handleDirectionTouch(view: View, bearing: Float, event: MotionEvent): Boolean {
+        if (!isShowing || isTrajectoryMode || isCollapsed) return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                stopMoving(notify = false)
+                activeDirection = view
+                activePointerId = event.getPointerId(event.actionIndex)
+                moveBearing = bearing
+                view.isPressed = true
+                movementListener?.invoke(moveSpeed, bearing)
             }
-            layoutParams = LinearLayout.LayoutParams(
-                0, (18 * dp).toInt(), 1f
-            ).apply {
-                marginEnd = (3 * dp).toInt()
+            MotionEvent.ACTION_MOVE -> {
+                if (activeDirection === view) {
+                    val index = event.findPointerIndex(activePointerId)
+                    if (index < 0 || event.getX(index) !in 0f..view.width.toFloat() ||
+                        event.getY(index) !in 0f..view.height.toFloat()) stopMoving()
+                }
             }
+            MotionEvent.ACTION_POINTER_UP -> {
+                if (activeDirection === view && event.getPointerId(event.actionIndex) == activePointerId) {
+                    stopMoving()
+                }
+            }
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (activeDirection === view) stopMoving()
+                if (event.actionMasked == MotionEvent.ACTION_UP) view.performClick()
+            }
+        }
+        return true
+    }
+
+    private fun stopMoving(notify: Boolean = true, forceNotify: Boolean = false) {
+        val wasMoving = activeDirection != null
+        activeDirection?.isPressed = false
+        activeDirection = null
+        activePointerId = MotionEvent.INVALID_POINTER_ID
+        if (notify && isShowing && !isTrajectoryMode && (wasMoving || forceNotify)) {
+            movementListener?.invoke(0.0, moveBearing)
         }
     }
 
-    private fun startMoving(angle: Double) {
-        moveAngle = angle
-        // 先停掉上一次移动，再置为移动中；否则 stopMoving() 会把 isMoving 覆盖回 false，
-        // run() 里的 if (!isMoving) return 会立即退出，方向键永远无法移动。
+    private fun requestStop() {
+        if (!isShowing) return
+        // The listener directly invokes the existing service's stop operation.
+        stopMoving(notify = false)
+        stopListener?.invoke()
+    }
+
+    private fun setCollapsed(collapsed: Boolean) {
+        if (!isShowing || isCollapsed == collapsed) return
         stopMoving()
-        isMoving = true
-        moveRunnable = object : Runnable {
-            override fun run() {
-                if (!isMoving) return
-                val intervalSec = 0.1
-                val distM = moveSpeed * intervalSec
-                val distLat = distM * sin(Math.toRadians(angle)) / 110574.0
-                val distLng = distM * cos(Math.toRadians(angle)) / (111320.0 * cos(Math.toRadians(currentLat)))
-                currentLat += distLat
-                currentLng += distLng
-                updateCoords(currentLat, currentLng)
-                positionListener?.invoke(currentLat, currentLng)
-                moveHandler.postDelayed(this, 100)
-            }
-        }
-        moveHandler.post(moveRunnable!!)
+        isCollapsed = collapsed
+        expandedView?.visibility = if (collapsed) View.GONE else View.VISIBLE
+        compactView?.visibility = if (collapsed) View.VISIBLE else View.GONE
+        updateWindowPosition()
     }
 
-    private fun stopMoving() {
-        isMoving = false
-        moveRunnable?.let { moveHandler.removeCallbacks(it) }
+    private fun updateModeViews() {
+        manualControls?.visibility = if (isTrajectoryMode) View.GONE else View.VISIBLE
+        trajectoryHint?.visibility = if (isTrajectoryMode) View.VISIBLE else View.GONE
+        trajectoryHint?.text = "轨迹按设定自动运行"
+        if (!isTrajectoryMode) tvProgress?.visibility = View.GONE
+        updateWindowPosition()
     }
 
-    private fun createBackground(dp: Float): GradientDrawable {
-        return GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE
-            cornerRadius = 8 * dp
-            setColor(Color.parseColor("#CC333333"))
-            setStroke((1 * dp).toInt(), Color.parseColor("#44FFFFFF"))
+    private fun button(text: String, color: Int): TextView = TextView(context).apply {
+        this.text = text
+        setTextColor(Color.WHITE)
+        textSize = 12f
+        gravity = Gravity.CENTER
+        background = StateListDrawable().apply {
+            addState(intArrayOf(android.R.attr.state_pressed), background(Color.parseColor("#FFD4724A")))
+            addState(intArrayOf(android.R.attr.state_selected), background(Color.parseColor("#FF975238")))
+            addState(intArrayOf(), background(color))
         }
     }
 
-    @SuppressLint("ClickableViewAccessibility")
-    private fun setupDrag(view: View, params: WindowManager.LayoutParams) {
+    private fun background(color: Int, radius: Int = 4) = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        cornerRadius = dp(radius).toFloat()
+        setColor(color)
+    }
+
+    private fun setupDrag(handle: View) {
         var initialX = 0
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
-        var isDragging = false
-
-        view.setOnTouchListener { _, event ->
-            when (event.action) {
+        handle.setOnTouchListener { _, event ->
+            val params = layoutParams ?: return@setOnTouchListener false
+            if (!isShowing) return@setOnTouchListener false
+            when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     initialX = params.x
                     initialY = params.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
-                    isDragging = false
-                    false
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - initialTouchX
-                    val dy = event.rawY - initialTouchY
-                    if (dx * dx + dy * dy > 100) isDragging = true
-                    if (isDragging) {
-                        params.x = initialX + dx.toInt()
-                        params.y = initialY + dy.toInt()
-                        try {
-                            windowManager?.updateViewLayout(view, params)
-                        } catch (_: Exception) {}
-                    }
-                    isDragging
+                    params.x = initialX + (event.rawX - initialTouchX).roundToInt()
+                    params.y = initialY + (event.rawY - initialTouchY).roundToInt()
+                    updateWindowPosition()
                 }
-                MotionEvent.ACTION_UP -> {
-                    isDragging
-                }
-                else -> false
+                MotionEvent.ACTION_UP -> handle.performClick()
             }
+            true
         }
     }
+
+    private fun updateWindowPosition() {
+        if (!isShowing) return
+        val view = rootView ?: return
+        val params = layoutParams ?: return
+        val manager = windowManager ?: return
+        try {
+            val available = screenBounds(manager)
+            // On short landscape displays the full controls may no longer fit. The
+            // compact window always keeps restore and stop reachable.
+            if (!isCollapsed && view.height > available.height()) {
+                setCollapsed(true)
+                return
+            }
+            val width = dp(180).coerceAtMost(available.width().coerceAtLeast(1))
+            val x = params.x.coerceIn(available.left, (available.right - width).coerceAtLeast(available.left))
+            val height = view.height.coerceAtLeast(dp(52)).coerceAtMost(available.height().coerceAtLeast(1))
+            val y = params.y.coerceIn(available.top, (available.bottom - height).coerceAtLeast(available.top))
+            params.width = width
+            params.x = x
+            params.y = y
+            if (appliedX != x || appliedY != y || appliedWidth != width) {
+                manager.updateViewLayout(view, params)
+                appliedX = x
+                appliedY = y
+                appliedWidth = width
+            }
+        } catch (_: RuntimeException) {
+            // Losing overlay permission must neither crash nor leave a held direction running.
+            stopMoving()
+            cleanupWindow()
+        }
+    }
+
+    private fun screenBounds(manager: WindowManager): Rect {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val metrics = manager.currentWindowMetrics
+            val insets = metrics.windowInsets.getInsetsIgnoringVisibility(
+                WindowInsets.Type.systemBars() or WindowInsets.Type.displayCutout()
+            )
+            return Rect(metrics.bounds).apply {
+                left += insets.left
+                top += insets.top
+                right -= insets.right
+                bottom -= insets.bottom
+            }
+        }
+        val metrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        manager.defaultDisplay.getRealMetrics(metrics)
+        @SuppressLint("InternalInsetResource")
+        val statusId = context.resources.getIdentifier("status_bar_height", "dimen", "android")
+        @SuppressLint("InternalInsetResource")
+        val navigationId = context.resources.getIdentifier("navigation_bar_height", "dimen", "android")
+        val top = if (statusId > 0) context.resources.getDimensionPixelSize(statusId) else 0
+        val bottom = if (navigationId > 0) context.resources.getDimensionPixelSize(navigationId) else 0
+        return Rect(0, top, metrics.widthPixels, (metrics.heightPixels - bottom).coerceAtLeast(top + 1))
+    }
+
+    private fun dp(value: Int) = (value * context.resources.displayMetrics.density).roundToInt()
+
+    private fun formatCoords(lat: Double, lng: Double) = String.format(Locale.ROOT, "%.5f, %.5f", lat, lng)
 }

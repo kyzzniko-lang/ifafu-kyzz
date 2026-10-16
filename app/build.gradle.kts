@@ -46,6 +46,7 @@ android {
     }
 
     testOptions {
+        unitTests.isIncludeAndroidResources = true
         // 解析器单测依赖 android.util.Log（返回默认值而非抛异常）
         unitTests.isReturnDefaultValues = true
     }

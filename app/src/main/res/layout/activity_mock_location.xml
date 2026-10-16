@@ -78,6 +78,14 @@
             </com.google.android.material.card.MaterialCardView>
 
             <!-- Campus quick-select card -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnReloadMap"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="地图加载失败，点击重新加载（保留路线）"
+                android:visibility="gone" />
+
             <com.google.android.material.card.MaterialCardView
                 android:id="@+id/cardCampusSelect"
                 style="@style/ClaudeCard"
@@ -373,7 +381,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:hint="纬度 (如 26.085206)"
+                        android:hint="WGS-84 纬度 (如 26.085206)"
                         app:boxBackgroundColor="@color/claude_bg_subtle"
                         app:boxStrokeColor="@color/claude_terracotta"
                         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
@@ -391,7 +399,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="12dp"
-                        android:hint="经度 (如 119.239669)"
+                        android:hint="WGS-84 经度 (如 119.239669)"
                         app:boxBackgroundColor="@color/claude_bg_subtle"
                         app:boxStrokeColor="@color/claude_terracotta"
                         style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
@@ -428,6 +436,14 @@
                 android:textSize="16sp"
                 app:backgroundTint="@color/claude_terracotta"
                 app:cornerRadius="14dp" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnRecoverRealLocation"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/mock_location_recover_real_location" />
 
             <!-- Status text -->
             <TextView
@@ -503,7 +519,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="2. 允许自启动（开机自动恢复定位）"
+                        android:text="2. 允许后台运行（手机管家设置）"
                         android:textAllCaps="false"
                         android:textColor="@color/claude_terracotta"
                         app:cornerRadius="10dp"
@@ -517,7 +533,7 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
-                        android:text="3. 允许通知（前台服务必需）"
+                        android:text="3. 允许通知（便于查看状态和停止）"
                         android:textAllCaps="false"
                         android:textColor="@color/claude_terracotta"
                         app:cornerRadius="10dp"
@@ -529,7 +545,7 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:layout_marginTop="10dp"
-                        android:text="提示：部分手机（小米/OPPO/vivo/华为）还需要在各自的安全中心中允许本应用自启动和后台运行。"
+                        android:text="提示：部分手机需在安全中心允许后台运行。这些设置不能保证进程始终存活；开机后请手动启动定位。悬浮窗和通知权限可选，未开启时请返回本页停止定位。"
                         android:textColor="@color/claude_text_hint"
                         android:textSize="12sp"
                         android:lineSpacingExtra="3dp" />

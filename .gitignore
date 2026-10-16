@@ -39,6 +39,10 @@ D:antigravity*.txt
 .freebuff/
 .zcode/
 .mcp.json
+.video_agent/
+
+# Windows 误生成的文件
+/nul
 
 # 教务系统抓包样本,仅本地留存
 /question/

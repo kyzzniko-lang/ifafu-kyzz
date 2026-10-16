@@ -73,4 +73,5 @@
     <string name="course_detail_teacher">教师: %s</string>
     <string name="course_detail_address">地点: %s</string>
     <string name="course_detail_time">时间: %s</string>
+    <string name="mock_location_recover_real_location">恢复真实定位（清理残留模拟定位）</string>
 </resources>
